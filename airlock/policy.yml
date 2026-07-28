@@ -1,0 +1,78 @@
+# Airlock ships no built-in policy. What a repository must satisfy is an
+# organisation decision, and it is made here. Airlock resolves this file for
+# every audited wyrd-company repository unless --policy overrides it.
+
+version: 1
+name: wyrd-company
+
+# Refuse to run against a binary whose check registry predates this policy.
+# The registry version moves when a rule, statement, severity, or evaluation
+# mode changes, so this is what stops an upgrade quietly changing the gate.
+requires-registry: ">=0.1"
+
+# Only Blocking failures make a repository nonconformant. Required failures
+# are reported and tracked; they do not stop a release. Raise this to
+# `required` when the estate is clean enough to hold that line.
+gate: blocking
+
+capabilities:
+  base:
+    - identity
+    - licensing
+    - files
+    - readme
+    - git
+    - automation
+    - agent
+    - docs
+    - classification
+  registry:
+    - release
+
+apply:
+  base: always
+  # Release rules describe repositories that publish something. A repository
+  # with no declared release units is not one, and its release findings are
+  # skipped rather than failed.
+  registry:
+    when: intentional-config-present
+
+checks:
+  # The organisation preset every repository extends.
+  REPO-FILE-08:
+    params:
+      renovate-preset: github>wyrd-company/.github
+
+  # Topic vocabulary lives in the reference data below, so these two rules
+  # are the ones that keep it honest.
+  REPO-META-06:
+    params:
+      min-topics: 3
+      max-topics: 8
+
+suppressions:
+  # Suppression authority lives here, never in the audited repository. A
+  # repository may ask; this file decides.
+  direct:
+    - rule: REPO-CI-07
+      repository: wyrd-company/airlock
+      reason: >-
+        The reconcile workflow applies declared settings through the GitHub
+        API while holding a scoped app token. Wrapping that in a task would
+        put a credential-holding step behind an indirection nobody reviews.
+
+  # Rules a repository may suppress for itself, with a stated reason, in
+  # .github/airlock.yml. Nothing that guards the trust boundary appears here:
+  # a repository can never suppress its way past CI permissions, action
+  # pinning, or release controls.
+  allow-repo-requests:
+    - REPO-DOCS-01
+    - REPO-DOCS-02
+    - REPO-DOCS-03
+    - REPO-FILE-10
+    - REPO-README-05
+
+reference-data:
+  # Resolved to a commit and blob sha before any check runs, and hashed into
+  # the policy bundle digest that every audit result carries.
+  topics: wyrd-company/.github:airlock/topics.yml

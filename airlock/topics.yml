@@ -1,0 +1,37 @@
+# The vocabulary a repository's declared topics are checked against.
+# REPO-META-07 requires at least one artifact-type and one ecosystem term.
+# REPO-META-09 requires every declared topic to appear somewhere here, so
+# adding a topic to a repository means adding it here first.
+
+artifact-type:
+  - cli
+  - library
+  - schema
+  - specification
+  - template
+  - website
+  - action
+  - plugin
+
+ecosystem:
+  - rust
+  - typescript
+  - python
+  - dart
+  - dotnet
+  - shell
+  - docker
+
+domain:
+  - github
+  - release-automation
+  - devops
+  - developer-tools
+  - agents
+  - knowledge-management
+  - observability
+
+family:
+  - airlock
+  - intentional
+  - lore
