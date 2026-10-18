@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":maintainLockFilesWeekly"
+  ],
+  "automerge": false,
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2
+}
