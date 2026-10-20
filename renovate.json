@@ -1,0 +1,5 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>wyrd-company/.github:renovate-config"],
+  "ignorePaths": ["release/**", "tests/release/sample-target/**"]
+}

@@ -1,0 +1,12 @@
+# relationships: validates: release-process
+extends: default
+ignore:
+  - release/partials/*.yml
+  - release/template/**/*.yml
+rules:
+  brackets: disable
+  line-length:
+    max: 160
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1

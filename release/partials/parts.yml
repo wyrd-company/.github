@@ -1,0 +1,2 @@
+{# relationships: implements: release-process #}
+{# Each target adds literal, conditional includes here. See tests/release/README.md. #}

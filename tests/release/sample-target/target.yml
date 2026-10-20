@@ -1,0 +1,19 @@
+# relationships: validates: release-process
+# Reads release_model.release_units keys through the units answer only.
+units: sample_target_units
+build: [build-sample]
+publish: [publish-sample]
+verify: [verify-sample]
+credentials:
+  sample-token:
+    name: SAMPLE_TOKEN
+    purpose: Publish the sample artifact
+    unless: trusted_publishing
+  sample-variable:
+    name: SAMPLE_CHANNEL
+    kind: variable
+    purpose: Select the sample channel
+  sample-environment:
+    name: SAMPLE_ENV_TOKEN
+    purpose: Publish the sample artifact in its environment
+    environment: sample

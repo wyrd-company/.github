@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/wyrd-company/.github/blob/main/release/schemas/publish-job.schema.json",
-  "title": "Release-process v1 publication job contribution",
-  "description": "Validates the value of one contribution to the build_jobs, publish_jobs, or verify_jobs extension point of contract release-process version 1. The contribution key is the GitHub job id. The parent owns needs, the release gate, and the reserved RELEASE_ environment.",
+  "title": "Release-process v1 part job",
+  "description": "Validates the value of one entry in the build_jobs, publish_jobs, or verify_jobs part interface of contract release-process version 1. The part job key is the GitHub job id. The parent owns needs, the release gate, and the reserved RELEASE_ environment.",
   "type": "object",
   "additionalProperties": false,
   "required": ["units", "job"],
@@ -18,7 +18,7 @@
       "minLength": 1,
       "allOf": [
         { "not": { "pattern": "\\$\\{\\{" } },
-        { "not": { "pattern": "\\b(always|success|failure|cancelled)\\s*\\(" } }
+        { "not": { "pattern": "\\b([aA][lL][wW][aA][yY][sS]|[sS][uU][cC][cC][eE][sS][sS]|[fF][aA][iI][lL][uU][rR][eE]|[cC][aA][nN][cC][eE][lL][lL][eE][dD])\\s*\\(" } }
       ]
     },
     "job": { "$ref": "#/$defs/job" }

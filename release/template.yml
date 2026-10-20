@@ -1,0 +1,37 @@
+# ---
+# relationships:
+#   implements: release-process
+# ---
+name: release
+description: Release workflow from the Intentional Release Model
+schemas: schemas
+data:
+  release_targets: {}
+interview:
+  - id: release_model
+    type: document
+    prompt: Intentional Release Model
+    schema: https://intentional.foo/schemas/release-model/1
+    input: .intentional/release-model.json
+  - id: targets
+    type: multiselect
+    parts: true
+    prompt: Publication targets
+    options: []
+    default: []
+  - id: ci_workflow
+    type: text
+    prompt: CI workflow file name
+    default: ci.yml
+    validate:
+      regex: '^[A-Za-z0-9_.-]+\.ya?ml$'
+    required: true
+  - id: required_units
+    computed: "release_model.release_units | dictsort | map(attribute='1') | selectattr('release_record', 'equalto', 'required') | list | length"
+  - id: latest_unit
+    type: select
+    prompt: Release Unit marked latest
+    when: required_units > 1
+    options: "release_model.release_units | dictsort | selectattr('1.release_record', 'equalto', 'required') | map(attribute='0') | list"
+  - id: credential_answers
+    computed: '{}'

@@ -1,0 +1,127 @@
+{# relationships: implements: release-process #}
+{% set ns = namespace(build=[], publish=[], verify=[], credentials=[], preflight=['preflight'], environments=[''], record_units=[], phase_errors=[]) %}
+{% for unit, value in release_model.release_units | dictsort %}
+{% if value.release_record == 'required' %}{% set ns.record_units = ns.record_units + [unit] %}{% endif %}
+{% for stream, tag in value.tags | dictsort %}{% if tag.role == 'primary' and tag.require_phase == 'after-publication' %}{% set ns.phase_errors = ns.phase_errors + [unit ~ '/' ~ stream] %}{% endif %}{% endfor %}
+{% endfor %}
+{% for target in targets %}
+{% set data = release_targets[target] %}
+{% set ns.build = ns.build + data.build %}
+{% set ns.publish = ns.publish + data.publish %}
+{% set ns.verify = ns.verify + data.verify %}
+{% for key, credential in data.credentials | dictsort %}
+{% if not credential.unless or not credential_answers[credential.unless] %}
+{% set ns.credentials = ns.credentials + [credential] %}
+{% if credential.environment and credential.environment not in ns.environments %}{% set ns.environments = ns.environments + [credential.environment] %}{% set ns.preflight = ns.preflight + ['preflight-' ~ credential.environment] %}{% endif %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% include 'partials/jobs.yml' %}
+# Generated from release-process v1. Update with Toha; Renovate owns action pins.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      source-sha:
+        description: Source commit on the default branch with successful push CI
+        type: string
+        required: true
+permissions: {}
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+{% for output in ['release', 'source_sha', 'units', 'releases', 'record_units', 'record'] %}
+      {{ output }}: {{ '${{ steps.resolve.outputs.' ~ output ~ ' }}' }}
+{% endfor %}
+    steps:
+{% if ns.phase_errors %}
+      - name: Refuse primary tags that require after-publication
+        env:
+          PHASE_ERRORS: {{ ns.phase_errors | tojson | toyaml }}
+        run: |
+          printf '%s\n' "Primary tags require after-publication: $PHASE_ERRORS" >&2
+          exit 1
+{% endif %}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve primary release records
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SOURCE_SHA: {% raw %}${{ inputs.source-sha }}{% endraw %}
+          DISPATCH_REF: {% raw %}${{ github.ref }}{% endraw %}
+          DISPATCH_SHA: {% raw %}${{ github.sha }}{% endraw %}
+          DEFAULT_BRANCH: {% raw %}${{ github.event.repository.default_branch }}{% endraw %}
+          CI_WORKFLOW: {{ ci_workflow | toyaml }}
+          RELEASE_MODEL: {{ release_model | tojson | replace('$', '\\u0024') | toyaml }}
+        with:
+          script: |
+{% set resolve_script %}{% include 'partials/resolve.js' %}{% endset %}{{ resolve_script | indent(12, true) }}
+{% for environment in ns.environments %}
+{% set group = namespace(items=[], names=[]) %}
+{% for credential in ns.credentials %}{% if credential.environment | default('') == environment and credential.name not in group.names %}{% set group.items = group.items + [credential] %}{% set group.names = group.names + [credential.name] %}{% endif %}{% endfor %}
+  preflight{% if environment %}-{{ environment }}{% endif %}:
+    needs: [resolve]
+    runs-on: ubuntu-latest
+    permissions: {}
+{% if environment %}    environment: {{ environment }}
+{% endif %}
+    steps:
+      - name: Check declared credentials
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+{% if group.items %}        env:
+{% for credential in group.items %}
+          {{ credential.name }}: {{ '${{ ' ~ ('vars' if credential.kind == 'variable' else 'secrets') ~ '.' ~ credential.name ~ ' }}' }}
+{% endfor %}
+{% endif %}
+        with:
+          script: |
+{% set preflight_script %}{% include 'partials/preflight.js' %}{% endset %}{{ preflight_script | indent(12, true) }}
+            checkCredentials({{ group.items | tojson | replace('$', '\\u0024') }}, process.env);
+{% endfor %}
+{% set stage = 'build' %}
+{% include 'partials/parts.yml' %}
+{% if ns.record_units %}
+  release-record:
+    needs: {{ (['resolve'] + ns.preflight + ns.build) | tojson }}
+    if: >-
+      {{ ns.gate() }} && needs.resolve.outputs.record == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: {% raw %}${{ fromJSON(needs.resolve.outputs.record_units) }}{% endraw %}
+    env:
+      RELEASE_SOURCE_SHA: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      RELEASE_UNITS: {% raw %}${{ join(fromJSON(needs.resolve.outputs.units), ' ') }}{% endraw %}
+      RELEASE_JSON: {% raw %}${{ needs.resolve.outputs.releases }}{% endraw %}
+      RELEASE_UNIT: {% raw %}${{ matrix.unit }}{% endraw %}
+      RELEASE_MODEL: {{ release_model | tojson | replace('$', '\\u0024') | toyaml }}
+      LATEST_UNIT: {{ (latest_unit if ns.record_units | length > 1 else ns.record_units[0]) | toyaml }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download this unit's release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: {% raw %}release-asset+${{ matrix.unit }}+*{% endraw %}
+          path: {% raw %}${{ runner.temp }}/release-assets/${{ matrix.unit }}{% endraw %}
+      - name: Publish and read back the release record
+        env:
+          ASSET_DIRECTORY: {% raw %}${{ runner.temp }}/release-assets/${{ matrix.unit }}{% endraw %}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+{% set record_script %}{% include 'partials/release-record.js' %}{% endset %}{{ record_script | indent(12, true) }}
+{% endif %}
+{% set stage = 'publish' %}
+{% include 'partials/parts.yml' %}
+{% set stage = 'verify' %}
+{% include 'partials/parts.yml' %}
