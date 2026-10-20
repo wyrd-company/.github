@@ -50,3 +50,22 @@ including Renovate's action pins. Resolve reported conflicts before applying.
 See [the release-process design](docs/technical-designs/release-process.yml) and
 [the template test guide](tests/release/README.md) for part interfaces, local
 validation, and live workflow proof cases.
+
+## Airlock repository configuration template
+
+Apply `gh:wyrd-company/.github#airlock-config` beside the `release` template:
+
+```sh
+toha apply gh:wyrd-company/.github#airlock-config .
+```
+
+The default file declares accepted generation `0.6.0`. Enter a generation at
+least as recent as the organization's accepted generation. Opt in to declare
+description, topics, merge settings and features. No waiver is preselected.
+Add reasoned `exceptions.<rule>` requests by hand; `severity: none` requests
+a waiver. Requests apply only where the organization's `allow_override`
+authority permits. Classification and organization-only parameters, including
+template identities, are not repository declarations. This template has no
+hooks and is not a part of the release composition.
+
+See [the configuration test guide](tests/airlock-config/README.md).

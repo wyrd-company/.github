@@ -1,0 +1,19 @@
+# relationships:
+#   references: release-process
+# Repository requests are honored only where organization authority permits.
+# Add exceptions.<rule> with reason; severity: none requests a waiver.
+# Classification and organization-only rule parameters do not belong here.
+version: {{ accepted_generation | tojson }}
+{% if declare_repository %}
+description: {{ description | tojson }}
+topics: {{ topics | split(' ') | tojson }}
+merge:
+  squash: {{ squash | tojson }}
+  rebase: {{ rebase | tojson }}
+  merge_commit: {{ merge_commit | tojson }}
+  delete_branch_on_merge: {{ delete_branch_on_merge | tojson }}
+features:
+  wiki: {{ wiki | tojson }}
+  projects: {{ projects | tojson }}
+  discussions: {{ discussions | tojson }}
+{% endif %}

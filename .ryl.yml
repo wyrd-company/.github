@@ -1,6 +1,7 @@
 # relationships: validates: release-process
 extends: default
 ignore:
+  - airlock-config/template/**/*.yml
   - release/partials/*.yml
   - release/targets/npm/*npm.yml
   - release/targets/npm/*clients.yml
