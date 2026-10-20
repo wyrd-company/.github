@@ -282,6 +282,51 @@ for name, test in [('publish-npm', 'publish'), ('verify-npm-clients', 'verify')]
              'test_npm.NpmPart.test_' + test + '_model_data_stays_literal', 'python')
 
 
+# GHCR publication: each guard is killed by a named transport-boundary test.
+r = 'release/targets/ghcr/publish.py'
+for old, new, test in [
+    ("env.get('GHCR_DRY_RUN') not in ('true', 'false')", 'False', 'missing_dry_choice_before_any_tool'),
+    ("env['GHCR_DRY_RUN'] == 'true'", 'False', 'dry_run_no_login_or_registry'),
+    ("not unit or unit['release_record'] != 'required'", 'not unit', 'record_none_before_any_tool'),
+    ("not (context / 'Dockerfile').is_file()", 'False', 'missing_dockerfile_before_any_tool'),
+    ("unit_id not in released", 'False', 'selected_and_released_units_only'),
+    ("if not re.fullmatch(", "if False and not re.fullmatch(", 'unsupported_oci_tag_before_any_tool'),
+    ("len(version) > 128", 'False', 'unsupported_oci_tag_before_any_tool'),
+    ("run(['git', 'rev-parse', 'HEAD'], cwd=root).decode().strip() != source", 'False', 'source_checkout_mismatch'),
+    ("context = root / unit['path']", "context = root", 'released_unit_context_and_prerelease_version'),
+    ("if dry:", 'if False:', 'dry_run_no_login_or_registry'),
+    ("'--password-stdin'", "'--password'", 'fresh_and_matching_retry'),
+    ("'org.opencontainers.image.revision=' + source", "'org.opencontainers.image.revision=missing'", 'fresh_and_matching_retry'),
+    ("'org.opencontainers.image.version=' + version", "'org.opencontainers.image.version=missing'", 'fresh_and_matching_retry'),
+    ("'SOURCE_DATE_EPOCH=' + epoch", "'SOURCE_DATE_EPOCH=0'", 'fresh_and_matching_retry'),
+    ("',rewrite-timestamp=true'", "''", 'fresh_and_matching_retry'),
+    ("'--provenance=false'", "'--provenance=true'", 'fresh_and_matching_retry'),
+    ("'--sbom=false'", "'--sbom=true'", 'fresh_and_matching_retry'),
+    ("'--platform', 'linux/amd64,linux/arm64'", "'--platform', 'linux/amd64'", 'fresh_and_matching_retry'),
+    ("'org.opencontainers.image.source=https://github.com/' + env['GITHUB_REPOSITORY']", "'org.opencontainers.image.source=missing'", 'fresh_and_matching_retry'),
+    ("missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing', 'registry_errors_fail_closed'),
+    ("hashlib.sha256(remote).hexdigest() != digest.removeprefix('sha256:')", 'False', 'conflict_before_push'),
+    ("                lookup(immutable)\n", '', 'digest_readback_before_tag'),
+    ("                if lookup(tag, missing=True):\n                    continue\n", '                if False:\n                    continue\n', 'fresh_and_matching_retry'),
+    ("if not lookup(tag, missing=True):", 'if False:', 'concurrent_tag_write_readback'),
+    ("'--all', '--preserve-digests'", "'--all'", 'fresh_and_matching_retry'),
+    ("run(['docker', 'buildx', 'rm', builder])", 'pass', 'fresh_and_matching_retry'),
+]:
+    mutation(r, old, new, 'test_ghcr.GhcrPublisher.test_' + test, 'python',
+             site_tests=(['test_ghcr.GhcrPublisher.test_fresh_and_matching_retry',
+                          'test_ghcr.GhcrPublisher.test_concurrent_conflicting_tag_after_digest']
+                         if old.startswith('                if lookup(tag') else
+                         ['test_ghcr.GhcrPublisher.test_partial_digest_retry',
+                          'test_ghcr.GhcrPublisher.test_concurrent_tag_write_readback']
+                         if old == 'if not lookup(tag, missing=True):' else
+                         ['test_ghcr.GhcrPublisher.test_' + test] * (2 if old in (
+                 "                if lookup(tag, missing=True):\n                    continue\n",
+                 "if not lookup(tag, missing=True):", "'--all', '--preserve-digests'") else 1)))
+mutation('release/targets/ghcr/publish-ghcr.env.yml',
+         " | replace('$', '\\\\u0024')", '',
+         'test_ghcr.GhcrPart.test_model_data_stays_literal', 'python')
+
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

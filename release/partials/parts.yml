@@ -18,3 +18,9 @@
 {{ ns.part_job('verify-npm-clients', npm_units, 'verify', body, extra_env) }}
 {% endif %}
 {% endif %}
+
+{% if 'ghcr' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/ghcr/publish-ghcr.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/ghcr/publish-ghcr.env.yml' %}{% endset %}
+{{ ns.part_job('publish-ghcr', ghcr_units, 'publish', body, extra_env) }}
+{% endif %}

@@ -102,7 +102,9 @@ proposed-design:
     rendered workflow path is fixed. Each publication target has a directory
     `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
     `repo-wyrd-foo`, `ghcr`, or `winget`, holding `target.yml` and its job
-    partials (optional-parts-form). The separate template that renders
+    partials (optional-parts-form). GHCR builds each selected unit path's
+    Dockerfile and context as deterministic OCI images, publishes by digest to
+    `ghcr.io/<repository>/<unit-id>`, then sets the bare version tag. The separate template that renders
     `.github/airlock.yml` is named `airlock-config` because `airlock/` already
     holds the organization policy that Airlock resolves. Its content follows
     the Airlock release-process conformance design. Contract examples live in

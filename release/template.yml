@@ -9,6 +9,7 @@ data:
   release_targets:
     crates-io: !include targets/crates-io/target.yml
     npm: !include targets/npm/target.yml
+    ghcr: !include targets/ghcr/target.yml
 interview:
   - id: release_model
     type: document
@@ -19,7 +20,7 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: [crates-io, npm]
+    options: [crates-io, npm, ghcr]
     default: []
   - id: npm_units
     type: text
@@ -37,6 +38,18 @@ interview:
     type: confirm
     prompt: Dry run npm publication without registry writes?
     when: "'npm' in targets"
+    default: false
+  - id: ghcr_units
+    type: text
+    prompt: Release Units published as GHCR images (space separated)
+    when: "'ghcr' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: ghcr_dry_run
+    type: confirm
+    prompt: Build GHCR images without registry access?
+    when: "'ghcr' in targets"
     default: false
   - id: ci_workflow
     type: text

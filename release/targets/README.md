@@ -86,3 +86,62 @@ scripts run, so binary launchers can fetch their release assets. Product-specifi
 CLI checks belong to adoption. Named local tests use real npm packs and a fake
 registry boundary; they make no public publication. Live GitHub run receipts
 remain pending the authorized test repository.
+
+## GHCR
+
+Select `--with ghcr`; `ghcr_units` lists Release Units separated by spaces.
+Each selected unit must require a release record. Its `path` holds the build
+context and `Dockerfile`. Use scratch or a similar minimal runnable final image;
+the Dockerfile supplies the executable, entry point and dependencies. Both
+Linux amd64 and arm64 are built. Pin build inputs and keep builds reproducible.
+The parent validates unit identities at render time. Runtime refuses a missing
+Dockerfile before any builder, login or registry call.
+
+Images use `ghcr.io/<repository>/<unit-id>:<version>`, with the repository name
+lowercased and a bare SemVer version. OCI tags cannot contain `+`, so versions
+with SemVer build metadata fail before any tool runs. The source checkout must
+match the resolved source commit. The build receives its commit time as
+`SOURCE_DATE_EPOCH`, rewrites layer timestamps, disables generated attestations,
+and labels source, revision and version. The Dockerfile must also produce stable
+bytes; a changed base image or nondeterministic build causes a retry conflict.
+
+`ghcr_dry_run` defaults to false. Set it to true to build local OCI archives
+without registry lookup, login or push. The job uses automatic `GITHUB_TOKEN`,
+with `packages: write` only on `publish-ghcr`; no operator secret is declared.
+Publication stays behind the parent's successful release-record gate. Nothing
+in the tests publishes to a public registry.
+
+The job installs Skopeo and uses Docker Buildx with an isolated container
+builder. It compares the existing version's exact manifest digest, accepts a
+matching retry and refuses different bytes before any push. Only an explicit
+`manifest unknown` lookup response permits publication; authentication and
+transport errors fail closed. It copies the OCI archive to its digest reference
+with all architectures and preserved digests, reads that digest back, checks
+for a concurrent tag, then sets and reads back the version tag. A failed tag
+write can be retried from the same source commit. There is no polling timer.
+Registry tags are mutable; the parent serializes this workflow's releases.
+External writers must not move a release tag concurrently.
+
+GHCR creates new packages as private. The source label links the package before
+its first publication for repository access inheritance. For a public repository,
+the operator makes the package public in GitHub's UI at adoption; the workflow
+does not change visibility. For a private repository, keep the package private.
+Confirm inherited repository access at adoption, including organization settings
+that disable inheritance. See the registry evidence and
+[GitHub's access and visibility documentation](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+
+Evidence: `GhcrPart.test_selected_and_deselected_contracts`,
+`GhcrPart.test_emitted_entrypoint`, `GhcrPublisher.test_fresh_and_matching_retry`,
+`test_conflict_before_push`, `test_partial_digest_retry`,
+`test_digest_readback_before_tag`, `test_registry_errors_fail_closed`,
+`test_missing_dockerfile_before_any_tool`, and `test_dry_run_no_login_or_registry`.
+These named tests use a transport boundary and make no public publication.
+`python3 tests/release/ghcr_oci_proof.py --scratch /absolute/new/directory
+--report /absolute/receipt.json` runs the opt-in real-tool proof: two fresh
+snapshots with different file times produce the same multi-platform OCI digest,
+Skopeo preserves it through a loopback-only registry, and the scratch entry
+point runs on amd64. It needs Docker, Buildx and Go; it pulls standard tool
+images but writes no public registry. The receipt starts incomplete and passes
+only after every assertion and cleanup succeeds.
+The authorized GitHub test repository is still required for a live workflow
+run and GHCR adoption proof.
