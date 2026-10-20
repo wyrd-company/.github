@@ -24,3 +24,9 @@
 {% set extra_env %}{% include 'targets/ghcr/publish-ghcr.env.yml' %}{% endset %}
 {{ ns.part_job('publish-ghcr', ghcr_units, 'publish', body, extra_env) }}
 {% endif %}
+
+{% if 'homebrew-tap' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/homebrew-tap/publish-homebrew-tap.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/homebrew-tap/publish-homebrew-tap.env.yml' %}{% endset %}
+{{ ns.part_job('publish-homebrew-tap', homebrew_tap_units, 'publish', body, extra_env) }}
+{% endif %}

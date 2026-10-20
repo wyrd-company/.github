@@ -327,6 +327,64 @@ mutation('release/targets/ghcr/publish-ghcr.env.yml',
          'test_ghcr.GhcrPart.test_model_data_stays_literal', 'python')
 
 
+
+# Homebrew: one named assertion boundary for each independently mutable guard.
+h = 'release/targets/homebrew-tap/homebrew.js'
+for old, new, test in [
+    ("if (a[i] !== b[i])", "if (false)", 'ordering'),
+    ("if (leftPre === undefined || rightPre === undefined)", "if (false)", 'ordering'),
+    ("if (i === x.length || i === y.length)", "if (false)", 'ordering'),
+    ("if (xn && yn)", "if (false)", 'ordering'),
+    ("a[i] > b[i] ? 1 : -1", "a[i] > b[i] ? -1 : 1", 'ordering'),
+    ("leftPre === rightPre ? 0 : leftPre === undefined ? 1 : -1", "0", 'ordering'),
+    ("i === x.length ? -1 : 1", "i === x.length ? 1 : -1", 'ordering'),
+    ("if (x[i] === y[i]) continue;", "if (false) continue;", 'ordering'),
+    ("BigInt(x[i]) > BigInt(y[i]) ? 1 : -1", "BigInt(x[i]) > BigInt(y[i]) ? -1 : 1", 'ordering'),
+    ("if (xn !== yn)", "if (false)", 'ordering'),
+    ("x[i] > y[i] ? 1 : -1", "x[i] > y[i] ? -1 : 1", 'ordering'),
+    ("for (const plan of plans)", "for (const plan of plans.slice(0, 1))", 'planning'),
+    ("[...bytes.toString('utf8').matchAll(/^\\s*version\\b/gm)].length !== 1", "false", 'semver'),
+    ("urls.length !== [...bytes.toString('utf8').matchAll(/^\\s*url\\b/gm)].length", "false", 'urls'),
+    ("versions.length !== 1", "false", 'semver'),
+    ("!HOMEBREW_SEMVER.test(versions[0][1])", "false", 'semver'),
+    ("!model.release_units[id]", "false", 'record'),
+    ("model.release_units[id].release_record !== 'required'", "false", 'record'),
+    ("if (!released.has(id)) continue;", "if (false) continue;", 'selection'),
+    ("!release ||", "false ||", 'release'),
+    ("!HOMEBREW_SEMVER.test(release.version)", "false", 'release'),
+    ("!release.tag", "false", 'release'),
+    ("env.HOMEBREW_DRY_RUN !== 'true' && env.HOMEBREW_DRY_RUN !== 'false'", "false", 'dry_choice'),
+    ("!/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(env.HOMEBREW_TAP_REPOSITORY)", "false", 'destination'),
+    ("(owner + '/' + name).toLowerCase() === (repo.owner + '/' + repo.repo).toLowerCase()", "false", 'destination'),
+    ("if (!branch)", "if (false)", 'branch'),
+    ("if (error.status === 404) return null;", "if (true) return null;", 'read_errors'),
+    ("data.type !== 'file'", "false", 'content'),
+    ("data.encoding !== 'base64'", "false", 'content'),
+    ("!data.sha", "false", 'content'),
+    ("typeof data.content !== 'string'", "false", 'content'),
+    ("matches.length !== 1", "false", 'assets'),
+    ("record.draft", "false", 'source'),
+    ("record.tag_name !== release.tag", "false", 'source'),
+    ("record.prerelease !== release.prerelease", "false", 'source'),
+    ("expected.length !== 1", "false", 'checksum'),
+    ("expected[0] !== digest + '  ' + id + '.rb'", "false", 'checksum'),
+    ("formulaVersion(bytes) !== release.version", "false", 'version'),
+    ("!bytes.length || !bytes.toString('utf8').endsWith('\\n')", "false", 'newline'),
+    ("!urls.length", "false", 'urls'),
+    ("urls.some(match => !match[1].startsWith(prefix))", "false", 'urls'),
+    ("prior && formulaVersion(prior.bytes) === release.version && !prior.bytes.equals(bytes)", "false", 'conflict'),
+    ("prior && compareVersions(formulaVersion(prior.bytes), release.version) > 0", "false", 'downgrade'),
+    ("if (prior?.bytes.equals(bytes))", "if (false)", 'retry'),
+    ("if (dry)", "if (false)", 'dry'),
+    ("...(prior ? {sha: prior.sha} : {})", "...{}", 'retry'),
+    ("if (observed?.bytes.equals(bytes)) continue;", "if (false) continue;", 'race'),
+    ("if (!observed?.bytes.equals(bytes))", "if (false)", 'readback'),
+]:
+    mutation(h, old, new, 'test_homebrew_tap.HomebrewRuntime.test_' + test, 'python')
+mutation('release/targets/homebrew-tap/publish-homebrew-tap.env.yml',
+         " | replace('$', '\\\\u0024')", '',
+         'test_homebrew_tap.HomebrewPart.test_model_data_stays_literal', 'python')
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

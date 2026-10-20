@@ -27,7 +27,9 @@ toha apply gh:wyrd-company/.github#release .
 
 Choose the CI workflow file and, when more than one unit requires a GitHub
 Release, the unit marked latest. Optional publication targets add build,
-publish, verify, and credential declarations to the parent workflow.
+publish, verify, and credential declarations to the parent workflow. Available
+parts are `crates-io`, `npm`, `ghcr`, and `homebrew-tap`; see the
+[part guide](release/targets/README.md) for answers and credentials.
 
 Push the source commit and Intentional tags, wait for successful push CI on that
 commit, then dispatch `release.yml` on the default branch with `source-sha` set

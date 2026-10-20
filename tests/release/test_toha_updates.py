@@ -24,7 +24,6 @@ class TohaUpdates(unittest.TestCase):
         self.root = Path(self.scratch.name)
         self.template = self.root / 'release'
         prepare(self.template, samples=2)
-        self.assertTrue(next(q for q in load(self.template / 'template.yml')['interview'] if q.get('id') == 'targets')['parts'])
         self.git(self.template, 'init', '-q', '-b', 'main')
         self.first = self.commit(self.template)
         self.address = self.template.as_uri()
@@ -199,6 +198,7 @@ class TohaUpdates(unittest.TestCase):
         self.assertEqual(json.loads(model_file.read_text()), later)
 
     def test_render_helper_uses_real_part_flags(self):
+        self.assertTrue(next(q for q in load(self.template / 'template.yml')['interview'] if q.get('id') == 'targets')['parts'])
         directory = self.root / 'helper'
         directory.mkdir()
         with patch('harness.subprocess.run', wraps=subprocess.run) as observed:

@@ -10,6 +10,7 @@ data:
     crates-io: !include targets/crates-io/target.yml
     npm: !include targets/npm/target.yml
     ghcr: !include targets/ghcr/target.yml
+    homebrew-tap: !include targets/homebrew-tap/target.yml
 interview:
   - id: release_model
     type: document
@@ -20,7 +21,7 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: [crates-io, npm, ghcr]
+    options: [crates-io, npm, ghcr, homebrew-tap]
     default: []
   - id: npm_units
     type: text
@@ -72,5 +73,24 @@ interview:
     required: true
     validate:
       regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: homebrew_tap_units
+    type: text
+    prompt: Release Units with Homebrew formula assets (space separated)
+    when: "'homebrew-tap' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: homebrew_tap_repository
+    type: text
+    prompt: Homebrew tap repository (owner/repository)
+    when: "'homebrew-tap' in targets"
+    required: true
+    validate:
+      regex: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  - id: homebrew_tap_dry_run
+    type: confirm
+    prompt: Show the Homebrew formula diff without committing to the tap?
+    when: "'homebrew-tap' in targets"
+    default: false
   - id: credential_answers
     computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

@@ -145,3 +145,51 @@ images but writes no public registry. The receipt starts incomplete and passes
 only after every assertion and cleanup succeeds.
 The authorized GitHub test repository is still required for a live workflow
 run and GHCR adoption proof.
+
+## Homebrew tap
+
+Select `--with homebrew-tap`. Answer `homebrew_tap_units` with space-separated
+Release Unit ids, and `homebrew_tap_repository` with the tap's `owner/repository`.
+The tap must be another repository. Each selected unit must require a release
+record. The part reads only the selected units released by the dispatch and
+runs after the parent's successful release record.
+
+The adopting repository's build uploads `<unit>.rb` as a release asset using
+the parent's `release-asset+<unit>+<name>` artifact convention. The part adds
+no generator command or hooks. Prepare a complete formula with one explicit
+`version "<SemVer>"` line (no `v`), literal double-quoted `url` lines pointing
+at that unit's source repository and resolved release tag, and a final newline.
+The parent includes the formula in `SHA256SUMS`. The part downloads both assets
+through the source repository API and checks the formula checksum and version
+before any tap commit. Formula syntax, archive checksums, installation, and
+product CLI checks belong to adoption.
+
+Declare the repository or organization secret `HOMEBREW_TAP_TOKEN` as a
+pre-minted GitHub App installation token scoped to the answered tap repository,
+with **Contents: write** there. Supply a fresh token for the run; this part does
+not mint or refresh it. Preflight checks presence only. Token scope and tap
+branch rules must permit direct Contents API commits. The source repository's
+`GITHUB_TOKEN` has only `contents: read`; it reads the release assets. The tap
+token is used only for tap API operations. There is no publisher OIDC flow.
+
+`homebrew_tap_dry_run` defaults to false. With true, the part validates the same
+assets and prints a full formula diff against the tap, with zero write calls.
+It still needs both read credentials. With false, it commits
+`Formula/<unit>.rb` to the tap's default branch through the Contents API,
+using the observed blob SHA for an existing formula. It reads the committed
+bytes back. Identical retries succeed without a write; a current formula with
+the same explicit version and different bytes fails. A lower version is refused
+by SemVer precedence, including prerelease identifiers; build metadata does not
+affect precedence. Existing tap formulas
+must have an explicit version stanza too. An API race succeeds only when the
+observed bytes already match; other failures remain errors and can be retried
+on the same source commit. Each unit is one commit; a retry preserves units
+that already match. No polling or new timeout is added.
+
+Evidence: `HomebrewPart.test_selected_contract_and_emitted_dry_run`,
+`HomebrewPart.test_deselected_has_no_job_or_credential`,
+`HomebrewRuntime.test_record`, `test_retry`, `test_conflict`, `test_checksum`,
+`test_version`, `test_urls`, `test_downgrade`, `test_ordering`, `test_dry`, `test_race`, and `test_readback`.
+These named tests exercise the emitted entry point and separate source/tap
+API boundaries without remote writes. Live GitHub workflow proof remains with
+the parent's authorized test repository work.
