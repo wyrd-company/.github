@@ -117,6 +117,16 @@ mutation('tests/release/harness.py', 'assert key not in credentials_seen,', 'ass
 mutation('release/template.yml', 'schemas: schemas', 'schemas: missing-schemas', 'test_template.VendoredResolution.test_vendored_schema_makes_zero_network_attempts', 'python-network')
 
 
+# The vendored ecosystem rule must independently cover every known adapter.
+for adapter in ('npm', 'cargo', 'pub', 'python', 'msbuild', 'go'):
+    mutation('release/schemas/release-model-1.schema.yml',
+             '- const: ' + adapter + '\n', '- const: unknown-ecosystem\n',
+             'test_release_model_schema.ReleaseModelSchema.test_known_ecosystem_adapters_require_generic_false', 'python')
+mutation('release/schemas/release-model-1.schema.yml',
+         'generic:\n              const: false', 'generic:\n              const: true',
+         'test_release_model_schema.ReleaseModelSchema.test_known_ecosystem_adapters_require_generic_false', 'python')
+
+
 # Final internal-schema guards are part of the interface boundary.
 r = 'release/schemas/publish-job.schema.json'
 schema = json.loads((ROOT / r).read_text())
