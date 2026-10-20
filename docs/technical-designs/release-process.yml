@@ -5,9 +5,9 @@ relationships:
     - release-model
     - release-process-conformance
 objective: >-
-  Define contract `release-process` version 1: the Toha templates in this
-  repository that render a repository's release workflow from its committed
-  Intentional Release Model, the extension points through which publication
+  Define contract `release-process` version 1: the Toha release template in this
+  repository that renders a repository's release workflow from its committed
+  Intentional Release Model, the internal part interfaces through which publication
   targets add jobs and credentials, and the rules every rendered workflow
   follows for triggers, escaping, action pins, credential preflight, and
   release records, so that the templates lane can implement the templates and
@@ -25,9 +25,9 @@ background:
     `.intentional/release-model.json`, a committed projection of the Release
     Workspace with the Release Model schema identity
     `https://intentional.foo/schemas/release-model/1`. Toha renders templates,
-    accepts that document through a `type: document` question, composes a
-    parent template with child templates through a composition contract, and
-    records each application in `.toha.json` and a snapshot ref.
+    accepts that document through a `type: document` question, renders selected
+    publication parts inside the parent template, and records each application
+    in the committed `.toha.json` applied record.
   problems:
     - >-
       A change to the release process is a hand edit in every repository, and
@@ -58,123 +58,112 @@ design-challenges:
     cannot be trusted to write that gate correctly, so the parent writes every
     `needs` list and every job-level condition, and a contribution can only
     narrow the condition.
-  comments-do-not-survive-data: >-
-    A contributed job is a JSON value that the parent serializes. YAML comments
-    cannot exist in that value, but `REPO-CI-04` and Renovate both read the
-    version comment after a pinned action reference. The pin and its version
-    travel together as one string that the parent writes unquoted.
+  action-version-comments: >-
+    `REPO-CI-04` and Renovate read the version comment after a pinned action
+    reference. Part job partials write the reference and its version comment
+    as YAML text. Repository tests check the pinned reference together with
+    its comment before validating the parsed job against the internal schema.
   two-template-languages: >-
     Every workflow body and every contributed string is rendered by Jinja
     before GitHub reads it. A GitHub expression must survive the Jinja render
     unchanged, and a rendered value must never be rendered a second time.
   evidence-without-network-in-render: >-
-    Toha renders without network access and without Git state, so the
+    Workflow body rendering reads the answered model, not live Git state, so the
     workflow decides at run time what a run releases. It reads that decision
     from the tag records Intentional writes, not from tag names.
 proposed-design:
   high-level-overview: >-
-    The parent template `release` declares composition contract
-    `release-process` version 1. It accepts the Release Model through a
-    document question whose default file is `.intentional/release-model.json`,
-    and renders `.github/workflows/release.yml`. The workflow runs only on
-    `workflow_dispatch` with a `source-sha` input. Its `resolve` job checks the
-    source commit, reads the Intentional tag records that point at it, ignores
-    baseline tag records, and outputs the set of Release Units the run
-    releases. Preflight jobs check that every declared credential is present.
-    Contributed build jobs run next, then one release record per released unit
-    whose policy is `required`, then contributed publish jobs, then contributed
-    verify jobs. Publication targets contribute those jobs and their
-    credentials through four extension points, validated by draft JSON
-    Schemas in `release/schemas/`. Whether a target is a child template or an
-    optional part of the parent is an open user decision; the sections that
-    differ state their option B form. How snapshot refs reach the remote is the second
-    open user decision. Repository Renovate owns action pin updates; the
-    template sets a pin only when it adds or changes a step.
+    The parent template `release` accepts the Release Model through a document
+    question whose input is `.intentional/release-model.json`, and renders
+    `.github/workflows/release.yml`. Publication targets are optional parts
+    inside this parent, selected with `--with <PART>` and `--without <PART>`.
+    The workflow runs only on `workflow_dispatch` with a `source-sha` input.
+    Its `resolve` job checks the source commit, reads the Intentional tag
+    records that point at it, ignores baseline tag records, and outputs the set
+    of Release Units the run releases. Preflight jobs check that every declared
+    credential is present. Part build jobs run next, then one release record per
+    released unit whose policy is `required`, then part publish jobs, then part
+    verify jobs. Four internal part interfaces describe jobs and credentials,
+    validated by draft JSON Schemas in `release/schemas/`. `.toha.json` records
+    the selected parts, answers including the rendered model, and path ownership.
+    Delivery runs inside `release.yml`; no `cd.yml` is rendered. Repository
+    Renovate owns action pin updates; the template sets a pin only when it adds
+    or changes a step.
 
   repository-layout: >-
     Each template is a top-level directory, addressed as
-    `gh:wyrd-company/.github#<directory>`. `release/` is the parent:
-    `release/template.yml` (composition declaration and interview),
+    `gh:wyrd-company/.github#<directory>`. `release/` holds
+    `release/template.yml` (the interview, schema directory, and target data),
     `release/schemas/release-model-1.schema.yml` (vendored, see
     release-model-acceptance), `release/schemas/publish-job.schema.json` and
-    `release/schemas/credential.schema.json` (the contract schemas),
-    `release/partials/` (workflow fragments included by the workflow body), and
+    `release/schemas/credential.schema.json` (the internal part schemas),
+    `release/partials/` (shared workflow fragments), and
     `release/template/.github/workflows/release.yml` (the workflow body). The
-    rendered path is fixed, so Airlock and repository Renovate configuration
-    find the workflow without reading answers. When targets are child
-    templates, each target is a directory named `publish-<target>`, for
-    example `publish-crates-io`, `publish-npm`, `publish-homebrew`,
-    `publish-repo-wyrd-foo`, `publish-ghcr`, and `publish-winget`, holding a
-    `template.yml` and its partials. Under option B there are no
-    `publish-<target>` templates: each target is a directory
-    `release/targets/<target>/` inside the parent, holding `target.yml` and
-    its job partials (optional-parts-form). The template that renders
-    `.github/airlock.yml` is not a member of
-    this composition; it is named `airlock-config` because the `airlock/`
-    directory already holds the organization policy that Airlock resolves. Its
-    content follows the Airlock release-process conformance design. Contract
-    examples live in `docs/examples/release-process/`. This repository's own
-    Renovate configuration does not update action pins inside template
-    directories (see action-pin-ownership).
+    rendered workflow path is fixed. Each publication target has a directory
+    `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
+    `repo-wyrd-foo`, `ghcr`, or `winget`, holding `target.yml` and its job
+    partials (optional-parts-form). The separate template that renders
+    `.github/airlock.yml` is named `airlock-config` because `airlock/` already
+    holds the organization policy that Airlock resolves. Its content follows
+    the Airlock release-process conformance design. Contract examples live in
+    `docs/examples/release-process/`. This repository's own Renovate configuration
+    does not update action pins inside template directories (action-pin-ownership).
 
   release-model-acceptance: >-
     The parent's interview starts with question `release_model`:
-    `type: document`, `schema: schemas/release-model-1.schema.yml`, and
-    `file: .intentional/release-model.json`. The schema file is a byte-for-byte
-    copy of Intentional's `docs/specifications/release-model.schema.yml`, whose
-    `$id` is `https://intentional.foo/schemas/release-model/1`; a test in this
-    repository compares the copy with the Intentional release it names. Toha
-    therefore reads the committed model on every apply, update, stage, and
-    preview, refuses an invalid model without writing, and leaves the question
-    unanswered when the file is missing, with `intentional model` as the
-    repair. Under option A the parent exports `release_model` (the answered
-    document) in `composition.exports`, and children read it as
-    `toha_parent.release_model`; children declare no document question and
-    vendor no Release Model schema. Under option B there is no export: the
-    target partials are rendered by the parent and read `release_model`
-    directly. A future line `release-model/2` is
-    accepted by adding its vendored schema to the same question and branching
-    on `$schema`. The templates read these members of line 1 and no others:
-    `$schema` (routing); `release_units` keys (Release Unit ids);
-    `release_units.<id>.release_record`; `release_units.<id>.changelog`;
-    `release_units.<id>.tags.<tag id>.role`, `.template`, and
-    `.require_phase`. Child templates can also read
-    `release_units.<id>.projections`, `ecosystems`, `depends_on`, and
-    `sources` to choose defaults; each child, or under option B each target's
-    `target.yml`, names the members it reads in comments. The templates never read
-    `.intentional/config.yml`, and this lane renders no Intentional file.
+    `type: document`, `schema: https://intentional.foo/schemas/release-model/1`,
+    and `input: .intentional/release-model.json`. `release/template.yml`
+    declares `schemas: schemas`; files in that directory are indexed by `$id`,
+    as Toha's `document-questions` and `schema-resolution` define. The vendored
+    `schemas/release-model-1.schema.yml` is a byte-for-byte copy of Intentional's
+    `docs/specifications/release-model.schema.yml`, whose `$id` equals that URI;
+    a test in this repository compares the copy with the Intentional release it
+    names. Resolution uses the vendored schema first, otherwise fetches its URI;
+    a failed fetch is a run error. Hosted URIs do not resolve until hosting
+    exists, so the template vendors every schema it accepts. Published schema
+    URIs are immutable; a change mints a new URI. Toha reads the model on every
+    apply, update, stage, and preview, and refuses invalid input without writing.
+    When no explicit document or input file supplies it, the question is
+    unanswered and asks for an input path; `intentional model` writes the default
+    file. Target partials read `release_model` directly in the parent's context.
+    Toha records the document used by the render at `answers.release_model` in
+    the applied entry, as `record-answers` and `release-model-agreement` define;
+    an update's candidate reads the current input rather than replaying it.
+    A future line `release-model/2` is accepted by naming its URI in the question,
+    vendoring its schema, and branching on `$schema`. The workflow reads these
+    members of line 1: `$schema` (routing); `release_units` keys (Release Unit
+    ids); `release_units.<id>.release_record`; `.changelog`;
+    `.tags.<tag id>.role`, `.template`, and `.require_phase`. Target defaults
+    can also read `release_units.<id>.projections`, `ecosystems`, `depends_on`,
+    and `sources`; each target's `target.yml` names the members it reads in
+    comments. The template reads no `.intentional/config.yml`, and this lane
+    renders no Intentional file.
 
-  composition-contract: >-
-    Applies under option A; under option B the same job ids, prefixes, and
-    credential shape are the parent's internal lists (optional-parts-form),
-    and there is no composition declaration.
-    `release/template.yml` declares `composition.contract: release-process`,
-    `composition.version: 1`, `composition.exports: {release_model:
-    release_model}`, and four extension points, all with `shape: value`.
-    `build_jobs` has `key-pattern: "^build-[a-z0-9]+(-[a-z0-9]+)*$"`,
-    `publish_jobs` has `key-pattern: "^publish-[a-z0-9]+(-[a-z0-9]+)*$"`, and
-    `verify_jobs` has `key-pattern: "^verify-[a-z0-9]+(-[a-z0-9]+)*$"`; all
-    three use `schema: schemas/publish-job.schema.json`. `credentials` has
-    `key-pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"` and `schema:
-    schemas/credential.schema.json`. A job contribution's key is its GitHub
-    job id. The prefixes keep contributed job ids apart from each other and
-    from the parent's own jobs (`resolve`, `preflight`,
-    `preflight-<environment>`, `release-record`), and Toha refuses a repeated
-    key inside one point, so every job id in the workflow is unique. A
-    credential key is a label only; by convention it starts with the target
-    name, for example `npm-token`. The stage is the extension point: there is
-    no stage member to disagree with it.
+  internal-part-interfaces: >-
+    The parent's four internal part interfaces are `build_jobs`, `publish_jobs`,
+    `verify_jobs`, and `credentials`. `build_jobs` has key pattern
+    `^build-[a-z0-9]+(-[a-z0-9]+)*$`, `publish_jobs` has
+    `^publish-[a-z0-9]+(-[a-z0-9]+)*$`, and `verify_jobs` has
+    `^verify-[a-z0-9]+(-[a-z0-9]+)*$`; all three use
+    `release/schemas/publish-job.schema.json`. `credentials` has key pattern
+    `^[a-z0-9]+(-[a-z0-9]+)*$` and uses
+    `release/schemas/credential.schema.json`. A job key is its GitHub job id.
+    The prefixes separate the stages and the parent's own jobs (`resolve`,
+    `preflight`, `preflight-<environment>`, `release-record`). Repository tests
+    refuse repeated keys within an interface, so every workflow job id is unique.
+    A credential key is a label that conventionally starts with the target name,
+    for example `npm-token`. The interface determines the stage; there is no
+    stage member to disagree with it. These interfaces are data inside the
+    parent, validated by its tests.
 
   publish-job-schema: >-
     `release/schemas/publish-job.schema.json` (draft) validates one job
-    contribution value. Required members are `units`, a string of Release Unit
-    ids separated by one space, and `job`, a GitHub job object. A child
-    renders `units` from a multiselect answer as `{{ units | join(' ') }}`,
-    because a contributed string leaf always renders to a string; the parent
-    splits it. Under option B the schema validates the job that the parent
-    rendered from a target partial, with `units` added from the target's units
-    answer (optional-parts-form). The optional member `if` is an extra GitHub expression,
-    written without `${{ }}`, that cannot call `always`, `success`, `failure`,
+    value in an internal job interface. Required members are `units`, a string
+    of Release Unit ids separated by one space, and `job`, a GitHub job object.
+    Tests validate the job the parent renders from a target partial, with
+    `units` added from the target's units answer (optional-parts-form). The
+    optional member `if` is an extra GitHub expression, written without
+    `${{ }}`, that cannot call `always`, `success`, `failure`,
     or `cancelled`. `job` admits `name`, `runs-on`, `permissions` (required),
     `environment`, `env`, `defaults`, `timeout-minutes`, `strategy`,
     `container`, `services`, `outputs`, and `steps` (required). It refuses
@@ -243,66 +232,33 @@ proposed-design:
     `RELEASE_JSON` object), `record_units` (a JSON array of released units
     whose policy is `required`), and `record` (`'true'` when `record_units`
     is not empty, otherwise `'false'`). The output and environment names are
-    part of contract version 1. The workflow sets `permissions: {}` at the top level,
+    part of the internal interfaces. The workflow sets `permissions: {}` at the top level,
     and every job declares its own. A job that serves several units reads
     `RELEASE_UNITS` and acts only for units in both lists. The parent writes a
-    contributed job by serializing every member with `toyaml` except
-    `steps[*].uses`, which it writes unquoted so that the version comment
-    stays a YAML comment; the schema pattern admits no character that could
-    change the YAML structure. Under option B the target partial writes those
-    members as YAML text (optional-parts-form). The default checkout of every job is the source
-    commit, because `resolve` requires `github.sha` to equal `source-sha`.
-
-  publication-targets-decision: >-
-    Open user decision. Option A, child templates: each target is a template
-    that names contract `release-process` version 1 and contributes through
-    the extension points; a repository adds a target with `--with` and removes
-    it with `--without`. Option B, optional parts: the parent is an ordinary
-    template with no composition declaration, asks `targets`, a multiselect,
-    and renders the jobs of each selected target from partials inside the
-    parent, as optional-parts-form defines. Compared: Toha work is the
-    document question plus composition under A, and the document question
-    only under B, because the B form uses no composition feature. Adding a
-    target is a new child with the
-    parent unchanged under A, and a new parent release that every repository
-    must update to under B. An outside target is any template that names the
-    contract under A, and a fork of the parent under B. The identity Airlock
-    reads is the parent and each child in `.toha.json` under A, and the parent
-    only under B, where the targets are the `targets` answer in the snapshot
-    ref. Hook trust is per member under A and one surface under B; no
-    release-process v1 template declares hooks, so neither option asks for
-    trust today. Contribution validation is a Toha check at plan time under A,
-    and a test in this repository under B, where the parent's own partials
-    are validated against the same schemas. Costly to reverse: once
-    repositories adopt, a change of option re-applies the release process in
-    every adopting repository and changes its `.toha.json` entry and snapshot
-    shape, and option A commits the Toha lane to building composition.
-    Recommendation: option A. It is the only option where adding a target
-    does not touch every repository, outside and repository-local targets
-    need no fork, and Airlock reads targets from the tree at the audited
-    revision without snapshot refs. Sections that depend on this decision,
-    each of which states its option B form: repository-layout,
-    release-model-acceptance, composition-contract, publish-job-schema,
-    escaping-convention, credential-preflight, and contract-versioning, with
-    optional-parts-form as the B definition. Under both options the job ids
-    and their prefixes, the job graph and conditions, the `resolve` outputs,
-    the `RELEASE_` variables, both schemas, the trigger, baseline exclusion,
-    preflight, and release records are the same.
+    part job through a target partial that writes its members as YAML text,
+    preserving the action version comments (optional-parts-form). The default
+    checkout of every job is the source commit, because `resolve` requires
+    `github.sha` to equal `source-sha`.
 
   optional-parts-form: >-
-    Applies only under option B. `release/template.yml` declares no
-    `composition`, no exports, and no extension points, and no template names
-    contract `release-process`; there are no children and no `toha_parent` or
-    `toha_contributions`. After `release_model` the parent asks `targets`, a
-    multiselect whose options are the target names. Each target's own
+    After `release_model` the parent asks `targets`, a top-level `multiselect`
+    with `parts: true`, no `when`, and literal target-name options matching
+    `^[a-z0-9][a-z0-9_-]*$`, placed before every flow node. This is the one part
+    question, as Toha's `part-declaration` defines. `--with <PART>` and
+    `--without <PART>` select it on `apply` and `stage`, including `--update`,
+    under `part-selection`; on update recorded parts replay with the requested
+    additions and removals. Removing a part follows `part-removal`: its jobs
+    disappear from the candidate, and the ordinary three-way merge preserves
+    operator edits or reports conflicts. The applied entry records the settled
+    list in `parts`, not in `answers.targets`. Each target's own
     questions are written in the parent's interview with a `when` condition
     on `targets`, and include `<target>_units`, the Release Units the target
     serves. Each target is a directory `release/targets/<target>/` that holds
     `target.yml` and job partials. `target.yml` is loaded into the parent's
     `data` with Toha's YAML `!include` tag as `release_targets.<target>`. It
     lists the target's job ids by stage (`build`, `publish`, `verify`, with
-    the same prefixes and key patterns as option A), the answer id that holds
-    its units, and its credentials, each a value of the credential schema
+    the prefixes and key patterns of internal-part-interfaces), the answer id
+    that holds its units, and its credentials, each a value of the credential schema
     with an optional `unless` naming a boolean answer, for example
     `trusted_publishing`. Each job body is a partial
     `release/targets/<target>/<job id>.yml` that writes the job's YAML below
@@ -315,19 +271,24 @@ proposed-design:
     key. A Jinja include name must be a string literal, so the parent writes
     each include inside `{% if '<target>' in targets %}`. The
     partial writes `uses` lines as YAML text, so the version comment is kept
-    without the unquoted-string rule of option A. A test in this repository
+    as a YAML comment. A test in this repository
     renders the parent once per target, parses each target job from the
-    rendered workflow, removes the parent-owned members, adds `units` from the
-    answer, and validates the result against `publish-job.schema.json`; it
-    validates every credential against `credential.schema.json`. Toha does not
-    validate targets under B. Evidence: measured with a Toha build of `main`
+    rendered workflow with a comment-preserving parser, rejoins each external
+    `uses` reference and its version comment as the schema's one string,
+    removes the parent-owned members, adds `units` from the answer, and
+    validates the result against `publish-job.schema.json`; it
+    validates every credential against `credential.schema.json`, after removing
+    the internal `unless` selector. The repository also checks interface keys
+    and uniqueness. These are repository tests of the parent's own data.
+    Evidence: measured with a Toha build of `main`
     at `bdc8ed9` on a one-target sample. `!include` loaded `target.yml` into
     `data`; questions with `when: "'npm' in targets"` were asked only when
     `npm` was selected; the included partial read the units answer and kept
     the `# v7.0.0` comment on its `uses` line; and an `unless` member left the
     credential out when `trusted_publishing` was true. Every rule this design
-    states for a contributed job applies to a target job under option B,
-    except how the parent writes the job's members.
+    states for a contributed job applies to a target job. The measured sample
+    predates the part mechanism; selection flags, record writes and updates
+    under the edited Toha contract are inferred until implementation validation.
 
   release-trigger: >-
     `.github/workflows/release.yml` has one trigger, `workflow_dispatch`, with
@@ -389,118 +350,61 @@ proposed-design:
     identify such a release before publication. The workflow creates no tag.
     Tags of other roles that require `after-publication` are created by the
     operator with `intentional tag --phase after-publication` after the run
-    succeeds. Custom release gates add their own extension point in a later
-    contract change.
+    succeeds. Custom release gates require a parent-template revision.
 
   escaping-convention: >-
     Toha renders with MiniJinja built without the `custom_syntax` feature, so
-    Jinja delimiters cannot be changed. Three rules apply to workflow bodies,
-    partials, and every string leaf of a contribution. First, a GitHub
-    expression with no template value inside it is written inside a raw block
-    that covers the smallest span: `{% raw %}${{ github.token }}{% endraw %}`.
-    Second, a GitHub expression that contains a template value is written as
-    one Jinja string expression, `{{ "${{ secrets." ~ credential.name ~ " }}"
-    }}`, and only for a value that a schema or question pattern restricts to
-    an identifier. Free text never goes inside a GitHub expression. Third, a
-    script never contains `${{ }}`: values reach `run` through `env`, a job
-    condition is a bare expression without `${{ }}`, and a step reads
-    `RELEASE_` variables. In `template.yml`, a string leaf that starts with
-    `{%` or `{{` is quoted, because YAML reads an unquoted `{` as a flow
-    mapping. A contribution's string leaves are rendered once, in the child's
-    context; the parent writes the rendered values with `toyaml` or verbatim
-    and never renders them again, so nothing is escaped twice. Evidence: the
-    raw block, the string expression, and `toyaml` output of a value that
-    contains `${{ secrets.X }}` were measured with a Toha build of `main` at
-    `bdc8ed9`; they render `${{ github.token }}`, `${{ secrets.NPM_TOKEN }}`,
-    and an unquoted `TOKEN: ${{ secrets.X }}`. Contribution rendering is
-    inferred from the composition design, which renders contribution string
-    leaves as `struct.value` string leaves are rendered. Under option B a
-    target partial is rendered once, as part of the parent's workflow body,
-    and the same three rules apply to it.
+    Jinja delimiters cannot be changed. Three rules apply to workflow bodies
+    and partials. First, a GitHub expression with no template value inside it is
+    written inside a raw block covering the smallest span:
+    `{% raw %}${{ github.token }}{% endraw %}`. Second, an expression with a
+    template value is written as one Jinja string expression,
+    `{{ "${{ secrets." ~ credential.name ~ " }}" }}`, only for a value that a
+    schema or question pattern restricts to an identifier. Free text never goes
+    inside a GitHub expression. Third, a script never contains `${{ }}`: values
+    reach `run` through `env`, a job condition is a bare expression without
+    `${{ }}`, and a step reads `RELEASE_` variables. In `template.yml`, a string
+    leaf starting with `{%` or `{{` is quoted so YAML does not read it as a flow
+    mapping. A target partial renders once as part of the parent's workflow
+    body. Evidence: raw blocks, string expressions, and `toyaml` output were
+    measured with Toha `main` at `bdc8ed9`; they render `${{ github.token }}`,
+    `${{ secrets.NPM_TOKEN }}`, and an unquoted `TOKEN: ${{ secrets.X }}`.
+    The optional-parts-form sample measured an included job partial retaining
+    its action version comment.
 
   action-pin-ownership: >-
     Repository Renovate owns action pin updates in the rendered workflow. The
     template owns the pin of a step only when it adds that step or changes the
-    step's `uses` line. Every rendered `uses` line is `owner/repo@<commit> #
-    <version>`, which the organization preset's Renovate updates in the
-    adopting repository like any other workflow; that Renovate's GitHub
-    Actions manager moves a commit pin and its version comment together is
-    taken from Renovate's documentation, not measured. Toha's three-way merge
-    keeps
-    those updates: on an update, a `uses` line that the new template revision
-    did not change takes the repository's line, and a line that both sides
-    changed to the same pin merges cleanly. A conflict occurs only when a
-    template release changes a `uses` line to a pin that differs from the one
-    Renovate chose; the operator keeps the newer pin. This repository's own
-    Renovate configuration ignores `release/` and every target directory, so
-    template releases do not move pins on their own and do not cause a
-    conflict in every adopting repository on every update. A template author
-    who adds or changes a step uses the current pin. Repositories that adopt
-    get older pins for unchanged steps and Renovate updates them after
-    adoption. The three-way merge needs the base snapshot of the previous
-    apply. When the clone that updates does not have it, `toha apply --from`
-    refuses the update (`unknown snapshot`) and writes nothing; Toha never
-    falls back to an empty base. The only update without the base is an
-    explicit `--baseline`, which merges against an empty base: measured with a
-    Toha build of `main` at `bdc8ed9`, a rendered file whose pin line
-    Renovate had changed and whose template changed another line came back as
-    one add/add conflict over the whole file, with the repository's bytes in
-    the working tree and the template change left in the conflict stages,
-    where the same update with `--from` merged both changes cleanly. This is
-    one reason the snapshot-ref decision matters.
-
-  snapshot-refs-decision: >-
-    Open user decision. `toha apply` creates `refs/toha/snapshots/<id>` only in
-    the clone that ran it, and Toha never pushes. The refs are needed on the
-    remote for two readers: a template update from any other clone, which
-    needs the base snapshot named in `.toha.json` for its three-way merge, and
-    Airlock when it reads process answers. Template identity comes from
-    `.toha.json` and needs no ref. The release workflow needs no ref. A clone
-    without the base snapshot cannot update normally: `toha apply --from
-    <id>` refuses an unknown snapshot and writes nothing. Its only recovery is
-    to adopt again with an explicit `toha apply <parent> <path> --baseline`.
-    Membership is rebuilt from `.toha.json`, whose entry names the parent and
-    every child source: the operator adds `--with` for each child (option A).
-    Answers are not: with no base there are no recorded submissions to replay,
-    so every question is asked again or supplied with `--answers`, except
-    `release_model`, which reads `.intentional/release-model.json` on every
-    run. The merge is against an empty base, so every rendered file that
-    differs from the repository's bytes, a Renovate pin edit included,
-    conflicts as a whole file (measured; see action-pin-ownership). Options:
-    (a) the operator pushes after each apply with `git push origin
-    'refs/toha/snapshots/*:refs/toha/snapshots/*'`, the refspec Toha
-    documents; cost: a step a person or agent can forget, and a forgotten push
-    is found only when an update or Airlock needs the ref. (b) a template hook
-    adds that refspec to `remote.origin.push`; cost: hook trust for the
-    parent, a setting per clone that fresh clones lack, and a changed push:
-    measured with Git, once `remote.origin.push` holds only that refspec, a
-    plain `git push origin` pushes the snapshot refs and no longer pushes the
-    current branch, so the hook must also add `HEAD`. (c) template updates
-    run in CI: a second rendered workflow runs `toha apply --from` on
-    dispatch or schedule, pushes a branch and the new snapshot ref, and opens
-    a pull request; cost: a workflow with `contents: write` and
-    `pull-requests: write`, Toha installed in CI, the repository setting that
-    lets Actions open pull requests, and a first apply that still runs
-    locally and needs (a) once. (d) nothing is pushed; Airlock reads identity
-    from `.toha.json` and reads no answers; cost: every clone other than the
-    one that last applied loses `--from` updates and must recover with the
-    `--baseline` adoption above, re-answering every question and resolving
-    whole-file conflicts, and under publication option B Airlock cannot see
-    which targets a repository selected. (e) a committed
-    repository pre-push hook, run by Lefthook, pushes the snapshot refs with
-    every push; cost: a nested push inside a push, a hook every clone must
-    install, and a Lefthook configuration edit that the parent would have to
-    inject. Recommendation: (a), with Airlock reporting a missing ref as a
-    Gap. It adds no privileged workflow and no hook trust, works today, and
-    is reversible; (c) composes with it later when template updates are
-    propagated across repositories. Sections that depend on this decision:
-    under (b) the parent declares one hook and the security list gains hook
-    trust; under (c) the parent renders `.github/workflows/template-update.yml`
-    and the security list gains its permissions. No other section changes.
+    step's `uses` line. Every external action reference is
+    `owner/repo[/path]@<commit> # <version>`; local `./` actions follow the
+    publish-job schema. Renovate updating a commit pin and its version comment
+    together is inferred from its documentation, not measured. This repository's
+    own Renovate configuration ignores `release/`, including its target
+    directories. A template author who adds or changes a step uses the current
+    pin; adopting repositories get Renovate updates for unchanged steps.
+    An update uses `toha apply gh:wyrd-company/.github#release . --update`.
+    Its merge base is rendered from the committed applied entry's template
+    commit, `answers`, `parts`, frozen `generated` instant, and `context`, as
+    Toha's `update-merge-base` defines. For a whole-file path the rendered bytes
+    are a base only when their Git object id equals its recorded `blob`;
+    otherwise the recorded object is used when the repository holds it. If
+    neither is available, differing candidate bytes conflict instead of using an
+    unverified base. A hook-written path uses only its recorded object, never
+    pre-hook rendered bytes. The release template declares no hooks. An
+    unfetchable recorded commit refuses the update and names explicit
+    `--baseline` adoption, as `update-resolution` and `baseline` define; Toha
+    never silently chooses an empty base. With a verified base, an unchanged
+    template pin is expected to preserve Renovate's line, equal edits are
+    expected to merge cleanly, and different edits to the same line are expected
+    to conflict; the operator resolves the conflict. These merge outcomes are
+    inferred under the re-rendered-base rule, not measured. Implementation
+    validation must exercise them and an unavailable or mismatched base without
+    silently replacing operator edits. An application without a usable applied
+    record uses explicit `--baseline` adoption under Toha's `baseline` rule.
 
   credential-preflight: >-
-    A target declares each credential it needs as a `credentials`
-    contribution: `name` (the secret or variable name, uppercase, not
+    A target declares each credential it needs in the internal `credentials`
+    interface: `name` (the secret or variable name, uppercase, not
     starting with `GITHUB_`), `kind` (`secret`, the default, or `variable`),
     `purpose` (one line), and optional `environment`. The parent groups the
     declarations by environment and renders `preflight` for those without an
@@ -510,19 +414,20 @@ proposed-design:
     with `{{ "${{ secrets." ~ name ~ " }}" }}` or the `vars.` form, and fails
     when any is empty, printing each missing name with its purpose and never a
     value. It checks presence only. A name that two targets declare is checked
-    once. Preflight checks every credential the composition declares on every
+    once. Preflight checks every credential the selected parts declare on every
     run, not only those of the released units, so a missing credential is
     found on the first release that would need it or earlier. Every build,
     release-record, publish, and verify job needs every preflight job, so no
     job that changes state outside the run starts after a failed preflight.
     Trusted publishing removes a credential: the target asks whether to use
-    it, puts `when: not trusted_publishing` on the credential contribution
-    (under option B, `unless: trusted_publishing` on the credential in its
-    `target.yml`),
+    it, puts `unless: trusted_publishing` on the credential in its
+    `target.yml`,
     and requests `id-token: write` in its publish job, so the credential is
     not declared and not checked. A job that uses an environment declares its
     credentials with the same environment; a mismatch shows as a missing value
-    in the publish job. An environment with required reviewers asks for
+    in the publish job. Answers and `.toha.json` hold credential names, never
+    credential values; values are supplied by GitHub at workflow run time.
+    An environment with required reviewers asks for
     approval of its preflight job as well as of the publish job.
 
   release-records: >-
@@ -579,7 +484,7 @@ proposed-design:
     on GitHub's `needs` and status-function semantics. Skipped build: two
     units with one build job each, one unit released; the other build job is
     skipped, `release-record` runs, and the released unit's publish job runs
-    after it. Empty stage: a composition with build and verify jobs and no
+    after it. Empty stage: a selection with build and verify jobs and no
     publish jobs; each verify job starts after every build job and
     `release-record`, and a failed build job skips it. Record gate: a failed
     `release-record` skips every publish and verify job of a `required` unit.
@@ -591,60 +496,67 @@ proposed-design:
     (fails). Each case that succeeds ends with a published release read back
     by tag. Baseline: a dispatch on a commit with only baseline records fails.
     Preflight: a missing declared credential fails `preflight` and no build
-    job starts. Under option B, the repository test of optional-parts-form
-    runs for every target.
+    job starts. The repository test of optional-parts-form runs for every
+    target and checks the internal interface key patterns and uniqueness.
+    Update cases in action-pin-ownership cover the verified merge base and
+    conflicts when it is unavailable or differs from the recorded blob.
 
   contract-versioning: >-
-    Contract `release-process` version 1 is the extension point ids, their
-    shapes and key patterns, both schemas, the `resolve` outputs, the
-    `RELEASE_` environment names, and the job order and conditions in
-    job-graph. A parent revision that adds an extension point, an optional
-    schema member, or a grantable permission keeps version 1, because every
-    existing child still validates. Removing or renaming any of these,
-    narrowing a schema, or changing what an output or variable means is
-    version 2; children declare the versions they accept, and Toha refuses a
-    child that does not accept the parent's version. Under option B no other
-    template depends on the contract: the same names are internal to the
-    parent, every change ships as a parent revision, and version 1 still
-    names them for Airlock and the tests of this repository.
+    `release-process` version 1 names the parent's internal interface ids, key
+    patterns, both draft schemas, `resolve` outputs, `RELEASE_` environment
+    names, and job order and conditions in job-graph. Each part ships with the
+    parent and changes with it; a change to an internal interface updates every
+    affected part and repository test in the same parent revision. Adding a
+    target is a parent-template revision, and an outside target uses a fork of
+    the parent. Airlock accepts parent revisions by organization-configured
+    refs and reads selected parts from the applied entry; there is no separately
+    negotiated interface version. The draft job and credential schema identities
+    retain their draft paths; once a schema URI is published it is immutable,
+    and a change mints a new URI.
 
   security-surface: >-
-    These choices need the user's approval before implementation: the
-    grantable job permissions (`contents: read`, `actions: read`, `id-token:
-    write`, `attestations: write`, `packages: read` or `write`) and the
-    refusal of `contents: write` to targets; `contents: write` in the parent's
+    The approved surface is the grantable part-job permissions (`contents:
+    read`, `actions: read`, `id-token: write`, `attestations: write`, `packages:
+    read` or `write`) with `contents: write` reserved for the parent's
     release-record job; `actions: read` in `resolve` for the CI-run check;
-    preflight that checks presence only, of every declared credential, on
-    every run; preflight jobs that enter each declared environment; the
-    dispatch-only trigger and the source-commit checks; the parent-owned gate
-    and the refusal of status functions in contributed conditions; the schema
-    rules that keep `${{ }}` out of scripts and require commit pins; no hooks
-    in release-process v1 templates; and repository Renovate as the owner of
-    pin updates. The open snapshot-ref decision adds hook trust under (b) and a
-    workflow with `contents: write` and `pull-requests: write` under (c).
+    preflight checking presence only, of every declared credential, on every
+    run; preflight jobs entering each declared environment; the dispatch-only
+    trigger and source-commit checks; the parent-owned gate and refusal of
+    status functions in contributed conditions; schema rules that keep
+    `${{ }}` out of scripts and require commit pins; no hooks in release-process
+    v1 templates; and repository Renovate as the owner of pin updates.
+    Answers and the applied record contain credential names, never values.
 
   agreements: >-
-    This design agrees with the Intentional release model design on the
-    document question, its default file `.intentional/release-model.json`,
-    the schema identity `https://intentional.foo/schemas/release-model/1`,
-    the vendored `docs/specifications/release-model.schema.yml`, the
-    `release_record` values `required` and `none` with the meaning that
-    Intentional creates no release record, and bare SemVer tags with
-    `tags.primary.template` read verbatim. It agrees with the Toha template
-    composition design on the parent and child declarations, value-shaped
-    extension points with key patterns and schemas, `toha_parent` exports,
-    `toha_contributions` as lists of `{key, value, template}` sorted by key,
-    `.toha.json` as the identity record, and Toha never pushing. It agrees
-    with the Airlock release-process conformance design on the template
-    sources, the fixed workflow path, the dispatch trigger, the `baseline`
-    field as the baseline signal, one published release record per release
-    of a `required` unit on its primary tag, a prerelease included, and the
-    answers Airlock may read from a snapshot: `ci_workflow`, `latest_unit`,
-    and under option B `targets`. A template revision is a commit of this
-    repository; Airlock accepts it by its reachability from a ref that the
-    organization configures, so any branch or tag of this repository can
-    mark accepted template revisions. Airlock's release-process standards
-    read no snapshot ref.
+    This design agrees with Intentional's release model design on the document
+    input `.intentional/release-model.json`, schema identity
+    `https://intentional.foo/schemas/release-model/1`, vendored
+    `docs/specifications/release-model.schema.yml`, `release_record` values
+    `required` and `none`, Intentional creating no release record, and bare
+    SemVer tags with `tags.primary.template` read verbatim. It follows Toha's
+    `part-declaration`, `part-selection`, and `part-removal` for the parent's
+    `targets` question. Toha's `applied-record`, `application-entry`,
+    `record-answers`, `record-context`, and `record-paths` own the record shape;
+    `record-schema` owns its schema identity
+    `https://wyrd.foo/toha/schemas/applied-record/1`. The record defaults to
+    `.toha.json` at the repository root; `TOHA_RECORD` overrides it on the Toha
+    side, and Airlock configures its expected path, defaulting to that root file.
+    Airlock reads that record and `.intentional/release-model.json` at the audited
+    revision as plain JSON validated against vendored copies of their published
+    schemas. There are no shared crates. The release application's `parts`
+    lists selected targets; `answers.ci_workflow` and, when asked,
+    `answers.latest_unit` are process answers Airlock can read.
+    `answers.release_model` is the document the process was rendered from,
+    under Toha's `release-model-agreement`; comparison with the committed model
+    shows a process that needs an update. The part question is absent from
+    `answers`. Toha never pushes; templates declare no hooks. Airlock ships
+    checks; templates select and configure them. A template revision is a
+    commit of this repository; Airlock accepts it by reachability from an
+    organization-configured ref. The release-process conformance design governs
+    those checks: fixed `.github/workflows/release.yml`, `workflow_dispatch` on
+    a source commit, delivery inside that workflow, the `baseline` field as the
+    baseline signal, and one published release record per release of a
+    `required` unit on its primary tag, prereleases included.
 
   out-of-scope: >-
     Template files and workflow bodies, which the templates lane implements
