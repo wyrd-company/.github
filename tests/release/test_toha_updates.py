@@ -71,6 +71,9 @@ class TohaUpdates(unittest.TestCase):
         if os.environ.get('RELEASE_TOHA_RECEIPTS'):
             directory = Path(os.environ['RELEASE_TOHA_RECEIPTS']) / self._testMethodName
             directory.mkdir(parents=True, exist_ok=True)
+            receipt['files'] = {name: (self.target / name).read_text()
+                                for name in ('.toha.json', WORKFLOW, '.intentional/release-model.json')
+                                if (self.target / name).is_file()}
             (directory / f'{self.sequence:02}.json').write_text(json.dumps(receipt, indent=2) + '\n')
         self.assertEqual(result.returncode, code, receipt)
         if status is not None:
@@ -124,6 +127,10 @@ class TohaUpdates(unittest.TestCase):
         result = self.run_apply(*flags)
         self.commit(self.target)
         return result
+
+    def test_flag_order_settles_in_option_order(self):
+        self.initial('--with', PARTS[1], '--with', PARTS[0])
+        self.assert_output(PARTS)
 
     def test_apply_selection_and_revision_update(self):
         initial = self.initial('--with', PARTS[0], '--without', PARTS[1])
