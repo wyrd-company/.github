@@ -72,8 +72,9 @@ async function npmRelease({env, verify, run, request = fetch, cwd = process.cwd(
       if (packed.length !== 1 || packed[0].name !== pkg.name || packed[0].version !== pkg.version) throw new Error('npm pack identity mismatch');
       const archive = path.join(scratch, path.basename(packed[0].filename));
       const integrity = 'sha512-' + crypto.createHash('sha512').update(fs.readFileSync(archive)).digest('base64');
-      const args = ['publish', archive, '--registry=' + registry, '--access=public', '--provenance', '--ignore-scripts',
-        '--tag=' + (pkg.prerelease ? 'next' : 'latest')];
+      const args = ['publish', archive, '--registry=' + registry, '--access=public', '--provenance', '--ignore-scripts'];
+      // Leave stable tags implicit so npm can refuse backward latest moves.
+      if (pkg.prerelease) args.push('--tag=next');
       if (dry) {
         run([...args, '--dry-run'], {cwd: scratch});
         continue;

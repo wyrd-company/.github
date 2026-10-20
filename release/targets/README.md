@@ -63,8 +63,9 @@ installed on Node 24 for OIDC support. Registry evidence:
 
 `npm_dry_run` defaults to false. Set it to true for local preparation or a live
 workflow proof without public publication. It adds npm's `--dry-run`, makes no
-registry lookup, and skips client installation. Actual publication remains
-behind the parent's resolved Intentional tag record and successful release
+registry writes, and skips client installation. npm itself can read registry
+metadata, authenticate, and refuse an already-published version. Actual
+publication remains behind the parent's resolved Intentional tag record and successful release
 record. Run `intentional apply` only with the user's release approval.
 
 Packaging uses `npm pack --ignore-scripts`: commit ready-to-pack files, including
@@ -75,7 +76,9 @@ checks npm's SHA512 integrity, name and version. A retry accepts identical bytes
 and refuses conflicting bytes. A concurrent matching publication is accepted.
 If npm has not exposed a successful write yet, the job fails and can be rerun
 on the same source commit; there is no polling timer. Prereleases use `next`;
-stable versions use `latest`.
+stable versions omit an explicit tag so npm's default backward-move check can
+apply. Explicit npm configuration, including a manifest's `publishConfig.tag`,
+can override that default.
 
 Clean clients install the exact package version on Linux amd64/arm64, macOS
 arm64 and Windows amd64, then check the installed manifest identity. Install

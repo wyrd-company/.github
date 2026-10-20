@@ -104,7 +104,7 @@ test('npm none projection validates the source version', async t => {
   const f=fixture(t,{mode:'none',version:'0.0.0'});
   await assert.rejects(npmRelease(f.options()),/version mismatch/);assert.equal(f.calls.length,0);
 });
-test('npm dry run never contacts registry and explicitly uses dry-run', async t => {
+test('npm dry run skips part registry lookup and client installation and uses dry-run', async t => {
   const f=fixture(t);f.env.NPM_DRY_RUN='true';await npmRelease(f.options());
   assert.ok(f.calls.find(c=>c[0]==='publish').includes('--dry-run'));assert.equal(f.requests.length,0);
   f.reset();await npmRelease({...f.options(),verify:true});assert.equal(f.calls.length,0);
@@ -125,10 +125,15 @@ test('npm pack identity is checked before publication', async t => {
   const f=fixture(t), run=(args,opts)=>args[0]==='pack'?'[{"name":"other","version":"1.2.3"}]':f.run(args,opts);
   await assert.rejects(npmRelease({...f.options(),run}),/pack identity mismatch/);assert.equal(f.requests.length,0);
 });
-test('npm prereleases use next and stable releases use latest', async t => {
+test('npm prerelease publication explicitly uses next', async t => {
   const f=fixture(t);f.env.RELEASE_JSON=JSON.stringify({'sample-tool':{version:'1.2.3',prerelease:true}});
   await npmRelease(f.options());assert.ok(f.calls.find(c=>c[0]==='publish').includes('--tag=next'));
-  const stable=fixture(t);await npmRelease(stable.options());assert.ok(stable.calls.find(c=>c[0]==='publish').includes('--tag=latest'));
+});
+test('npm stable publication omits explicit dist-tag', async t => {
+  const f=fixture(t);await npmRelease(f.options());
+  const args=f.calls.find(c=>c[0]==='publish');
+  assert.ok(args);
+  assert.equal(args.some(arg=>arg==='--tag' || arg.startsWith('--tag=') || arg==='-t' || arg.startsWith('-t=')),false);
 });
 test('npm race accepts matching bytes and rejects conflict', async t => {
   for(const match of [true,false]) {
