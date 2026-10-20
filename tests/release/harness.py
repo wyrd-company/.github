@@ -29,10 +29,7 @@ def dump(path, value):
 def prepare(template, samples=1, omit_publish=False):
     shutil.copytree(ROOT / 'release', template)
     config = load(template / 'template.yml')
-    # 1440 owns parts and the selection flags. At the pinned composition head,
-    # use the design's measured multiselect mechanism; do not claim flag proof.
     part_question = next(q for q in config['interview'] if q.get('id') == 'targets')
-    part_question.pop('parts')
     existing_switches = next(q['computed'] for q in config['interview'] if q.get('id') == 'credential_answers')
     config['interview'] = [q for q in config['interview'] if q.get('id') != 'credential_answers']
     switches = {}
@@ -91,11 +88,14 @@ def render(root, model, samples=0, selected=None, answers=None, omit_publish=Fal
     (target / '.intentional').mkdir(parents=True)
     (target / '.intentional/release-model.json').write_text(json.dumps(model))
     selected = selected if selected is not None else ['sample-target' if i == 0 else f'sample-target-{i + 1}' for i in range(samples)]
-    supplied = dict(targets=selected, ci_workflow='ci.yml')
+    supplied = dict(ci_workflow='ci.yml')
     supplied.update(answers or {})
     document = root / 'answers.json'
     document.write_text(json.dumps({'template': str(template), 'answers': supplied}))
     command = [os.environ['TOHA_BIN'], 'apply', str(template), str(target), '--answers', str(document)]
+    for part in selected:
+        command.extend(['--with', part])
+    # The empty selection uses the actual parts question's empty default.
     result = subprocess.run(command, text=True, capture_output=True)
     if result.returncode:
         raise AssertionError(f'Toha exit {result.returncode}: {result.stdout}\n{result.stderr}')

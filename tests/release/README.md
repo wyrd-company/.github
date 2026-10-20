@@ -17,12 +17,41 @@ task ci
 python3 tests/release/mutations.py --report /tmp/release-mutations.json
 ```
 
-The Toha build used for the document and rendering contract is commit
-`82e39d485f20729d38aa9b550b445edf58c61708`. The harness removes `parts: true`
-from test copies for that build and supplies the selection through the ordinary
-multiselect answer. It does not prove `--with`, `--without`, recorded `parts`,
-or update reconciliation. Those require the parts/update implementation and
-its adoption tests. Production `template.yml` keeps `parts: true`.
+The Toha build used for the document, part selection and update contract is
+commit `61dd5065088b7293e53deadd2c8df63c16833a94`. Build it in an isolated clone
+with `cargo build --release`; do not build in the shared composition worktree.
+The harness retains `parts: true` and selects parts with `--with`. No marker
+adaptation is needed. Production targets remain optional; `prepare` registers
+the generic fixture parts. The update suite commits that complete template to
+its own Git source repository before resolving a `file://` address.
+
+`test_toha_updates.py` proves the real CLI, record and output boundaries:
+
+- `test_apply_selection_and_revision_update`: apply flags, a new committed
+  revision, additions/removals, option order, separate recorded parts/answers,
+  emitted jobs/credentials, and an already-current repeat.
+- `test_staged_document_answer_and_update_freeze`: a document question answered
+  with the committed Release Model through `continue --input`, fresh stage
+  flags, repeated staged update flags, frozen admitted documents and a later
+  update that admits the current file. The generic projection boolean survives.
+- `test_invalid_selection_is_usage_error_before_writes`: apply/stage, fresh and
+  update routes reject unknown or contradictory flags with exit 2, the named
+  diagnostic and unchanged output/record. A parts answer cannot accompany flags.
+- The pin tests prove unchanged/equal/divergent template and operator edits.
+  Part removal retains an unrelated operator annotation and pin. A text conflict
+  has diff3 markers and retains the exact operator file in index stage 2;
+  add/add conflicts retain operator bytes in the working tree.
+- The missing commit and unversioned-source tests refuse with exit 1 and name
+  `--baseline`. The explicit baseline test uses an empty base and conflicts
+  against edited operator output. Missing ownership bytes produce add/add;
+  a mismatched reconstructed render uses only the retained recorded blob.
+
+Set `RELEASE_TOHA_RECEIPTS=/absolute/path` to save each proof command's arguments,
+exit, stdout and stderr. Run `python3 tests/release/toha_mutations.py --report
+/path/to/report.json` for the helper's marker/selection sole-kills. The main
+mutation battery continues to cover the reusable part interface. Run the Toha
+consumer suites at the same source head with `cargo test --release --test parts
+--test applied_record --test document_questions`.
 
 The Python suite renders with Toha and parses YAML with comments and duplicate
 key detection. It checks every registered part separately and all selected
@@ -236,5 +265,4 @@ airlock audit example-org/sample-tool --ref SOURCE_SHA --format json \
 
 Inspect `REPO-REL-04`, `REPO-REL-05`, `REPO-REL-06`, and `REPO-CI-04` in that
 output. An unobserved or routed result is not a pass.
-Toha update cases for preserved/equal/conflicting Renovate lines and
-unavailable/mismatched merge bases are proved with the parts/update dependency.
+Toha update cases run locally in `test_toha_updates.py`; they require no live repository.
