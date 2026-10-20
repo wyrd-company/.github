@@ -101,7 +101,8 @@ def render(root, model, samples=0, selected=None, answers=None, omit_publish=Fal
         raise AssertionError(f'Toha exit {result.returncode}: {result.stdout}\n{result.stderr}')
     assert json.loads(result.stdout)['status'] == 'applied', result.stdout
     workflow = target / '.github/workflows/release.yml'
-    return template, workflow, supplied
+    # Interface validation consumes settled targets separately from the CLI envelope.
+    return template, workflow, dict(supplied, targets=selected)
 
 
 def check_condition(expression):

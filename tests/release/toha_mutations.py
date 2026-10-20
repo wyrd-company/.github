@@ -15,6 +15,8 @@ mutations.mutation('tests/release/harness.py',
 mutations.mutation('tests/release/harness.py', "command.extend(['--with', part])", 'pass', TEST, 'python')
 mutations.mutation('tests/release/harness.py', "supplied = dict(ci_workflow='ci.yml')",
     "supplied = dict(targets=selected, ci_workflow='ci.yml')", TEST, 'python')
+mutations.mutation('tests/release/harness.py', 'return template, workflow, dict(supplied, targets=selected)',
+    'return template, workflow, supplied', TEST, 'python')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

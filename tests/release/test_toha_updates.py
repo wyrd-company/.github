@@ -208,6 +208,7 @@ class TohaUpdates(unittest.TestCase):
         self.assertEqual(command[command.index('--with') + 1], PARTS[0])
         supplied = json.loads((directory / 'answers.json').read_text())['answers']
         self.assertNotIn('targets', supplied)
+        self.assertEqual(answers.get('targets'), [PARTS[0]])
         self.assertTrue(next(q for q in load(template / 'template.yml')['interview'] if q.get('id') == 'targets')['parts'])
         self.assertIn('build-sample', load(workflow)['jobs'])
 
