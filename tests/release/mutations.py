@@ -51,6 +51,8 @@ for old, new, test in [
     ("names.get(item.filename) !== 'sha256:' + item.sha256", 'false', 'package artifact must match release-record digest'),
     ("env.PACKAGE_DRY_RUN === 'true'", 'false', 'dry run never enables submission'),
 ]: mutation(r, old, new, 'test_repo_wyrd_foo.PackageRuntime.test_' + test.replace(' ', '_').replace('-', '_'), 'python')
+mutation(r, 'fs.writeFileSync(file, bytes);', 'fs.writeFileSync(file, JSON.stringify(manifest));',
+    'test_repo_wyrd_foo.PackagePart.test_emitted_action_manifest_preserves_original_download_bytes', 'python')
 mutation('release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
     "steps.package.outputs.submit == 'true'", "'true'",
     'test_repo_wyrd_foo.PackagePart.test_selected_and_removed', 'python')

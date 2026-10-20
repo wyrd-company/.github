@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
+const os = require('node:os');
 const vm = require('node:vm');
 const source = fs.readFileSync('release/targets/repo-wyrd-foo/prepare.js', 'utf8');
 const digest = bytes => 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
@@ -17,7 +18,7 @@ function fixture() {
     record: {id: 42, tag_name: '1.2.3', draft: false}};
 }
 async function run(f, emitted=source) {
-  const bytes = Buffer.from(JSON.stringify(f.manifest));
+  const bytes = f.manifestBytes || Buffer.from(JSON.stringify(f.manifest));
   const assets = f.assets || [{id: 7, name: 'release-manifest.json', digest: digest(bytes)},
     {id: 8, name: 'sample-tool.deb', digest: 'sha256:' + 'b'.repeat(64)}];
   const github = {rest: {repos: {
@@ -26,7 +27,7 @@ async function run(f, emitted=source) {
     getReleaseAsset: async args => {f.reads.push(args); return {data: f.download || bytes};},
   }}, paginate: async (method, args) => {assert.equal(method, github.rest.repos.listReleaseAssets); f.reads.push(args); return assets;}};
   const core = {setOutput: (key, value) => {f.outputs[key] = value;}, info: value => f.info.push(value)};
-  const localFs = {writeFileSync: (...args) => f.writes.push(args)};
+  const localFs = f.fs || {writeFileSync: (...args) => f.writes.push(args)};
   const sandbox = {github, context: {repo: {owner: 'example-org', repo: 'sample-tool'}}, core, process: {env: f.env}, Buffer,
     require: name => ({'node:fs': localFs, 'node:path': path, 'node:crypto': crypto}[name])};
   await vm.runInNewContext('(async () => {' + emitted + '\n})()', sandbox);
@@ -101,4 +102,39 @@ if (process.env.PACKAGE_EMITTED_SCRIPT) test('packages: emitted dry run', async 
   const f = fixture(); f.env.PACKAGE_DRY_RUN = 'true';
   await run(f, fs.readFileSync(process.env.PACKAGE_EMITTED_SCRIPT, 'utf8'));
   assert.equal(f.outputs.submit, 'false'); assert.equal(f.writes.length, 1); assert.equal(f.info.length, 1);
+});
+
+// Retain the download independently of the parsed manifest and write through
+// the real filesystem. Runtime and rendered-caller tests reach distinct edges.
+async function manifestByteIdentity(emitted, manifestInput) {
+  const downloaded = Buffer.from(`{
+  "source": { "repository": "example-org/sample-tool", "commit": "${'a'.repeat(40)}" },
+  "artifacts": [ { "sha256": "${'b'.repeat(64)}", "filename": "sample-tool.deb" } ],
+  "version": "1.2.3", "tag": "1.2.3"
+}\n`);
+  const f = fixture();
+  assert.deepEqual(JSON.parse(downloaded), f.manifest);
+  assert.notDeepEqual(downloaded, Buffer.from(JSON.stringify(JSON.parse(downloaded))));
+  f.manifestBytes = Buffer.from(downloaded);
+  f.fs = fs;
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'package-bytes-'));
+  f.env.RUNNER_TEMP = directory;
+  try {
+    await run(f, emitted);
+    assert.equal(f.outputs.submit, 'true');
+    // Resolve the rendered Action's manifest input through the actual output.
+    assert.equal(manifestInput, '${{ steps.package.outputs.manifest }}');
+    const submitted = fs.readFileSync(f.outputs.manifest);
+    assert.deepEqual(JSON.parse(submitted), JSON.parse(downloaded), 'submitted manifest remains equivalent valid JSON');
+    assert.deepEqual(submitted, downloaded, 'submission manifest preserves original download bytes');
+  } finally {
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+}
+test('packages: runtime manifest preserves original download bytes', async () => {
+  await manifestByteIdentity(source, '${{ steps.package.outputs.manifest }}');
+});
+if (process.env.PACKAGE_EMITTED_SCRIPT) test('packages: rendered Action manifest preserves original download bytes', async () => {
+  await manifestByteIdentity(fs.readFileSync(process.env.PACKAGE_EMITTED_SCRIPT, 'utf8'),
+    process.env.PACKAGE_EMITTED_MANIFEST_INPUT);
 });

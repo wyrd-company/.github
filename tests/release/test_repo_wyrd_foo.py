@@ -98,6 +98,23 @@ class PackagePart(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('pass 1', result.stdout)
 
+    def test_emitted_action_manifest_preserves_original_download_bytes(self):
+        parsed, _ = self.workflow(answers={'repo_wyrd_foo_dry_run': False})
+        prepare, submit = parsed['jobs']['publish-repo-wyrd-foo']['steps']
+        self.assertEqual(prepare['id'], 'package')
+        self.assertEqual(submit['with']['manifest'], '${{ steps.package.outputs.manifest }}')
+        with tempfile.TemporaryDirectory() as tmp:
+            emitted = Path(tmp) / 'prepare.js'
+            emitted.write_text(prepare['with']['script'])
+            result = subprocess.run(['node', '--test', '--test-name-pattern',
+                '^packages: rendered Action manifest preserves original download bytes$',
+                'tests/release/repo-wyrd-foo.test.cjs'], cwd=ROOT,
+                env=dict(os.environ, PACKAGE_EMITTED_SCRIPT=str(emitted),
+                         PACKAGE_EMITTED_MANIFEST_INPUT=submit['with']['manifest']),
+                text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('pass 1', result.stdout)
+
 
 class PackageRuntime(unittest.TestCase):
     def node(self, name):
@@ -109,6 +126,7 @@ class PackageRuntime(unittest.TestCase):
 
 for name in [
     'released record supplies manifest, names and digests',
+    'runtime manifest preserves original download bytes',
     'none in the whole selection refuses before submission', 'unknown selection refuses',
     'dry-run choice is required', 'matrix is limited to selected units',
     'unresolved units do not read assets or submit', 'missing release refuses',
