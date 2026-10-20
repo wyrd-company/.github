@@ -430,9 +430,10 @@ proposed-design:
     message. The parent renders `release-record` only when some unit in the
     Release Model has `release_record: required`. It runs as a matrix over
     `record_units` with `permissions: contents: write`, and is skipped when
-    `record_units` is empty. For each unit it creates exactly one GitHub
-    Release on the primary tag with `gh release create <tag> --verify-tag`,
-    titled with the tag name. A version with a prerelease part is created with
+    `record_units` is empty. For each unit it creates exactly one published
+    GitHub Release, never a draft, on the primary tag with `gh release create
+    <tag> --verify-tag`, titled with the tag name; its `tag_name` is the
+    rendered primary tag name. A version with a prerelease part is created with
     `--prerelease` and `--latest=false`. Of the other releases, only the unit
     named by the parent's `latest_unit` answer is marked latest; the question
     is asked only when more than one unit is `required`. The release notes
@@ -491,9 +492,14 @@ proposed-design:
     `.toha.json` as the identity record, and Toha never pushing. It agrees
     with the Airlock release-process conformance design on the template
     sources, the fixed workflow path, the dispatch trigger, the `baseline`
-    field as the baseline signal, one release record per release of a
-    `required` unit on its primary tag, and the answers Airlock may read from
-    a snapshot: `ci_workflow`, `latest_unit`, and under option B `targets`.
+    field as the baseline signal, one published release record per release
+    of a `required` unit on its primary tag, a prerelease included, and the
+    answers Airlock may read from a snapshot: `ci_workflow`, `latest_unit`,
+    and under option B `targets`. A template revision is a commit of this
+    repository; Airlock accepts it by its reachability from a ref that the
+    organization configures, so any branch or tag of this repository can
+    mark accepted template revisions. Airlock's release-process standards
+    read no snapshot ref.
 
   out-of-scope: >-
     Template files and workflow bodies, which the templates lane implements
