@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -16,6 +17,22 @@ def command(args, **kwargs):
 
 
 def publish(env, run=command, root=Path.cwd()):
+    tool = run
+
+    def run(args, **kwargs):
+        try:
+            return tool(args, **kwargs)
+        except subprocess.CalledProcessError as error:
+            # Keep tool diagnostics even when lookup/retry translates the error.
+            # Credentials travel through stdin, never argv or diagnostic output.
+            for output, stream in ((error.stdout, sys.stdout), (error.stderr, sys.stderr)):
+                text = (output or b'').decode(errors='replace')
+                token = env.get('GHCR_TOKEN', '')
+                if token:
+                    text = text.replace(token, '[REDACTED]')
+                print(text, end='', file=stream, flush=True)
+            raise
+
     model = json.loads(env['GHCR_MODEL'])
     releases = json.loads(env['RELEASE_JSON'])
     released = env['RELEASE_UNITS'].split()

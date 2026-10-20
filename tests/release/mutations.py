@@ -425,6 +425,50 @@ mutation('release/targets/homebrew-tap/publish-homebrew-tap.env.yml',
          " | replace('$', '\\\\u0024')", '',
          'test_homebrew_tap.HomebrewPart.test_model_data_stays_literal', 'python')
 
+# Each invocation must retain the diagnostic wrapper, including retry translation.
+for old, tests in [
+    ("run(['docker', 'buildx', 'create'", ['builder_failure_diagnostics']),
+    ("run(['docker', 'buildx', 'build'", ['build_failure_diagnostics']),
+    ("run(['docker', 'buildx', 'rm'", ['cleanup_failure_diagnostics']),
+    ("run(['skopeo', 'login'", ['login_failure_diagnostics']),
+    ("run(['skopeo', 'inspect', '--raw'", ['local_inspect_failure_diagnostics']),
+    ("run(['skopeo', 'inspect', '--authfile'", ['remote_inspect_failure_diagnostics']),
+    ("run(['skopeo', 'copy'", ['copy_failure_diagnostics', 'tag_copy_failure_diagnostics']),
+]:
+    mutation('release/targets/ghcr/publish.py', old, old.replace('run(', 'tool(', 1),
+             '', 'python', site_tests=['test_ghcr.GhcrPublisher.test_' + test for test in tests])
+
+# GHCR robustness: captured output, credential redaction and real-build agreements.
+mutation('release/targets/ghcr/publish.py',
+         "(error.stdout, sys.stdout)", "(b'', sys.stdout)",
+         'test_ghcr.GhcrPublisher.test_build_failure_diagnostics', 'python')
+mutation('release/targets/ghcr/publish.py',
+         "(error.stderr, sys.stderr)", "(b'', sys.stderr)",
+         'test_ghcr.GhcrPublisher.test_remote_inspect_failure_diagnostics', 'python')
+mutation('release/targets/ghcr/publish.py',
+         "text = text.replace(token, '[REDACTED]')", 'pass',
+         'test_ghcr.GhcrPublisher.test_login_failure_diagnostics', 'python')
+mutation('release/targets/ghcr/publish.py',
+         "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
+         'test_ghcr.GhcrPublisher.test_ghcr_unmeasured_denials_fail_closed', 'python')
+for old, new, test in [
+    ('FROM --platform=$BUILDPLATFORM ', 'FROM ', 'native_build_stage_contract'),
+    ('GOOS=$TARGETOS GOARCH=$TARGETARCH go build', 'GOOS=linux GOARCH=amd64 go build', 'native_build_stage_contract'),
+    ('COPY --from=build /out/sample-tool /sample-tool', 'COPY main.go /sample-tool', 'native_build_stage_contract'),
+    ("binary[:6] == b'\\x7fELF\\x02\\x01'", 'True', 'binary_machine_refuses_mislabeled_output'),
+    ("machine == {'amd64': 62, 'arm64': 183}[arch]", 'True', 'binary_machine_refuses_mislabeled_output'),
+]:
+    mutation('tests/release/ghcr_oci_proof.py', old, new,
+             'test_ghcr.GhcrCompilationProof.test_' + test, 'python')
+
+mutation('tests/release/ghcr_oci_proof.py',
+         "member.name.lstrip('./') == 'sample-tool'", 'True',
+         'test_ghcr.GhcrCompilationProof.test_compiled_binary_readback_and_absence', 'python')
+mutation('tests/release/ghcr_oci_proof.py',
+         "raise AssertionError('Compiled executable absent from image')", "return b''",
+         'test_ghcr.GhcrCompilationProof.test_compiled_binary_readback_and_absence', 'python')
+
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

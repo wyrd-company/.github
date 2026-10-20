@@ -1,6 +1,8 @@
 # relationships: validates: release-process
 """GHCR transport boundaries and actual parent renders; no public publication."""
 import copy
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import hashlib
 import importlib.util
 import json
@@ -8,10 +10,16 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tarfile
 import unittest
+from unittest.mock import patch
 
 from harness import ROOT, render, check_parts, load
 from model import model
+
+proof_spec = importlib.util.spec_from_file_location('ghcr_oci_proof', ROOT / 'tests/release/ghcr_oci_proof.py')
+ghcr_oci_proof = importlib.util.module_from_spec(proof_spec)
+exec(compile(Path(proof_spec.origin).read_text(), proof_spec.origin, 'exec'), ghcr_oci_proof.__dict__)
 
 spec = importlib.util.spec_from_file_location('ghcr', ROOT / 'release/targets/ghcr/publish.py')
 ghcr = importlib.util.module_from_spec(spec)
@@ -76,6 +84,67 @@ class GhcrPublisher(unittest.TestCase):
 
     def publish(self, transport, env=None):
         ghcr.publish(env or self.env, transport, self.root)
+
+    def assert_tool_failure_logged(self, prefix, remote=False, tag=False, writes=0):
+        transport = Transport()
+        stdout, stderr = io.StringIO(), io.StringIO()
+
+        def execute(args, **kwargs):
+            fails = args[:len(prefix)] == prefix
+            if tag and '@' in args[-1]:
+                fails = False
+            if remote and args[-1].startswith('oci-archive:'):
+                fails = False
+            if fails:
+                raise subprocess.CalledProcessError(23, args,
+                    output=b'original tool stdout synthetic-token\n',
+                    stderr=b'original tool diagnostic synthetic-token\n')
+            return subprocess.CompletedProcess(args, 0, stdout=transport(args, **kwargs))
+
+        # Exercise the actual command() adapter as well as publication error paths.
+        with patch.object(ghcr.subprocess, 'run', side_effect=execute):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                with self.assertRaises((subprocess.CalledProcessError, RuntimeError)):
+                    ghcr.publish(self.env, root=self.root)
+        self.assertIn('original tool stdout', stdout.getvalue())
+        self.assertIn('original tool diagnostic', stderr.getvalue())
+        self.assertNotIn('synthetic-token', stdout.getvalue() + stderr.getvalue())
+        self.assertEqual(len(transport.writes()), writes)
+
+    def test_build_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['docker', 'buildx', 'build'])
+
+    def test_builder_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['docker', 'buildx', 'create'])
+
+    def test_login_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['skopeo', 'login'])
+
+    def test_local_inspect_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['skopeo', 'inspect'])
+
+    def test_remote_inspect_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['skopeo', 'inspect'], remote=True)
+
+    def test_copy_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['skopeo', 'copy'])
+
+    def test_tag_copy_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['skopeo', 'copy'], tag=True, writes=1)
+
+    def test_cleanup_failure_diagnostics(self):
+        self.assert_tool_failure_logged(['docker', 'buildx', 'rm'], writes=2)
+
+    def test_ghcr_unmeasured_denials_fail_closed(self):
+        # These are refusal fixtures, not receipts of an authenticated GHCR run.
+        for error in [b'403 Forbidden', b'404 Not Found', b'401 Unauthorized',
+                      b'denied: requested access to the resource is denied',
+                      b'502 Bad Gateway', b'TLS handshake timeout', b'unknown response']:
+            with self.subTest(error=error):
+                transport = Transport(error=error)
+                with self.assertRaisesRegex(RuntimeError, 'lookup failed'):
+                    self.publish(transport)
+                self.assertEqual(transport.writes(), [])
 
     def test_fresh_and_matching_retry(self):
         transport = Transport()
@@ -227,6 +296,49 @@ class GhcrPublisher(unittest.TestCase):
         build = [a for a, _ in transport.calls if a[:3] == ['docker', 'buildx', 'build']]
         self.assertEqual(len(build), 1)
         self.assertEqual(build[0][-1], str(self.root))
+
+
+class GhcrCompilationProof(unittest.TestCase):
+    def test_native_build_stage_contract(self):
+        build, final = ghcr_oci_proof.DOCKERFILE.split('FROM scratch\n')
+        self.assertIn('FROM --platform=$BUILDPLATFORM ', build)
+        self.assertIn('ARG TARGETOS', build)
+        self.assertIn('ARG TARGETARCH', build)
+        self.assertIn('GOOS=$TARGETOS GOARCH=$TARGETARCH go build', build)
+        self.assertNotIn('RUN ', final)
+        self.assertIn('COPY --from=build /out/sample-tool /sample-tool', final)
+
+    def test_compiled_binary_readback_and_absence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / 'image.tar'
+            def write_image(include_binary):
+                def add(archive, name, value):
+                    member = tarfile.TarInfo(name)
+                    member.size = len(value)
+                    archive.addfile(member, io.BytesIO(value))
+                layer = io.BytesIO()
+                with tarfile.open(fileobj=layer, mode='w') as archive:
+                    add(archive, 'unrelated', b'other')
+                    if include_binary:
+                        add(archive, './sample-tool', b'compiled output')
+                with tarfile.open(archive_path, 'w') as archive:
+                    add(archive, 'manifest.json', b'[{"Layers":["layer.tar"]}]')
+                    add(archive, 'layer.tar', layer.getvalue())
+            write_image(True)
+            self.assertEqual(ghcr_oci_proof.archive_binary(archive_path), b'compiled output')
+            write_image(False)
+            with self.assertRaisesRegex(AssertionError, 'executable absent'):
+                ghcr_oci_proof.archive_binary(archive_path)
+
+    def test_binary_machine_refuses_mislabeled_output(self):
+        for arch, machine in [('amd64', 62), ('arm64', 183)]:
+            binary = b'\x7fELF\x02\x01' + bytes(12) + machine.to_bytes(2, 'little')
+            self.assertEqual(ghcr_oci_proof.verify_binary(binary, arch), machine)
+            other = 'arm64' if arch == 'amd64' else 'amd64'
+            with self.assertRaises(AssertionError):
+                ghcr_oci_proof.verify_binary(binary, other)
+        with self.assertRaises(AssertionError):
+            ghcr_oci_proof.verify_binary(bytes(18) + (183).to_bytes(2, 'little'), 'arm64')
 
 
 @unittest.skipUnless(os.environ.get('TOHA_BIN'), 'TOHA_BIN is required')

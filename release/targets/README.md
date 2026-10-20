@@ -96,7 +96,11 @@ Select `--with ghcr`; `ghcr_units` lists Release Units separated by spaces.
 Each selected unit must require a release record. Its `path` holds the build
 context and `Dockerfile`. Use scratch or a similar minimal runnable final image;
 the Dockerfile supplies the executable, entry point and dependencies. Both
-Linux amd64 and arm64 are built. Pin build inputs and keep builds reproducible.
+Linux amd64 and arm64 are built on an amd64 runner without emulation. Compile
+in `FROM --platform=$BUILDPLATFORM` stages, using `TARGETOS` and `TARGETARCH`
+for the compiler target. The final stage copies the target binary and has no
+`RUN` instructions. Target-platform `RUN` instructions need emulation, which
+this job does not configure. Pin build inputs and keep builds reproducible.
 The parent validates unit identities at render time. Runtime refuses a missing
 Dockerfile before any builder, login or registry call.
 
@@ -109,7 +113,8 @@ and labels source, revision and version. The Dockerfile must also produce stable
 bytes; a changed base image or nondeterministic build causes a retry conflict.
 
 `ghcr_dry_run` defaults to false. Set it to true to build local OCI archives
-without registry lookup, login or push. The job uses automatic `GITHUB_TOKEN`,
+without GHCR lookup, login or push. BuildKit and base-image registry pulls may
+occur. The job uses automatic `GITHUB_TOKEN`,
 with `packages: write` only on `publish-ghcr`; no operator secret is declared.
 Publication stays behind the parent's successful release-record gate. Nothing
 in the tests publishes to a public registry.
@@ -142,12 +147,26 @@ These named tests use a transport boundary and make no public publication.
 `python3 tests/release/ghcr_oci_proof.py --scratch /absolute/new/directory
 --report /absolute/receipt.json` runs the opt-in real-tool proof: two fresh
 snapshots with different file times produce the same multi-platform OCI digest,
-Skopeo preserves it through a loopback-only registry, and the scratch entry
-point runs on amd64. It needs Docker, Buildx and Go; it pulls standard tool
+a pinned Go compiler runs in a native `BUILDPLATFORM` stage and cross-compiles
+both target executables, Skopeo preserves the digest through a loopback-only
+registry, both ELF machine types are read back from the images, and the scratch
+entry point runs on amd64. It needs Docker and Buildx; it pulls standard tool
 images but writes no public registry. The receipt starts incomplete and passes
 only after every assertion and cleanup succeeds.
-The authorized GitHub test repository is still required for a live workflow
-run and GHCR adoption proof.
+`GhcrCompilationProof.test_native_build_stage_contract` and
+`test_binary_machine_refuses_mislabeled_output` guard the compilation proof.
+The authorized GitHub test repository and an explicitly approved disposable
+private package destination are required for authenticated first-publication,
+matching-retry and conflicting-byte proof. Local registry results do not prove
+GHCR's answer to `GITHUB_TOKEN` for a never-published package.
+`GhcrPublisher.test_ghcr_unmeasured_denials_fail_closed` covers unrecognized
+denials as refusal fixtures; it is not a captured authenticated response.
+Failed tools print captured stdout and stderr, with the raw token redacted.
+`test_build_failure_diagnostics`, `test_builder_failure_diagnostics`,
+`test_login_failure_diagnostics`, `test_local_inspect_failure_diagnostics`,
+`test_remote_inspect_failure_diagnostics` and `test_copy_failure_diagnostics`
+check the diagnostic and failure outcome.
+
 
 ## Homebrew tap
 

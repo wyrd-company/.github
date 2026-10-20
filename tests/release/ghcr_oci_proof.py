@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # relationships: validates: release-process
-"""Opt-in real OCI proof: Docker, Buildx, Go; no public registry writes.
+"""Opt-in real OCI proof: Docker, Buildx; no public registry writes.
 
 Run with --scratch /absolute/empty/directory --report /absolute/receipt.json.
 Pulls standard BuildKit, Skopeo and registry images, builds two fresh source
@@ -10,10 +10,43 @@ import argparse
 import hashlib
 import json
 import os
+import io
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import uuid
+
+
+DOCKERFILE = """FROM --platform=$BUILDPLATFORM golang:1.25.3-alpine@sha256:aee43c3ccbf24fdffb7295693b6e33b21e01baec1b2a55acc351fde345e9ec34 AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY main.go .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w -buildid=' -o /out/sample-tool main.go
+FROM scratch
+COPY --from=build /out/sample-tool /sample-tool
+ENTRYPOINT ["/sample-tool"]
+"""
+
+
+def verify_binary(binary, arch):
+    # Inspect the compiled output, not only the platform label in its manifest.
+    assert binary[:6] == b'\x7fELF\x02\x01', 'Expected little-endian ELF64'
+    machine = int.from_bytes(binary[18:20], 'little')
+    assert machine == {'amd64': 62, 'arm64': 183}[arch], (arch, machine)
+    return machine
+
+
+def archive_binary(path):
+    with tarfile.open(path) as archive:
+        manifest = json.load(archive.extractfile('manifest.json'))[0]
+        for layer in reversed(manifest['Layers']):
+            with tarfile.open(fileobj=io.BytesIO(archive.extractfile(layer).read())) as files:
+                for member in files:
+                    if member.name.lstrip('./') == 'sample-tool':
+                        return files.extractfile(member).read()
+    raise AssertionError('Compiled executable absent from image')
 
 
 def proof(scratch, report):
@@ -49,10 +82,9 @@ def proof(scratch, report):
         first = scratch / 'first'
         first.mkdir()
         (first / 'main.go').write_text('package main\nimport "fmt"\nfunc main() { fmt.Println("sample-tool") }\n')
-        for arch in ('amd64', 'arm64'):
-            run(['go', 'build', '-trimpath', '-ldflags=-s -w -buildid=', '-o', 'sample-' + arch, 'main.go'],
-                cwd=first, env=dict(env, CGO_ENABLED='0', GOOS='linux', GOARCH=arch))
-        (first / 'Dockerfile').write_text('FROM scratch\nARG TARGETARCH\nCOPY sample-${TARGETARCH} /sample-tool\nENTRYPOINT ["/sample-tool"]\n')
+        (first / 'Dockerfile').write_text(DOCKERFILE)
+        result['dockerfile'] = DOCKERFILE
+        result['runner_arch'] = run(['docker', 'info', '--format', '{{.Architecture}}']).decode().strip()
         second = scratch / 'second'
         shutil.copytree(first, second)
         for file in second.iterdir():
@@ -84,10 +116,15 @@ def proof(scratch, report):
         assert skopeo('inspect', '--tls-verify=false', '--raw', tag) == raw[0]
         # A second fresh archive is a matching retry, independent of tar metadata.
         assert hashlib.sha256(skopeo('inspect', '--raw', 'oci-archive:' + str(scratch / 'second.tar'))).hexdigest() == digest[7:]
-        # Load the host architecture and exercise the scratch image's entry point.
-        skopeo('copy', '--src-tls-verify=false', '--override-arch=amd64', tag,
-               'docker-archive:' + str(scratch / 'runnable.tar') + ':sample-tool:proof')
-        run(['docker', 'load', '--input', str(scratch / 'runnable.tar')])
+        # Read both target executables back; only amd64 is executed on this host.
+        result['compiled_machines'] = {}
+        for arch in ('amd64', 'arm64'):
+            output = scratch / (arch + '.tar')
+            skopeo('copy', '--src-tls-verify=false', '--override-arch=' + arch, tag,
+                   'docker-archive:' + str(output) + ':sample-tool:proof')
+            result['compiled_machines'][arch] = verify_binary(archive_binary(output), arch)
+        save()
+        run(['docker', 'load', '--input', str(scratch / 'amd64.tar')])
         image_loaded = True
         assert run(['docker', 'run', '--rm', 'sample-tool:proof']).strip() == b'sample-tool'
     finally:
@@ -100,7 +137,7 @@ def proof(scratch, report):
         save()
     result['status'] = 'PASS'
     save()
-    print('PASS real OCI snapshot, digest, version tag, platforms and runnable scratch image: ' + result['digest'])
+    print('PASS real OCI source compilation, ELF architectures, snapshot, digest, version tag and runnable scratch image: ' + result['digest'])
 
 
 if __name__ == '__main__':
