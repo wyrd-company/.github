@@ -9,6 +9,7 @@ ignore:
   - release/targets/ghcr/*.env.yml
   - release/targets/crates-io/publish-crates-io.yml
   - release/targets/homebrew-tap/publish-*.yml
+  - release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml
   - release/template/**/*.yml
 rules:
   brackets: disable

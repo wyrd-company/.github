@@ -11,6 +11,7 @@ data:
     npm: !include targets/npm/target.yml
     ghcr: !include targets/ghcr/target.yml
     homebrew-tap: !include targets/homebrew-tap/target.yml
+    repo-wyrd-foo: !include targets/repo-wyrd-foo/target.yml
 interview:
   - id: release_model
     type: document
@@ -21,7 +22,7 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: [crates-io, npm, ghcr, homebrew-tap]
+    options: [crates-io, npm, ghcr, homebrew-tap, repo-wyrd-foo]
     default: []
   - id: npm_units
     type: text
@@ -91,6 +92,42 @@ interview:
     type: confirm
     prompt: Show the Homebrew formula diff without committing to the tap?
     when: "'homebrew-tap' in targets"
+    default: false
+  - id: repo_wyrd_foo_units
+    type: text
+    prompt: Release Units submitted to repo.wyrd.foo (space separated)
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: repo_wyrd_foo_action_sha
+    type: text
+    prompt: Qualified submit-release Action commit on remote main
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      regex: '^[0-9a-f]{40}$'
+  - id: repo_wyrd_foo_action_tag
+    type: text
+    prompt: Qualified submit-release Action release tag (bare SemVer)
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      # yamllint disable rule:line-length
+      regex: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+      # yamllint enable rule:line-length
+  - id: repo_wyrd_foo_manifest_asset
+    type: text
+    prompt: Package selection manifest release asset name
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    default: release-manifest.json
+    validate:
+      regex: '^[A-Za-z0-9][A-Za-z0-9._+-]*$'
+  - id: repo_wyrd_foo_dry_run
+    type: confirm
+    prompt: Validate package selection without submitting to repo.wyrd.foo?
+    when: "'repo-wyrd-foo' in targets"
     default: false
   - id: credential_answers
     computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

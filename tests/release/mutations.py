@@ -30,6 +30,44 @@ def mutation(file, old, new, test, suite='node', site_tests=None):
     CASES.append(Mutation(file, old, new, tuple(site_tests or [test]), suite))
 
 
+r = 'release/targets/repo-wyrd-foo/prepare.js'
+for old, new, test in [
+    ("model.release_units[unit]?.release_record !== 'required'", 'false', 'none in the whole selection refuses before submission'),
+    ("!['true', 'false'].includes(env.PACKAGE_DRY_RUN)", 'false', 'dry-run choice is required'),
+    ('!selected.includes(unit)', 'false', 'matrix is limited to selected units'),
+    ("!env.RELEASE_UNITS.split(' ').includes(unit)", 'false', 'unresolved units do not read assets or submit'),
+    ('!release', 'false', 'missing release refuses'),
+    ('!stable.test(release.version)', 'false', 'only stable bare tags are supported by publisher'),
+    ('release.tag !== release.version', 'false', 'only stable bare tags are supported by publisher'),
+    ('record.draft !== false', 'false', 'draft record refuses'),
+    ('record.tag_name !== release.tag', 'false', 'different record tag refuses'),
+    ('manifests.length !== 1', 'false', 'manifest asset must be present exactly once'),
+    ("!/^sha256:[0-9a-f]{64}$/.test(asset.digest || '')", 'false', 'missing manifest digest refuses'),
+    ("'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex') !== asset.digest", 'false', 'changed manifest download refuses'),
+    ('manifest.tag !== release.tag', 'false', 'manifest tag must match source'),
+    ('manifest.version !== release.version', 'false', 'manifest version must match source'),
+    ('manifest.source?.commit !== env.RELEASE_SOURCE_SHA', 'false', 'manifest commit must match source'),
+    ('manifest.source?.repository !== `${context.repo.owner}/${context.repo.repo}`', 'false', 'manifest repository must match source'),
+    ("names.get(item.filename) !== 'sha256:' + item.sha256", 'false', 'package artifact must match release-record digest'),
+    ("env.PACKAGE_DRY_RUN === 'true'", 'false', 'dry run never enables submission'),
+]: mutation(r, old, new, 'test_repo_wyrd_foo.PackageRuntime.test_' + test.replace(' ', '_').replace('-', '_'), 'python')
+mutation('release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
+    "steps.package.outputs.submit == 'true'", "'true'",
+    'test_repo_wyrd_foo.PackagePart.test_selected_and_removed', 'python')
+mutation('release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
+    "      PACKAGE_MODEL: {{ release_model | tojson | replace('$', '\\\\u0024') | toyaml }}", "      PACKAGE_MODEL: {{ release_model | tojson | replace('unmatched-dollar', '\\\\u0024') | toyaml }}",
+    'test_repo_wyrd_foo.PackagePart.test_model_and_answers_are_literal_data', 'python')
+
+mutation('release/template.yml', "      regex: '^[0-9a-f]{40}$'", "      regex: '.*'",
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+mutation('release/template.yml', "      regex: '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$'", "      regex: '.*'",
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+
+mutation('release/template.yml', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$\'', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'.*\'',
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+mutation('release/template.yml', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'^[A-Za-z0-9][A-Za-z0-9._+-]*$\'', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'.*\'',
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+
 r = 'release/partials/resolve.js'
 for old, test in [
     ("!/^[0-9a-f]{40}$/.test(source)", 'resolve guard: source-sha spelling'),

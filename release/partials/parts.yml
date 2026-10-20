@@ -30,3 +30,8 @@
 {% set extra_env %}{% include 'targets/homebrew-tap/publish-homebrew-tap.env.yml' %}{% endset %}
 {{ ns.part_job('publish-homebrew-tap', homebrew_tap_units, 'publish', body, extra_env) }}
 {% endif %}
+
+{% if 'repo-wyrd-foo' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml' %}{% endset %}
+{{ ns.part_job('publish-repo-wyrd-foo', repo_wyrd_foo_units, 'publish', body) }}
+{% endif %}

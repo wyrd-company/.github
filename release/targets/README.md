@@ -193,3 +193,64 @@ Evidence: `HomebrewPart.test_selected_contract_and_emitted_dry_run`,
 These named tests exercise the emitted entry point and separate source/tap
 API boundaries without remote writes. Live GitHub workflow proof remains with
 the parent's authorized test repository work.
+
+## repo.wyrd.foo
+
+Select `--with repo-wyrd-foo`. `repo_wyrd_foo_units` lists the Release Units
+submitted, separated by spaces. Each selected unit must require a release
+record. The publisher supports stable bare SemVer tags equal to the version;
+prerelease and prefixed product tags are refused before submission. Package
+builds belong to the product's build part. They must upload the Linux package
+assets and a package selection manifest as release assets using
+the parent's `release-asset+<unit>+<name>` artifact convention.
+
+`repo_wyrd_foo_manifest_asset` names the manifest asset in each unit's GitHub
+Release (default `release-manifest.json`). It follows repo.wyrd.foo's
+`schemas/release-manifest.schema.json` for the pinned Action. The current Action
+requires APT, RPM and AUR selection plus six artifacts. The agreed AUR removal
+from repo.wyrd.foo is separate work; qualify the manifest contract against the
+Action release selected at adoption. This part does not generate AUR metadata.
+The part downloads the manifest through the release API, verifies its SHA256
+against the release-record digest, checks its source and tag, and passes the
+release-record asset names and digests to the submission Action. The Action
+validates the complete manifest and rechecks the published assets before any
+inbox write. The separate publisher owns signing and consumer
+observation. Submission success does not establish consumer visibility.
+
+Supply `repo_wyrd_foo_action_sha` and `repo_wyrd_foo_action_tag` explicitly.
+Neither has a default. The SHA must be 40 lowercase hexadecimal characters; the
+tag must be bare SemVer. Form validation does not qualify a release identity.
+At adoption/UAT, after an approved repo.wyrd.foo release exists, use its real tag
+and full peeled commit reachable from remote main. Match the separate consumer
+example's pin. Run from that repo.wyrd.foo checkout:
+
+```sh
+task submission:qualify PUBLICATION_CALLER=/path/to/rendered/release.yml
+```
+
+The gate checks the rendered workflow's one submission Action reference, tag,
+main ancestry and runtime agreement. Synthetic test pins validate forms only;
+they are not published Action identities. No placeholder appears in rendered
+workflows. No release or public tag is authorized by rendering or qualification.
+
+Configure repository or organization secrets `REPO_WYRD_FOO_PUBLISHER_APP_ID`
+and `REPO_WYRD_FOO_PUBLISHER_PRIVATE_KEY`. Preflight checks both by name and
+purpose. The publish job requests only `contents: read`; the Action mints a
+Contents-write token scoped to repo.wyrd.foo. Operators must limit the App
+installation to that repository and configure the inbox/main branch rules as
+described in repo.wyrd.foo's submission guide. No publisher signing or AUR
+credential enters the product workflow.
+
+`repo_wyrd_foo_dry_run` defaults to false. Set it to true to validate the manifest
+and release assets without invoking the submission Action or minting an App
+token. Preflight still checks the declared credential names. Every matrix leg
+validates the entire selected unit set before enabling submission. Unreleased
+units skip submission. An identical immutable submission succeeds on retry;
+a different manifest for the same product/version is refused by the Action.
+The Action re-dispatches the same inbox commit after an interrupted publisher.
+
+Local evidence: `PackagePart` validates selected/deselected jobs and credentials,
+the operator pin answers and the emitted dry-run entry point. `PackageRuntime`
+executes record, digest, source and dry-run guards with a fake GitHub transport.
+The submission Action's named retry/conflict tests provide its retry evidence;
+live workflow and pin qualification receipts belong to adoption/UAT.
