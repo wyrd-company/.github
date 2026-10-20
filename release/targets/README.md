@@ -28,6 +28,8 @@ crates.io version API checksum, including an accepted submission still waiting
 for the sparse index. Matching bytes succeed; different bytes fail. A new
 submission is confirmed with the same checksum. A Cargo index-wait failure
 stops dependent crates; rerun after the registry has indexed the submission.
+Failed Cargo publication emits its captured stdout and stderr. Failed version
+lookups report the numeric HTTP status without the server reason or response body.
 The part adds no polling or timeout mechanic. Cargo's own indexing wait applies.
 
 Evidence: `CratesPart.test_selected_and_deselected_contracts`,
@@ -35,7 +37,7 @@ Evidence: `CratesPart.test_selected_and_deselected_contracts`,
 `CratesPublisher.test_matching_published_or_submitted_retry`,
 `CratesPublisher.test_different_published_artifact_refused`,
 `CratesPublisher.test_index_wait_failure_stops_dependents_then_retry_adopts_submission`,
-and `CratesPublisher.test_real_cargo_metadata_and_reproducible_package`.
+and `CratesPublisher.test_real_cargo_fresh_checkouts_reproduce_package_checksum`.
 Live workflow proof requires the authorized test repository tracked by the
 parent's live-proof work. No local test publishes to a public registry.
 

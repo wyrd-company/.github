@@ -9,7 +9,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import traceback
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -65,6 +67,61 @@ class CratesPart(unittest.TestCase):
                     self.assertNotIn('publish-crates-io', parsed['jobs'])
                     self.assertNotIn('CARGO_REGISTRY_TOKEN', text)
                 subprocess.run(['actionlint', str(workflow)], check=True)
+
+    def test_emitted_publish_failure_logs_both_cargo_streams(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            value = cargo_model()
+            value['release_units']['sample-tool']['projections'] = [projection('Cargo.toml')]
+            _, workflow, _ = render(root, value, selected=['crates-io'], answers={'crates_io_units': 'sample-tool'})
+            step = load(workflow)['jobs']['publish-crates-io']['steps'][-1]
+            archive = root / 'target/package/sample-core-1.2.3.crate'
+            archive.parent.mkdir(parents=True)
+            archive.write_bytes(b'fixture archive')
+            metadata = dict(packages=[dict(name='sample-core', version='1.2.3',
+                manifest_path=str(root / 'Cargo.toml'), dependencies=[], publish=None)],
+                target_directory=str(root / 'target'))
+            binary = root / 'bin'
+            binary.mkdir()
+            cargo = binary / 'cargo'
+            cargo.write_text('#!' + sys.executable + '\n' +
+                'import sys\n' +
+                'if sys.argv[1] == "metadata": print(' + repr(json.dumps(metadata)) + ')\n' +
+                'if sys.argv[1] == "publish":\n'
+                '    print("cargo-stdout-marker", flush=True)\n'
+                '    print("cargo-stderr-marker", file=sys.stderr, flush=True)\n'
+                '    sys.exit(101)\n')
+            cargo.chmod(0o755)
+            # Stub only the HTTP transport in the emitted Python process.
+            # Even an unexpected lookup cannot reach the public registry.
+            (root / 'sitecustomize.py').write_text(
+                'import io, json, os\n'
+                'from urllib import request, error\n'
+                'calls = 0\n'
+                'def lookup(*args, **kwargs):\n'
+                '    global calls\n'
+                '    calls += 1\n'
+                '    code = 404 if calls == 1 else int(os.environ["LOOKUP_STATUS"])\n'
+                '    if code != 200:\n'
+                '        raise error.HTTPError("https://crates.io", code, "private reason", {}, io.BytesIO(b"private body"))\n'
+                '    return io.BytesIO(json.dumps({"version": {"crate": "sample-core", "num": "1.2.3", "checksum": '
+                + repr(hashlib.sha256(archive.read_bytes()).hexdigest()) + '}}).encode())\n'
+                'request.urlopen = lookup\n')
+            env = dict(os.environ, **step['env'])
+            env.update(PATH=str(binary) + os.pathsep + os.environ['PATH'], PYTHONPATH=str(root),
+                       RELEASE_JSON=json.dumps({'sample-tool': {'version': '1.2.3'}}), RELEASE_UNITS='sample-tool')
+            for status, message in [(404, 'Crate submission not confirmed with matching bytes'),
+                                    (500, 'crates.io version lookup failed (HTTP 500)'),
+                                    (200, 'Cargo did not finish registry indexing; retry the release')]:
+                with self.subTest(status=status):
+                    result = subprocess.run(['bash', '-e', '-c', step['run']], cwd=root,
+                                            env=dict(env, LOOKUP_STATUS=str(status)), text=True, capture_output=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('cargo-stdout-marker', result.stdout)
+                    self.assertIn('cargo-stderr-marker', result.stderr)
+                    self.assertIn(message, result.stderr)
+                    self.assertNotIn('private reason', result.stderr)
+                    self.assertNotIn('private body', result.stderr)
 
     def test_model_dollar_data_stays_literal(self):
         value = cargo_model()
@@ -213,7 +270,7 @@ class CratesPublisher(unittest.TestCase):
     def ensure(self, observed, returncode=0, allow_publish=True):
         with patch.object(self.pub, 'cargo', return_value=json.dumps(self.metadata)) as cargo:
             with patch.object(self.pub, 'checksum', side_effect=itertools.chain(observed, itertools.repeat(observed[-1]))):
-                with patch.object(self.pub.subprocess, 'run', return_value=subprocess.CompletedProcess([], returncode)) as publish:
+                with patch.object(self.pub.subprocess, 'run', return_value=subprocess.CompletedProcess([], returncode, stdout=b'', stderr=b'')) as publish:
                     if not allow_publish:
                         publish.side_effect = lambda *a, **kw: self.fail('Existing conflicting artifact reached upload')
                     self.pub.ensure(self.lib)
@@ -273,8 +330,28 @@ class CratesPublisher(unittest.TestCase):
                 if code == 404:
                     self.assertIsNone(self.pub.checksum('sample-core', '1.2.3'))
                 else:
-                    with self.assertRaisesRegex(RuntimeError, '^crates.io version lookup failed$'):
+                    with self.assertRaisesRegex(RuntimeError, rf'^crates.io version lookup failed \(HTTP {code}\)$'):
                         self.pub.checksum('sample-core', '1.2.3')
+
+    def assert_lookup_status(self, code):
+        error = HTTPError('https://crates.io', code, 'private server reason', {}, io.BytesIO(b'private body'))
+        with patch.object(self.pub, 'urlopen', side_effect=error):
+            with self.assertRaises(RuntimeError) as raised:
+                self.pub.checksum('sample-core', '1.2.3')
+        self.assertEqual(str(raised.exception), f'crates.io version lookup failed (HTTP {code})')
+        formatted = ''.join(traceback.format_exception(raised.exception))
+        self.assertNotIn('private server reason', formatted)
+        self.assertNotIn('private body', formatted)
+
+    def test_lookup_authentication_status_without_private_text(self):
+        self.assert_lookup_status(401)
+        self.assert_lookup_status(403)
+
+    def test_lookup_rate_limit_status_without_private_text(self):
+        self.assert_lookup_status(429)
+
+    def test_lookup_server_status_without_private_text(self):
+        self.assert_lookup_status(500)
 
     def test_real_cargo_multi_crate_workspace_order(self):
         (self.root / 'Cargo.toml').write_text('[workspace]\nmembers=["lib","cli"]\nresolver="2"\n')
@@ -289,16 +366,43 @@ class CratesPublisher(unittest.TestCase):
         self.assertEqual([p['name'] for p in self.pub.plan(self.value, ['sample-tool'], self.releases)],
                          ['sample-core', 'sample-cli'])
 
-    def test_real_cargo_metadata_and_reproducible_package(self):
-        # Real Cargo proves adapter paths/native names and checksum stability.
-        (self.root / 'src').mkdir()
-        (self.root / 'src/lib.rs').write_text('pub fn value() -> u8 { 7 }\n')
-        (self.root / 'Cargo.toml').write_text('[package]\nname="sample-core"\nversion="1.2.3"\nedition="2021"\n')
-        self.pub.cargo('generate-lockfile', '--offline')
-        self.value['release_units']['sample-tool']['projections'] = [projection('Cargo.toml')]
-        packages = self.pub.plan(self.value, ['sample-tool'], self.releases)
-        self.assertEqual([p['name'] for p in packages], ['sample-core'])
-        self.pub.cargo('package', '--locked', '--offline')
-        first = (self.root / 'target/package/sample-core-1.2.3.crate').read_bytes()
-        self.pub.cargo('package', '--locked', '--offline')
-        self.assertEqual((self.root / 'target/package/sample-core-1.2.3.crate').read_bytes(), first)
+    def test_real_cargo_fresh_checkouts_reproduce_package_checksum(self):
+        # Commit once; each runner gets its own checkout and Cargo target tree.
+        source = self.root / 'source'
+        (source / 'src').mkdir(parents=True)
+        (source / 'src/lib.rs').write_text('pub fn value() -> u8 { 7 }\n')
+        (source / 'Cargo.toml').write_text('[package]\nname="sample-core"\nversion="1.2.3"\nedition="2021"\n')
+        (source / '.gitignore').write_text('/target/\n')
+        subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=source, check=True, capture_output=True)
+        def git(cwd, *args):
+            return subprocess.check_output(['git', '-C', str(cwd), *args], text=True).strip()
+        git(source, 'init', '-q')
+        git(source, 'add', '.')
+        git(source, '-c', 'user.name=Example', '-c', 'user.email=example@example.invalid', 'commit', '-qm', 'Fixture')
+        commit = git(source, 'rev-parse', 'HEAD')
+        checkouts = [self.root / 'runner-one', self.root / 'runner-two']
+        digests, targets = [], []
+        for index, checkout in enumerate(checkouts):
+            git(self.root, 'clone', '--no-local', str(source), str(checkout))
+            self.assertEqual(git(checkout, 'rev-parse', 'HEAD'), commit)
+            if index == 1:
+                for path in (checkout / 'Cargo.toml', checkout / 'Cargo.lock', checkout / 'src/lib.rs'):
+                    os.utime(path, (978307200, 978307200))
+            env = dict(os.environ, CARGO_TARGET_DIR=str(checkout / 'target'))
+            metadata = json.loads(subprocess.check_output(
+                ['cargo', 'metadata', '--offline', '--no-deps', '--format-version', '1'], cwd=checkout, env=env))
+            targets.append(Path(metadata['target_directory']))
+            self.value['release_units']['sample-tool']['projections'] = [projection(str(checkout / 'Cargo.toml'))]
+            with patch.dict(os.environ, env):
+                packages = self.pub.plan(self.value, ['sample-tool'], self.releases)
+            self.assertEqual([p['name'] for p in packages], ['sample-core'])
+            subprocess.run(['cargo', 'package', '--locked', '--offline'], cwd=checkout, env=env,
+                           check=True, capture_output=True)
+            archive = targets[-1] / 'package/sample-core-1.2.3.crate'
+            digests.append(hashlib.sha256(archive.read_bytes()).hexdigest())
+            self.assertEqual(git(checkout, 'status', '--porcelain'), '')
+        self.assertNotEqual(checkouts[0], checkouts[1])
+        self.assertNotEqual(targets[0], targets[1])
+        self.assertNotEqual((checkouts[0] / 'src/lib.rs').stat().st_mtime,
+                            (checkouts[1] / 'src/lib.rs').stat().st_mtime)
+        self.assertEqual(digests[0], digests[1])

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -65,7 +66,7 @@ def checksum(name, version):
     except HTTPError as error:
         if error.code == 404:
             return None
-        raise RuntimeError('crates.io version lookup failed') from None
+        raise RuntimeError(f'crates.io version lookup failed (HTTP {error.code})') from None
     if value['crate'] != name or value['num'] != version:
         raise ValueError('crates.io returned a different crate version')
     result = value['checksum']
@@ -92,6 +93,11 @@ def ensure(package):
     # successful upload. Inspect its checksum before deciding this run failed.
     result = subprocess.run(['cargo', 'publish', '--locked', '--registry', 'crates-io', '--manifest-path', manifest],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        sys.stdout.buffer.write(result.stdout)
+        sys.stdout.buffer.flush()
+        sys.stderr.buffer.write(result.stderr)
+        sys.stderr.buffer.flush()
     observed = checksum(name, version)
     if observed != expected:
         raise ValueError('Crate submission not confirmed with matching bytes')

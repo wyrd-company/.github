@@ -187,7 +187,7 @@ mutation(r, "value['crate'] != name or value['num'] != version", 'False', 'test_
 mutation(r, 'not isinstance(result, str) or len(result) != 64', 'False', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
 mutation(r, 'if observed is not None:', 'if False:', 'test_crates_io.CratesPublisher.test_matching_published_or_submitted_retry', 'python')
 mutation(r, 'if observed != expected:', 'if False:', 'test_crates_io.CratesPublisher.test_different_published_artifact_refused', 'python', site_tests=['test_crates_io.CratesPublisher.test_different_published_artifact_refused', 'test_crates_io.CratesPublisher.test_unconfirmed_or_conflicting_submission_refused'])
-mutation(r, 'if result.returncode:', 'if False:', 'test_crates_io.CratesPublisher.test_index_wait_failure_stops_dependents_then_retry_adopts_submission', 'python')
+mutation(r, 'if result.returncode:\n        raise RuntimeError', 'if False:\n        raise RuntimeError', 'test_crates_io.CratesPublisher.test_index_wait_failure_stops_dependents_then_retry_adopts_submission', 'python')
 mutation(r, "& set(os.environ['RELEASE_UNITS'].split())", '', 'test_crates_io.CratesPublisher.test_only_selected_released_units', 'python')
 mutation(r, "raise ValueError('Cargo publication dependency cycle')", 'return ordered', 'test_crates_io.CratesPublisher.test_dependency_cycle_refused', 'python')
 mutation(r, "d.get('path') and ", '', 'test_crates_io.CratesPublisher.test_external_dependency_does_not_constrain_selected_crate', 'python')
@@ -202,6 +202,28 @@ mutation(r, "Path(p['manifest_path']).resolve() == Path(manifest).resolve()", 'T
 mutation(r, "package.get('publish') is not None and ", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
 mutation(r, " and 'crates-io' not in package['publish']", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
 mutation('release/targets/crates-io/publish-crates-io.yml', r" | replace('$', '\\u0024')", '', 'test_crates_io.CratesPart.test_model_dollar_data_stays_literal', 'python')
+
+# Diagnostics and fresh-checkout retry agreements.
+mutation(r, 'if result.returncode:\n        sys.stdout', 'if False:\n        sys.stdout',
+         'test_crates_io.CratesPart.test_emitted_publish_failure_logs_both_cargo_streams', 'python')
+mutation(r, 'sys.stdout.buffer.write(result.stdout)', 'pass',
+         'test_crates_io.CratesPart.test_emitted_publish_failure_logs_both_cargo_streams', 'python')
+mutation(r, 'sys.stderr.buffer.write(result.stderr)', 'pass',
+         'test_crates_io.CratesPart.test_emitted_publish_failure_logs_both_cargo_streams', 'python')
+mutation(r, '(HTTP {error.code})', '(HTTP unknown)',
+         'test_crates_io.CratesPublisher.test_lookup_authentication_status_without_private_text', 'python')
+mutation(r, '(HTTP {error.code})', '(HTTP {error})',
+         'test_crates_io.CratesPublisher.test_lookup_rate_limit_status_without_private_text', 'python')
+mutation(r, '(HTTP {error.code})', '(HTTP 429)',
+         'test_crates_io.CratesPublisher.test_lookup_server_status_without_private_text', 'python')
+mutation(r, ') from None', ') from error',
+         'test_crates_io.CratesPublisher.test_lookup_authentication_status_without_private_text', 'python')
+# Corrupt only the independently packaged second archive so that comparison
+# must observe bytes from both fresh checkouts.
+mutation('tests/release/test_crates_io.py',
+         "digests.append(hashlib.sha256(archive.read_bytes()).hexdigest())",
+         "digests.append(hashlib.sha256(archive.read_bytes() + (b'changed' if index == 1 else b'')).hexdigest())",
+         'test_crates_io.CratesPublisher.test_real_cargo_fresh_checkouts_reproduce_package_checksum', 'python')
 
 # npm publication guards execute through named tests with real npm pack.
 r = 'release/targets/npm/npm.js'
