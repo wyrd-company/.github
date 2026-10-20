@@ -50,9 +50,9 @@ class LiveProof(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             report = Path(tmp) / 'mutations.json'
             report.write_text('{"status":"PASS"}')
-            case = ('release/template.yml', 'absent-mutation-source', '', 'unused', 'node')
+            case = mutations.Mutation('release/template.yml', 'absent-mutation-source', '', ('unused',), 'node')
             with patch('mutations.CASES', [case]):
-                with self.assertRaisesRegex(AssertionError, 'source not found'):
+                with self.assertRaisesRegex(AssertionError, 'expected 1 matches, observed 0'):
                     mutations.run(report)
             import json
             self.assertEqual(json.loads(report.read_text())['status'], 'INCOMPLETE')

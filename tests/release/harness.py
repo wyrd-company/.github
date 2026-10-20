@@ -104,6 +104,36 @@ def render(root, model, samples=0, selected=None, answers=None, omit_publish=Fal
     return template, workflow, supplied
 
 
+def check_condition(expression):
+    """Check grouping using GitHub's single-quoted, doubled-quote strings.
+
+    A backslash is literal in GitHub expressions; it does not escape a quote.
+    This checks containment, not the full GitHub expression grammar.
+    """
+    depth = 0
+    quoted = False
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        if char == "'":
+            if quoted and index + 1 < len(expression) and expression[index + 1] == "'":
+                index += 2
+                continue
+            quoted = not quoted
+        elif not quoted:
+            if char == '(':
+                depth += 1
+            elif char == ')':
+                depth -= 1
+                if depth < 0:
+                    raise ValueError('Unbalanced part condition parentheses: unexpected closing parenthesis')
+        index += 1
+    if quoted:
+        raise ValueError('Unterminated part condition string')
+    if depth != 0:
+        raise ValueError('Unbalanced part condition parentheses: missing closing parenthesis')
+
+
 def check_parts(template, workflow, selected, answers):
     """Reject duplicates before parsing workflow YAML; YAML also rejects duplicate keys."""
     jobs_seen, credentials_seen = set(), set()
@@ -174,5 +204,21 @@ def check_parts(template, workflow, selected, answers):
                 entry = {'units': units, 'job': body}
                 if extra:
                     entry['if'] = extra[5:-1]
+                    check_condition(entry['if'])
                 jsonschema.validate(entry, json.loads((template / 'schemas/publish-job.schema.json').read_text()))
     return parsed
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Validate rendered release part interfaces')
+    parser.add_argument('--template', type=Path, required=True)
+    parser.add_argument('--workflow', type=Path, required=True)
+    parser.add_argument('--answers', type=Path, required=True, help='JSON document with settled answers, including targets')
+    args = parser.parse_args()
+    answers = json.loads(args.answers.read_text())['answers']
+    try:
+        check_parts(args.template, args.workflow, answers['targets'], answers)
+    except (AssertionError, ValueError, jsonschema.ValidationError) as error:
+        parser.exit(1, str(error) + '\n')
+    print('PASS: rendered part interfaces')

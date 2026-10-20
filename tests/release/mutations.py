@@ -2,8 +2,10 @@
 # relationships: validates: release-process
 """Sole-kill proof; each mutation must fail its named behavioral test."""
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -13,8 +15,19 @@ ROOT = Path(__file__).resolve().parents[2]
 CASES = []
 
 
-def mutation(file, old, new, test, suite='node'):
-    CASES.append((file, old, new, test, suite))
+@dataclass(frozen=True)
+class Mutation:
+    file: str
+    old: str
+    new: str
+    tests: tuple
+    suite: str = 'node'
+
+
+def mutation(file, old, new, test, suite='node', site_tests=None):
+    # One expected test per text occurrence, in source order. Repeated text is
+    # never silently reduced to its first occurrence.
+    CASES.append(Mutation(file, old, new, tuple(site_tests or [test]), suite))
 
 
 r = 'release/partials/resolve.js'
@@ -54,7 +67,8 @@ for old, test in [
     ('releases.length > 1', 'record rejects: two releases, no assets'),
     ('existing.some(item => !files.has(item.name))', 'record rejects: unexpected draft asset, no assets'),
     ('readBack.id !== record.id', 'record read-back guard: draft, prerelease, names, tag and identity, no assets'),
-]: mutation(r, old, 'false', test)
+]:
+    mutation(r, old, 'false', test, site_tests=([test, 'record retry: no release, no assets'] if old == '!release' else None))
 for old, test in [
     ('item.draft || ', 'record read-back guard: draft, prerelease, names, tag and identity, no assets'),
     ('item.tag_name !== release.tag || ', 'record read-back guard: draft, prerelease, names, tag and identity, no assets'),
@@ -90,7 +104,12 @@ for old, new, test in [
     (" | replace('$', '\\\\u0024')", '', 'test_scripts_have_no_github_expressions_and_data_is_single_render'),
     ('cancel-in-progress: false', 'cancel-in-progress: true', 'test_base_dispatch_outputs_and_pins'),
     ('contents: write', 'contents: read', 'test_base_dispatch_outputs_and_pins'),
-]: mutation(r, old, new, 'test_template.ReleaseTemplate.' + test, 'python')
+]:
+    mutation(r, old, new, 'test_template.ReleaseTemplate.' + test, 'python',
+             site_tests=['test_template.ReleaseTemplate.' + name for name in (
+                 'test_resolve_model_data_stays_literal',
+                 'test_preflight_credential_data_stays_literal',
+                 'test_record_job_model_data_stays_literal')] if 'replace' in old else None)
 mutation('tests/release/harness.py', 'assert job not in jobs_seen,', 'assert True,', 'test_template.ReleaseTemplate.test_duplicate_job_keys_across_parts_fail', 'python')
 mutation('tests/release/harness.py', 'assert key not in credentials_seen,', 'assert True,', 'test_template.ReleaseTemplate.test_duplicate_credential_keys_across_parts_fail', 'python')
 # Remove the vendored root. The proxy observation, rather than an eventual render
@@ -109,7 +128,10 @@ for old, new in [
     ('"not": { "pattern": "^(RELEASE_|GITHUB_)" }', '"not": { "pattern": "NEVERMATCH" }'),
     (json.dumps(schema['$defs']['step']['properties']['uses']['pattern']), '".*"'),
     ('"minLength": 1,\n          "not": { "pattern": "\\\\$\\\\{\\\\{" }', '"minLength": 1,\n          "not": { "pattern": "NEVERMATCH" }'),
-]: mutation(r, old, new, 'test_template.InternalSchemas.test_schema_guards', 'python')
+]:
+    mutation(r, old, new, 'test_template.InternalSchemas.test_schema_guards', 'python',
+             site_tests=['test_template.InternalSchemas.test_step_if_expression_guard',
+                         'test_template.InternalSchemas.test_run_expression_guard'] if 'minLength' in old else None)
 
 
 for old in ['needs.resolve.outputs.source_sha', 'needs.resolve.outputs.releases',
@@ -121,32 +143,91 @@ for old in ['inputs.source-sha', 'github.ref', 'github.sha', 'github.event.repos
              'test_template.ReleaseTemplate.test_base_dispatch_outputs_and_pins', 'python')
 
 
-def run(report):
-    results = []
-    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    report.write_text(json.dumps({'status': 'INCOMPLETE', 'head': head, 'results': []}, indent=2) + '\n')
-    for index, (file, old, new, test, suite) in enumerate(CASES, 1):
-        target = ROOT / file
-        original = target.read_bytes()
+# Prove the harness's containment check and each refusal independently.
+for old, new, test in [
+    ("check_condition(entry['if'])", 'pass', 'test_template.ReleaseTemplate.test_unbalanced_condition_rejected_at_rendered_boundary'),
+    ('if depth < 0:', 'if False:', 'test_conditions.PartConditions.test_early_close_cannot_escape_parent_group'),
+    ('if depth != 0:', 'if False:', 'test_conditions.PartConditions.test_missing_close_is_rejected'),
+    ('if quoted:', 'if False:', 'test_conditions.PartConditions.test_unterminated_string_is_rejected'),
+    ('elif not quoted:', 'else:', 'test_conditions.PartConditions.test_nested_and_github_quoted_parentheses_are_literal'),
+]:
+    mutation('tests/release/harness.py', old, new, test, 'python')
+
+# Split self-mutation strings so the catalog itself is not a match site.
+for old, new, test in [
+    ('assert len(positions)' + ' == len(case.tests),', 'assert True,', 'test_zero_and_unexpected_match_counts_fail_before_running'),
+    ("assert sites, " + "'Mutation inventory is empty'", 'pass', 'test_empty_inventory_cannot_pass'),
+    ("status=" + "'INCOMPLETE'", "status='PASS'", 'test_interrupted_test_leaves_incomplete_report_and_restores_source'),
+    ("all(r['killed']" + " and r['restored']", "any(r['killed'] and r['restored']", 'test_surviving_second_site_fails_the_battery'),
+    ('target.write_' + 'bytes(original)', 'pass', 'test_each_repeated_site_is_applied_killed_and_restored'),
+    ('assert case.old and ' + 'case.old != case.new,', 'assert True,', 'test_empty_or_unchanged_mutation_is_refused'),
+    ('assert applied != source ' + 'and applied == mutated,', 'assert True,', 'test_failed_application_cannot_be_a_kill'),
+    ('head == final_head ' + 'and ', '', 'test_changed_head_cannot_pass'),
+    ("assert hashlib.sha256(original).hexdigest() == " + "site['original_sha256'],", 'assert True,', 'test_changed_source_cannot_use_stale_inventory'),
+]:
+    mutation('tests/release/mutations.py', old, new, 'test_mutations.MutationRunner.' + test, 'python')
+
+
+def inventory(root=ROOT, cases=None):
+    """Freeze every expected site before any source write or test invocation."""
+    sites = []
+    for index, case in enumerate(CASES if cases is None else cases, 1):
+        original = (root / case.file).read_bytes()
         source = original.decode()
-        occurrences = source.count(old)
-        if not occurrences:
-            raise AssertionError(f'Mutation {index}: source not found: {old}')
-        mutated = source.replace(old, new, 1)
-        if suite == 'python-network':
-            # An absent schema directory is a source error before resolution;
-            # use an existing empty directory to observe the actual fetch attempt.
-            empty = ROOT / 'release/missing-schemas'
-            empty.mkdir(exist_ok=False)
+        positions = [match.start() for match in re.finditer(re.escape(case.old), source)]
+        assert case.old and case.old != case.new, f'Mutation {index}: empty or unchanged mutation'
+        assert len(positions) == len(case.tests), (
+            f'Mutation {index}: expected {len(case.tests)} matches, observed {len(positions)}: {case.file}')
+        for occurrence, (offset, test) in enumerate(zip(positions, case.tests), 1):
+            sites.append(dict(index=index, site=f'{index}:{occurrence}', file=case.file,
+                occurrence=occurrence, line=source.count('\n', 0, offset) + 1, offset=offset,
+                expected_matches=len(case.tests), observed_matches=len(positions),
+                expected_applications=1, old=case.old, new=case.new, test=test, suite=case.suite,
+                original_sha256=hashlib.sha256(original).hexdigest()))
+    assert sites, 'Mutation inventory is empty'
+    return sites
+
+
+def run(report, root=ROOT, cases=None):
+    results = []
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    payload = dict(status='INCOMPLETE', head=head, inventory=[], results=results)
+
+    def save():
+        report.write_text(json.dumps(payload, indent=2) + '\n')
+
+    save()
+    sites = inventory(root, cases)
+    payload['inventory'] = sites
+    save()
+    for site in sites:
+        target = root / site['file']
+        original = target.read_bytes()
+        assert hashlib.sha256(original).hexdigest() == site['original_sha256'], 'Source changed since inventory'
+        source = original.decode()
+        offset = site['offset']
+        old, new, test, suite = (site[key] for key in ('old', 'new', 'test', 'suite'))
+        mutated = source[:offset] + new + source[offset + len(old):]
+        record = dict(site, applications=0, killed=False, restored=False, exit_code=None, output='')
+        results.append(record)
+        save()
+        empty = None
         command = (['node', '--test', '--test-name-pattern', '^' + re.escape(test) + '$', 'tests/release/runtime.test.cjs']
                    if suite == 'node' else [sys.executable, '-m', 'unittest', '-v', test])
-        env = None
-        if suite != 'node':
-            import os
-            env = dict(os.environ, PYTHONPATH=str(ROOT / 'tests/release'))
+        env = dict(os.environ, PYTHONPATH=str(root / 'tests/release'))
         try:
+            if suite == 'python-network':
+                empty = root / 'release/missing-schemas'
+                empty.mkdir(exist_ok=False)
             target.write_text(mutated)
-            result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True)
+            # Verify the exact single splice, including the untouched prefix and
+            # suffix, rather than assuming replace() applied the intended edit.
+            applied = target.read_text()
+            assert applied != source and applied == mutated, 'Mutation application failed'
+            record['applications'] = 1
+            record['mutated_sha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
+            save()
+            result = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True)
             output = result.stdout + result.stderr
             if suite == 'node':
                 killed = result.returncode != 0 and ('✖ ' + test in output or 'not ok 1 - ' + test in output)
@@ -154,23 +235,25 @@ def run(report):
                 killed = result.returncode != 0 and ('FAIL: ' + test.rsplit('.', 1)[1] in output)
             if suite == 'python-network':
                 killed = killed and 'Vendored resolution attempted network access' in output
-            record = {'index': index, 'file': file, 'old': old, 'new': new, 'applications': 1,
-                      'test': test, 'exit_code': result.returncode, 'killed': killed,
-                      'original_sha256': hashlib.sha256(original).hexdigest(), 'output': output}
-            results.append(record)
-            print(f'{index}/{len(CASES)} {"KILLED" if killed else "SURVIVED"} {test}', flush=True)
+            record.update(exit_code=result.returncode, killed=killed, output=output)
+            print(f"{site['site']} ({site['file']}:{site['line']}) {'KILLED' if killed else 'SURVIVED'} {test}", flush=True)
         finally:
             target.write_bytes(original)
-            assert target.read_bytes() == original, 'Mutation restoration failed'
-            if suite == 'python-network':
+            record['restored'] = target.read_bytes() == original
+            record['restored_sha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
+            save()
+            assert record['restored'], 'Mutation restoration failed'
+            if empty is not None and empty.exists():
                 empty.rmdir()
-        report.write_text(json.dumps({'status': 'INCOMPLETE', 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'results': results}, indent=2) + '\n')
-    passed = len(results) == len(CASES) and all(r['killed'] for r in results)
-    payload = json.loads(report.read_text()); payload['status'] = 'PASS' if passed else 'FAIL'
-    report.write_text(json.dumps(payload, indent=2) + '\n')
+    final_head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    passed = (head == final_head and len(results) == len(sites)
+              and {r['site'] for r in results} == {s['site'] for s in sites}
+              and all(r['killed'] and r['restored'] and r['applications'] == r['expected_applications'] for r in results))
+    payload.update(status='PASS' if passed else 'FAIL', final_head=final_head)
+    save()
     if not passed:
         raise SystemExit('Mutation proof FAILED; inspect ' + str(report))
-    print(f'PASS {len(results)}/{len(CASES)} sole-kills; report {report}')
+    print(f'PASS {len(results)}/{len(sites)} sole-kills across {len(CASES if cases is None else cases)} rows; report {report}')
 
 
 if __name__ == '__main__':

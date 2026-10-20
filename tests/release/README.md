@@ -38,6 +38,31 @@ The copy must be byte-identical to the named source path. Refresh from the first
 Intentional release tag that names line 1 and update the provenance and test
 source together. Keep the source commit available in `INTENTIONAL_DIR`.
 
+## Mutation sites and reports
+
+`mutations.py` inventories every row before writing source. A row declares one
+named killing test per expected text occurrence, in source order. Add a test
+entry for each repeated site; never select only the first occurrence. Each site
+runs independently and restores the source before the next site. Zero matches,
+unexpected match counts, an empty inventory, a surviving site, or an interrupted
+run cannot report `PASS`.
+
+The JSON report starts as `INCOMPLETE`. Its inventory and results identify the
+row and occurrence (`row:occurrence`), file, line, character offset, expected and
+observed match counts, expected and actual application count, named test, exit
+code, output, and original, mutated, and restored SHA256 values. Each application
+must change exactly one site. A named assertion failure counts as a kill; a test
+loader error does not. The final report requires every inventoried site to be
+killed and restored at the same Git head. `test_mutations.MutationRunner` covers
+repeated sites, unexpected counts, interruption, restoration, and surviving sites.
+
+The dollar-escape row has three tests: `test_resolve_model_data_stays_literal`,
+`test_preflight_credential_data_stays_literal`, and
+`test_record_job_model_data_stays_literal`. They render GitHub-expression text
+inside model and credential-purpose data and check its literal value while
+parent-owned expressions remain. The schema row uses separate
+`test_step_if_expression_guard` and `test_run_expression_guard` tests.
+
 ## Add a publication part
 
 Use `sample-target/` as a fixture for the interface. Add the target directory to
@@ -73,12 +98,36 @@ and optional environment partial, then call the parent's macro:
 
 The macro's optional last argument is the extra bare `if` expression. It can
 narrow the parent gate. The harness extracts it from the rendered condition and
-validates it against the part-job schema, including case-insensitive status
-function refusal. It validates the body after removing parent-owned fields;
-a duplicate parent field fails YAML parsing. External `uses` references retain
-their version comments. A model or declaration serialized into script data
-escapes dollar signs as JSON Unicode escapes so GitHub cannot evaluate data as
-an expression. Scripts use environment values.
+checks balanced parentheses outside GitHub expression strings, then validates
+it against the part-job schema, including case-insensitive status function
+refusal. Strings use single quotes; a doubled single quote escapes a single
+quote. Backslashes are literal. Parentheses inside strings do not affect
+grouping. Nested groups are accepted; an early closing parenthesis, a missing
+closing parenthesis, or an unterminated string fails validation. This is a
+grouping check, not a complete GitHub expression parser.
+`test_unbalanced_condition_rejected_at_rendered_boundary` rejects
+`false) || (true`; `test_valid_nested_and_quoted_conditions_render` checks valid
+nested and quoted conditions with actionlint. `test_conditions.PartConditions`
+covers individual grouping and string errors.
+
+Validate a rendered workflow with settled answers (including `targets`, units,
+and credential selectors) through the same boundary:
+
+```sh
+python3 tests/release/harness.py --template /path/to/release \
+  --workflow /path/to/project/.github/workflows/release.yml \
+  --answers /path/to/settled-answers.json
+```
+
+The answers file contains `{"answers": {"targets": ["sample-target"], ...}}`.
+Invalid grouping returns nonzero with `Unbalanced part condition parentheses`;
+an unterminated string reports `Unterminated part condition string`.
+`test_condition_validation_command_rejects_unbalanced_part` proves the command
+refusal at the rendered boundary. The harness validates the body after removing
+parent-owned fields; a duplicate parent field fails YAML parsing. External
+`uses` references retain their version comments. A model or declaration
+serialized into script data escapes dollar signs as JSON Unicode escapes so
+GitHub cannot evaluate data as an expression. Scripts use environment values.
 
 A build that provides assets uploads workflow artifacts named
 `release-asset+<unit>+<name>`. Files in those artifacts become release assets by

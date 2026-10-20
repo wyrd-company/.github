@@ -7,6 +7,9 @@ import re
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import harness
 
 import jsonschema
 from harness import ROOT, check_parts, dump, load, prepare, render
@@ -205,19 +208,114 @@ class ReleaseTemplate(unittest.TestCase):
                 template, workflow, answers = render(Path(tmp), model(), selected=selection, answers=answers)
                 check_parts(template, workflow, selection, answers)
 
-    def test_scripts_have_no_github_expressions_and_data_is_single_render(self):
+    def literal_data_workflow(self):
         value = model()
         value['release_units']['sample-tool']['changelog'] = '${{ secrets.SAMPLE_TOKEN }}-{{ untouched }}.md'
-        _, workflow, _ = render(self.root, value)
-        parsed = load(workflow)
+        purpose = "Publish ${{ secrets.SAMPLE_TOKEN }} and {{ untouched }}"
+        original_prepare = prepare
+
+        def inject(template, *args, **kwargs):
+            config = original_prepare(template, *args, **kwargs)
+            path = template / 'targets/sample-target/target.yml'
+            data = load(path)
+            for credential in data['credentials'].values():
+                credential['purpose'] = purpose
+            dump(path, data)
+            return config
+
+        with patch.object(harness, 'prepare', inject):
+            _, workflow, _ = render(self.root, value, samples=1)
+        return load(workflow), value, purpose
+
+    def test_resolve_model_data_stays_literal(self):
+        parsed, value, _ = self.literal_data_workflow()
+        env = next(s['env'] for s in parsed['jobs']['resolve']['steps'] if s.get('id') == 'resolve')
+        self.assertNotIn('${{', env['RELEASE_MODEL'], 'Resolve model data must stay literal')
+        self.assertEqual(json.loads(env['RELEASE_MODEL']), value)
+        self.assertEqual(env['SOURCE_SHA'], '${{ inputs.source-sha }}')
+
+    def test_preflight_credential_data_stays_literal(self):
+        parsed, _, purpose = self.literal_data_workflow()
+        for name in ('preflight', 'preflight-sample'):
+            step = parsed['jobs'][name]['steps'][0]
+            script = step['with']['script']
+            self.assertNotIn('${{', script, 'Preflight declaration data must stay literal')
+            literal = re.search(r'checkCredentials\((\[.*\]), process.env\);', script).group(1)
+            declarations = json.loads(literal)
+            self.assertTrue(declarations)
+            self.assertTrue(all(c['purpose'] == purpose for c in declarations))
+            self.assertEqual(step['env']['SAMPLE_ENV_TOKEN' if name.endswith('-sample') else 'SAMPLE_TOKEN'],
+                             '${{ secrets.SAMPLE_ENV_TOKEN }}' if name.endswith('-sample') else '${{ secrets.SAMPLE_TOKEN }}')
+
+    def test_record_job_model_data_stays_literal(self):
+        parsed, value, _ = self.literal_data_workflow()
+        env = parsed['jobs']['release-record']['env']
+        self.assertNotIn('${{', env['RELEASE_MODEL'], 'Release-record job model data must stay literal')
+        self.assertEqual(json.loads(env['RELEASE_MODEL']), value)
+        self.assertEqual(env['RELEASE_UNIT'], '${{ matrix.unit }}')
+        self.assertEqual(env['RELEASE_JSON'], '${{ needs.resolve.outputs.releases }}')
+
+    def test_scripts_have_no_github_expressions_and_data_is_single_render(self):
+        parsed, _, _ = self.literal_data_workflow()
         for job in parsed['jobs'].values():
+            self.assertNotIn('${{', job.get('if', ''))
+            if 'RELEASE_MODEL' in job.get('env', {}):
+                self.assertNotIn('${{', job['env']['RELEASE_MODEL'])
             for step in job['steps']:
                 for field in ('run', 'if'):
                     self.assertNotIn('${{', step.get(field, ''))
                 self.assertNotIn('${{', step.get('with', {}).get('script', ''))
-        env = next(s['env'] for s in parsed['jobs']['resolve']['steps'] if s.get('id') == 'resolve')
-        self.assertNotIn('${{', env['RELEASE_MODEL'])
-        self.assertEqual(json.loads(env['RELEASE_MODEL']), value)
+                if 'RELEASE_MODEL' in step.get('env', {}):
+                    self.assertNotIn('${{', step['env']['RELEASE_MODEL'])
+
+    def rendered_condition(self, expression):
+        original_prepare = prepare
+
+        def inject(template, *args, **kwargs):
+            config = original_prepare(template, *args, **kwargs)
+            path = template / 'partials/parts.yml'
+            path.write_text(path.read_text().replace("'publish', body, extra_env)",
+                "'publish', body, extra_env, " + json.dumps(expression) + ')'))
+            return config
+
+        with patch.object(harness, 'prepare', inject):
+            template, workflow, answers = render(self.root, model(), samples=1)
+        answers.update(sample_target_units='sample-tool', trusted_publishing=False)
+        return template, workflow, answers
+
+    def test_unbalanced_condition_rejected_at_rendered_boundary(self):
+        template, workflow, answers = self.rendered_condition('false) || (true')
+        self.assertIn(' && (false) || (true)', load(workflow)['jobs']['publish-sample']['if'])
+        with self.assertRaisesRegex(ValueError, 'Unbalanced part condition parentheses'):
+            check_parts(template, workflow, ['sample-target'], answers)
+
+    def test_condition_validation_command_rejects_unbalanced_part(self):
+        template, workflow, answers = self.rendered_condition('false) || (true')
+        path = self.root / 'validation-answers.json'
+        path.write_text(json.dumps({'answers': answers}))
+        result = subprocess.run([os.sys.executable, str(ROOT / 'tests/release/harness.py'),
+            '--template', str(template), '--workflow', str(workflow), '--answers', str(path)],
+            text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Unbalanced part condition parentheses', result.stderr)
+
+    def test_valid_nested_and_quoted_conditions_render(self):
+        expressions = ["(true && (false || true))", "contains('it''s (ready)', '(')",
+                       "contains('a)(', ')')", r"contains('a\)(', '(')", "'(' == '('", "true"]
+        for expression in expressions:
+            with self.subTest(expression=expression), tempfile.TemporaryDirectory() as tmp:
+                self.root = Path(tmp)
+                template, workflow, answers = self.rendered_condition(expression)
+                parsed = check_parts(template, workflow, ['sample-target'], answers)
+                self.assertTrue(parsed['jobs']['publish-sample']['if'].endswith(' && (' + expression + ')'))
+                result = subprocess.run(['actionlint', str(workflow)], text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                path = self.root / 'validation-answers.json'
+                path.write_text(json.dumps({'answers': answers}))
+                result = subprocess.run([os.sys.executable, str(ROOT / 'tests/release/harness.py'),
+                    '--template', str(template), '--workflow', str(workflow), '--answers', str(path)],
+                    text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_primary_after_publication_renders_first_failure_step(self):
         value = model()
@@ -244,6 +342,18 @@ class InternalSchemas(unittest.TestCase):
             jsonschema.validate(json.loads((examples / 'publish-job.invalid.json').read_text()), schema)
         jsonschema.validate(json.loads((examples / 'credential.valid.json').read_text()),
                             json.loads((ROOT / 'release/schemas/credential.schema.json').read_text()))
+
+    def assert_expression_guard(self, field):
+        valid = json.loads((ROOT / 'docs/examples/release-process/publish-job.valid.json').read_text())
+        schema = json.loads((ROOT / 'release/schemas/publish-job.schema.json').read_text())
+        valid['job']['steps'][-1][field] = '${{ secrets.SAMPLE_TOKEN }}'
+        self.assertTrue(list(jsonschema.Draft202012Validator(schema).iter_errors(valid)), field + ' must reject expressions')
+
+    def test_step_if_expression_guard(self):
+        self.assert_expression_guard('if')
+
+    def test_run_expression_guard(self):
+        self.assert_expression_guard('run')
 
     def test_schema_guards(self):
         valid = json.loads((ROOT / 'docs/examples/release-process/publish-job.valid.json').read_text())
