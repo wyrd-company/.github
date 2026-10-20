@@ -1,0 +1,11 @@
+# relationships: implements: release-process
+# Reads release_units.<id>.release_record and .projections (adapter, generic,
+# mode, file) to identify Cargo manifests. Cargo metadata supplies crate edges.
+units: crates_io_units
+build: []
+publish: [publish-crates-io]
+verify: []
+credentials:
+  crates-io-token:
+    name: CARGO_REGISTRY_TOKEN
+    purpose: Publish Rust crates to crates.io

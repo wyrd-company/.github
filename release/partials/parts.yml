@@ -1,2 +1,7 @@
 {# relationships: implements: release-process #}
 {# Each target adds literal, conditional includes here. See tests/release/README.md. #}
+
+{% if 'crates-io' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/crates-io/publish-crates-io.yml' %}{% endset %}
+{{ ns.part_job('publish-crates-io', crates_io_units, 'publish', body) }}
+{% endif %}

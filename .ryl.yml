@@ -2,6 +2,7 @@
 extends: default
 ignore:
   - release/partials/*.yml
+  - release/targets/crates-io/publish-crates-io.yml
   - release/template/**/*.yml
 rules:
   brackets: disable

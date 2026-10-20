@@ -168,6 +168,41 @@ for old, new, test in [
     mutation('tests/release/mutations.py', old, new, 'test_mutations.MutationRunner.' + test, 'python')
 
 
+# crates.io publication guards; each site has its own named behavioral kill.
+r = 'release/targets/crates-io/publish.py'
+mutation(r, 'if unit not in releases:', 'if False:', 'test_crates_io.CratesPublisher.test_only_selected_released_units', 'python')
+mutation(r, "value['release_record'] != 'required'", 'False', 'test_crates_io.CratesPublisher.test_record_none_refused_before_writes', 'python')
+mutation(r, 'if not manifests:', 'if False:', 'test_crates_io.CratesPublisher.test_missing_projection_refused', 'python')
+mutation(r, "p['adapter'] == 'cargo'", 'True', 'test_crates_io.CratesPublisher.test_projection_adapter_generic_and_mode_selection', 'python')
+mutation(r, "not p['generic']", 'True', 'test_crates_io.CratesPublisher.test_projection_adapter_generic_and_mode_selection', 'python')
+mutation(r, "p['mode'] != 'none'", 'True', 'test_crates_io.CratesPublisher.test_projection_adapter_generic_and_mode_selection', 'python')
+mutation(r, 'len(matches) != 1', 'False', 'test_crates_io.CratesPublisher.test_manifest_identity_refused', 'python')
+mutation(r, "package['version'] != releases[unit]['version']", 'False', 'test_crates_io.CratesPublisher.test_version_mismatch_refused', 'python')
+mutation(r, "package.get('publish') is not None and 'crates-io' not in package['publish']", 'False', 'test_crates_io.CratesPublisher.test_private_package_refused', 'python')
+mutation(r, 'if name in packages:', 'if False:', 'test_crates_io.CratesPublisher.test_duplicate_projection_refused', 'python')
+mutation(r, "d.get('kind') != 'dev'", 'True', 'test_crates_io.CratesPublisher.test_multi_crate_unit_dependency_order', 'python')
+mutation(r, "d['name'] in pending", 'False', 'test_crates_io.CratesPublisher.test_multi_crate_unit_dependency_order', 'python')
+mutation(r, 'error.code == 404', 'True', 'test_crates_io.CratesPublisher.test_api_not_found_and_errors_fail_closed', 'python')
+mutation(r, "value['crate'] != name or value['num'] != version", 'False', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, 'not isinstance(result, str) or len(result) != 64', 'False', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, 'if observed is not None:', 'if False:', 'test_crates_io.CratesPublisher.test_matching_published_or_submitted_retry', 'python')
+mutation(r, 'if observed != expected:', 'if False:', 'test_crates_io.CratesPublisher.test_different_published_artifact_refused', 'python', site_tests=['test_crates_io.CratesPublisher.test_different_published_artifact_refused', 'test_crates_io.CratesPublisher.test_unconfirmed_or_conflicting_submission_refused'])
+mutation(r, 'if result.returncode:', 'if False:', 'test_crates_io.CratesPublisher.test_index_wait_failure_stops_dependents_then_retry_adopts_submission', 'python')
+mutation(r, "& set(os.environ['RELEASE_UNITS'].split())", '', 'test_crates_io.CratesPublisher.test_only_selected_released_units', 'python')
+mutation(r, "raise ValueError('Cargo publication dependency cycle')", 'return ordered', 'test_crates_io.CratesPublisher.test_dependency_cycle_refused', 'python')
+mutation(r, "d.get('path') and ", '', 'test_crates_io.CratesPublisher.test_external_dependency_does_not_constrain_selected_crate', 'python')
+mutation(r, "'--registry', 'crates-io', ", '', 'test_crates_io.CratesPublisher.test_publish_and_confirm', 'python',
+         site_tests=['test_crates_io.CratesPublisher.test_matching_published_or_submitted_retry',
+                     'test_crates_io.CratesPublisher.test_publish_and_confirm'])
+mutation(r, "value['crate'] != name or ", '', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, " or value['num'] != version", '', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, "not isinstance(result, str) or ", '', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, " or len(result) != 64", '', 'test_crates_io.CratesPublisher.test_api_accepted_submission_checksum_and_identity', 'python')
+mutation(r, "Path(p['manifest_path']).resolve() == Path(manifest).resolve()", 'True', 'test_crates_io.CratesPublisher.test_manifest_path_filter', 'python')
+mutation(r, "package.get('publish') is not None and ", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
+mutation(r, " and 'crates-io' not in package['publish']", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
+mutation('release/targets/crates-io/publish-crates-io.yml', r" | replace('$', '\\u0024')", '', 'test_crates_io.CratesPart.test_model_dollar_data_stays_literal', 'python')
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

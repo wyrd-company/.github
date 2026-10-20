@@ -6,7 +6,8 @@ name: release
 description: Release workflow from the Intentional Release Model
 schemas: schemas
 data:
-  release_targets: {}
+  release_targets:
+    crates-io: !include targets/crates-io/target.yml
 interview:
   - id: release_model
     type: document
@@ -17,7 +18,7 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: []
+    options: [crates-io]
     default: []
   - id: ci_workflow
     type: text
@@ -33,5 +34,12 @@ interview:
     prompt: Release Unit marked latest
     when: required_units > 1
     options: "release_model.release_units | dictsort | selectattr('1.release_record', 'equalto', 'required') | map(attribute='0') | list"
+  - id: crates_io_units
+    type: text
+    prompt: Release Units published to crates.io (space separated)
+    when: "'crates-io' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
   - id: credential_answers
     computed: '{}'
