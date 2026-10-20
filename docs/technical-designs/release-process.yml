@@ -86,8 +86,8 @@ proposed-design:
     verify jobs. Publication targets contribute those jobs and their
     credentials through four extension points, validated by draft JSON
     Schemas in `release/schemas/`. Whether a target is a child template or an
-    optional part of the parent is an open user decision; every rule in this
-    design applies to both. How snapshot refs reach the remote is the second
+    optional part of the parent is an open user decision; the sections that
+    differ state their option B form. How snapshot refs reach the remote is the second
     open user decision. Repository Renovate owns action pin updates; the
     template sets a pin only when it adds or changes a step.
 
@@ -105,9 +105,11 @@ proposed-design:
     templates, each target is a directory named `publish-<target>`, for
     example `publish-crates-io`, `publish-npm`, `publish-homebrew`,
     `publish-repo-wyrd-foo`, `publish-ghcr`, and `publish-winget`, holding a
-    `template.yml` and its partials. When targets are optional parts, each
-    target is a partial directory `release/targets/<target>/` inside the
-    parent. The template that renders `.github/airlock.yml` is not a member of
+    `template.yml` and its partials. Under option B there are no
+    `publish-<target>` templates: each target is a directory
+    `release/targets/<target>/` inside the parent, holding `target.yml` and
+    its job partials (optional-parts-form). The template that renders
+    `.github/airlock.yml` is not a member of
     this composition; it is named `airlock-config` because the `airlock/`
     directory already holds the organization policy that Airlock resolves. Its
     content follows the Airlock release-process conformance design. Contract
@@ -125,10 +127,12 @@ proposed-design:
     therefore reads the committed model on every apply, update, stage, and
     preview, refuses an invalid model without writing, and leaves the question
     unanswered when the file is missing, with `intentional model` as the
-    repair. The parent exports `release_model` (the answered document) in
-    `composition.exports`, and children read it as
+    repair. Under option A the parent exports `release_model` (the answered
+    document) in `composition.exports`, and children read it as
     `toha_parent.release_model`; children declare no document question and
-    vendor no Release Model schema. A future line `release-model/2` is
+    vendor no Release Model schema. Under option B there is no export: the
+    target partials are rendered by the parent and read `release_model`
+    directly. A future line `release-model/2` is
     accepted by adding its vendored schema to the same question and branching
     on `$schema`. The templates read these members of line 1 and no others:
     `$schema` (routing); `release_units` keys (Release Unit ids);
@@ -136,11 +140,14 @@ proposed-design:
     `release_units.<id>.tags.<tag id>.role`, `.template`, and
     `.require_phase`. Child templates can also read
     `release_units.<id>.projections`, `ecosystems`, `depends_on`, and
-    `sources` to choose defaults; each child names the members it reads in its
-    own `template.yml` comments. The templates never read
+    `sources` to choose defaults; each child, or under option B each target's
+    `target.yml`, names the members it reads in comments. The templates never read
     `.intentional/config.yml`, and this lane renders no Intentional file.
 
   composition-contract: >-
+    Applies under option A; under option B the same job ids, prefixes, and
+    credential shape are the parent's internal lists (optional-parts-form),
+    and there is no composition declaration.
     `release/template.yml` declares `composition.contract: release-process`,
     `composition.version: 1`, `composition.exports: {release_model:
     release_model}`, and four extension points, all with `shape: value`.
@@ -164,7 +171,9 @@ proposed-design:
     ids separated by one space, and `job`, a GitHub job object. A child
     renders `units` from a multiselect answer as `{{ units | join(' ') }}`,
     because a contributed string leaf always renders to a string; the parent
-    splits it. The optional member `if` is an extra GitHub expression,
+    splits it. Under option B the schema validates the job that the parent
+    rendered from a target partial, with `units` added from the target's units
+    answer (optional-parts-form). The optional member `if` is an extra GitHub expression,
     written without `${{ }}`, that cannot call `always`, `success`, `failure`,
     or `cancelled`. `job` admits `name`, `runs-on`, `permissions` (required),
     `environment`, `env`, `defaults`, `timeout-minutes`, `strategy`,
@@ -191,46 +200,70 @@ proposed-design:
     `check-jsonschema` against the draft schema.
 
   job-graph: >-
-    The parent renders the jobs in this order. `resolve` needs nothing.
-    `preflight` and each `preflight-<environment>` need `resolve`. Each build
-    job needs `resolve` and every preflight job. `release-record` needs
-    `resolve`, every preflight job, and every build job. Each publish job
-    needs `resolve`, every preflight job, every build job, and
-    `release-record` when the parent renders it. Each verify job needs
-    `resolve`, every preflight job, and every publish job. Every contributed job gets the condition
-    `!cancelled() && !failure() && needs.resolve.outputs.release == 'true' &&
-    (<unit test>)` and, when the contribution has `if`, `&& (<if>)`. The unit
-    test is `contains(fromJSON(needs.resolve.outputs.units), '<id>')` joined
-    with `||` for each id in `units`. `!failure()` stops every contributed job
-    after any failed ancestor, including a failed preflight; `!cancelled()`
-    with `!failure()` lets a job run when an ancestor was skipped, such as
-    `release-record` for a unit with `release_record: none`. Every contributed
-    job gets these environment values, which the parent sets and a
+    The parent renders the jobs in six stages, in this order: `resolve`; the
+    preflight jobs (`preflight` and each `preflight-<environment>`); build
+    jobs; `release-record`, when the parent renders it; publish jobs; verify
+    jobs. Every job needs every job of every earlier stage, not only the jobs
+    of the stage before it. The order therefore holds when a stage is empty:
+    with no publish contributions, each verify job still needs every build job
+    and `release-record`, so it starts after them and a failure in either is
+    its ancestor. The parent writes every job condition. The preflight jobs
+    have none, so GitHub's implicit `success()` runs them only after `resolve`
+    succeeds. Every later job starts from the stage gate `!cancelled() &&
+    !failure() && needs.resolve.result == 'success' &&
+    needs.<preflight job>.result == 'success'`, with one `result` test for
+    each preflight job. `!failure()` is false when any ancestor job failed,
+    because GitHub evaluates it over every ancestor in a chain of dependent
+    jobs; the `result` tests stop the job when `resolve` or a preflight job
+    did not succeed for any other reason. A skipped build, publish, or verify
+    job does not stop a later job: a contributed job is skipped when it serves
+    no unit that the run releases, and GitHub's implicit `success()` would
+    otherwise skip every job that needs it. `release-record` has the condition
+    `<stage gate> && needs.resolve.outputs.record == 'true'`. Every
+    contributed job has the condition `<stage gate> && (<unit test>)` and,
+    when the contribution has `if`, `&& (<if>)`. The unit test joins one
+    clause per id in `units` with `||`. For a build job, and for a unit whose
+    Release Model policy is `none`, the clause is
+    `contains(fromJSON(needs.resolve.outputs.units), '<id>')`. For a publish
+    or verify job and a unit whose policy is `required`, the clause is
+    `(contains(fromJSON(needs.resolve.outputs.units), '<id>') &&
+    needs.release-record.result == 'success')`, so a required unit's
+    publication and verification never run without its release record,
+    whatever skipped `release-record`. A failed job stops every later job of
+    the run, for every unit. The retry is a re-run of the failed jobs or a new
+    dispatch on the same source commit: `release-record` accepts or completes
+    its own earlier work (release-records), and a publish job succeeds when
+    its version is already published, as the valid example does. Every
+    contributed job gets these environment values, which the parent sets and a
     contribution cannot override: `RELEASE_SOURCE_SHA`, the source commit;
     `RELEASE_UNITS`, the released Release Unit ids separated by one space; and
     `RELEASE_JSON`, an object that maps each released unit id to `tag`,
     `version`, and `prerelease`. `resolve` exposes the same facts as outputs
     `release`, `source_sha`, `units` (a JSON array), `releases` (the
-    `RELEASE_JSON` object), and `record_units` (a JSON array of released units
-    whose policy is `required`). The output and environment names are part of
-    contract version 1. The workflow sets `permissions: {}` at the top level,
+    `RELEASE_JSON` object), `record_units` (a JSON array of released units
+    whose policy is `required`), and `record` (`'true'` when `record_units`
+    is not empty, otherwise `'false'`). The output and environment names are
+    part of contract version 1. The workflow sets `permissions: {}` at the top level,
     and every job declares its own. A job that serves several units reads
     `RELEASE_UNITS` and acts only for units in both lists. The parent writes a
     contributed job by serializing every member with `toyaml` except
     `steps[*].uses`, which it writes unquoted so that the version comment
     stays a YAML comment; the schema pattern admits no character that could
-    change the YAML structure. The default checkout of every job is the source
+    change the YAML structure. Under option B the target partial writes those
+    members as YAML text (optional-parts-form). The default checkout of every job is the source
     commit, because `resolve` requires `github.sha` to equal `source-sha`.
 
   publication-targets-decision: >-
     Open user decision. Option A, child templates: each target is a template
     that names contract `release-process` version 1 and contributes through
     the extension points; a repository adds a target with `--with` and removes
-    it with `--without`. Option B, optional parts: the parent asks `targets`, a
-    multiselect, and renders one partial per selected target into the same
-    four lists, then loops over them as it loops over contributions. Compared:
-    Toha work is the document question plus composition under A, and the
-    document question only under B. Adding a target is a new child with the
+    it with `--without`. Option B, optional parts: the parent is an ordinary
+    template with no composition declaration, asks `targets`, a multiselect,
+    and renders the jobs of each selected target from partials inside the
+    parent, as optional-parts-form defines. Compared: Toha work is the
+    document question plus composition under A, and the document question
+    only under B, because the B form uses no composition feature. Adding a
+    target is a new child with the
     parent unchanged under A, and a new parent release that every repository
     must update to under B. An outside target is any template that names the
     contract under A, and a fork of the parent under B. The identity Airlock
@@ -247,10 +280,54 @@ proposed-design:
     Recommendation: option A. It is the only option where adding a target
     does not touch every repository, outside and repository-local targets
     need no fork, and Airlock reads targets from the tree at the audited
-    revision without snapshot refs. Sections that depend on this decision:
-    repository-layout (directories) and publication-targets-decision itself.
-    Every other section, the extension point names, and both schemas are the
-    same under A and B.
+    revision without snapshot refs. Sections that depend on this decision,
+    each of which states its option B form: repository-layout,
+    release-model-acceptance, composition-contract, publish-job-schema,
+    escaping-convention, credential-preflight, and contract-versioning, with
+    optional-parts-form as the B definition. Under both options the job ids
+    and their prefixes, the job graph and conditions, the `resolve` outputs,
+    the `RELEASE_` variables, both schemas, the trigger, baseline exclusion,
+    preflight, and release records are the same.
+
+  optional-parts-form: >-
+    Applies only under option B. `release/template.yml` declares no
+    `composition`, no exports, and no extension points, and no template names
+    contract `release-process`; there are no children and no `toha_parent` or
+    `toha_contributions`. After `release_model` the parent asks `targets`, a
+    multiselect whose options are the target names. Each target's own
+    questions are written in the parent's interview with a `when` condition
+    on `targets`, and include `<target>_units`, the Release Units the target
+    serves. Each target is a directory `release/targets/<target>/` that holds
+    `target.yml` and job partials. `target.yml` is loaded into the parent's
+    `data` with Toha's YAML `!include` tag as `release_targets.<target>`. It
+    lists the target's job ids by stage (`build`, `publish`, `verify`, with
+    the same prefixes and key patterns as option A), the answer id that holds
+    its units, and its credentials, each a value of the credential schema
+    with an optional `unless` naming a boolean answer, for example
+    `trusted_publishing`. Each job body is a partial
+    `release/targets/<target>/<job id>.yml` that writes the job's YAML below
+    the line the parent writes for its id: `name`, `runs-on`, `permissions`,
+    `steps`, and the other members the publish-job schema admits except
+    `env`. The parent writes each job's id, `needs`, and condition from
+    `target.yml` and the units answer, and its `env` mapping with the
+    `RELEASE_` values followed by the entries of an optional second partial
+    `release/targets/<target>/<job id>.env.yml`, so the job has one `env`
+    key. A Jinja include name must be a string literal, so the parent writes
+    each include inside `{% if '<target>' in targets %}`. The
+    partial writes `uses` lines as YAML text, so the version comment is kept
+    without the unquoted-string rule of option A. A test in this repository
+    renders the parent once per target, parses each target job from the
+    rendered workflow, removes the parent-owned members, adds `units` from the
+    answer, and validates the result against `publish-job.schema.json`; it
+    validates every credential against `credential.schema.json`. Toha does not
+    validate targets under B. Evidence: measured with a Toha build of `main`
+    at `bdc8ed9` on a one-target sample. `!include` loaded `target.yml` into
+    `data`; questions with `when: "'npm' in targets"` were asked only when
+    `npm` was selected; the included partial read the units answer and kept
+    the `# v7.0.0` comment on its `uses` line; and an `unless` member left the
+    credential out when `trusted_publishing` was true. Every rule this design
+    states for a contributed job applies to a target job under option B,
+    except how the parent writes the job's members.
 
   release-trigger: >-
     `.github/workflows/release.yml` has one trigger, `workflow_dispatch`, with
@@ -337,7 +414,9 @@ proposed-design:
     `bdc8ed9`; they render `${{ github.token }}`, `${{ secrets.NPM_TOKEN }}`,
     and an unquoted `TOKEN: ${{ secrets.X }}`. Contribution rendering is
     inferred from the composition design, which renders contribution string
-    leaves as `struct.value` string leaves are rendered.
+    leaves as `struct.value` string leaves are rendered. Under option B a
+    target partial is rendered once, as part of the parent's workflow body,
+    and the same three rules apply to it.
 
   action-pin-ownership: >-
     Repository Renovate owns action pin updates in the rendered workflow. The
@@ -359,9 +438,16 @@ proposed-design:
     who adds or changes a step uses the current pin. Repositories that adopt
     get older pins for unchanged steps and Renovate updates them after
     adoption. The three-way merge needs the base snapshot of the previous
-    apply; without it an update merges against nothing and every
-    Renovate-updated line conflicts, which is one reason the snapshot-ref
-    decision matters.
+    apply. When the clone that updates does not have it, `toha apply --from`
+    refuses the update (`unknown snapshot`) and writes nothing; Toha never
+    falls back to an empty base. The only update without the base is an
+    explicit `--baseline`, which merges against an empty base: measured with a
+    Toha build of `main` at `bdc8ed9`, a rendered file whose pin line
+    Renovate had changed and whose template changed another line came back as
+    one add/add conflict over the whole file, with the repository's bytes in
+    the working tree and the template change left in the conflict stages,
+    where the same update with `--from` merged both changes cleanly. This is
+    one reason the snapshot-ref decision matters.
 
   snapshot-refs-decision: >-
     Open user decision. `toha apply` creates `refs/toha/snapshots/<id>` only in
@@ -369,7 +455,18 @@ proposed-design:
     remote for two readers: a template update from any other clone, which
     needs the base snapshot named in `.toha.json` for its three-way merge, and
     Airlock when it reads process answers. Template identity comes from
-    `.toha.json` and needs no ref. The release workflow needs no ref. Options:
+    `.toha.json` and needs no ref. The release workflow needs no ref. A clone
+    without the base snapshot cannot update normally: `toha apply --from
+    <id>` refuses an unknown snapshot and writes nothing. Its only recovery is
+    to adopt again with an explicit `toha apply <parent> <path> --baseline`.
+    Membership is rebuilt from `.toha.json`, whose entry names the parent and
+    every child source: the operator adds `--with` for each child (option A).
+    Answers are not: with no base there are no recorded submissions to replay,
+    so every question is asked again or supplied with `--answers`, except
+    `release_model`, which reads `.intentional/release-model.json` on every
+    run. The merge is against an empty base, so every rendered file that
+    differs from the repository's bytes, a Renovate pin edit included,
+    conflicts as a whole file (measured; see action-pin-ownership). Options:
     (a) the operator pushes after each apply with `git push origin
     'refs/toha/snapshots/*:refs/toha/snapshots/*'`, the refspec Toha
     documents; cost: a step a person or agent can forget, and a forgotten push
@@ -385,9 +482,11 @@ proposed-design:
     `pull-requests: write`, Toha installed in CI, the repository setting that
     lets Actions open pull requests, and a first apply that still runs
     locally and needs (a) once. (d) nothing is pushed; Airlock reads identity
-    from `.toha.json` and reads no answers; cost: updates from another clone
-    have no base and merge against nothing, and under publication option B
-    Airlock cannot see which targets a repository selected. (e) a committed
+    from `.toha.json` and reads no answers; cost: every clone other than the
+    one that last applied loses `--from` updates and must recover with the
+    `--baseline` adoption above, re-answering every question and resolving
+    whole-file conflicts, and under publication option B Airlock cannot see
+    which targets a repository selected. (e) a committed
     repository pre-push hook, run by Lefthook, pushes the snapshot refs with
     every push; cost: a nested push inside a push, a hook every clone must
     install, and a Lefthook configuration edit that the parent would have to
@@ -417,7 +516,9 @@ proposed-design:
     release-record, publish, and verify job needs every preflight job, so no
     job that changes state outside the run starts after a failed preflight.
     Trusted publishing removes a credential: the target asks whether to use
-    it, puts `when: not trusted_publishing` on the credential contribution,
+    it, puts `when: not trusted_publishing` on the credential contribution
+    (under option B, `unless: trusted_publishing` on the credential in its
+    `target.yml`),
     and requests `id-token: write` in its publish job, so the credential is
     not declared and not checked. A job that uses an environment declares its
     credentials with the same environment; a mismatch shows as a missing value
@@ -429,14 +530,15 @@ proposed-design:
     Unit, on that unit's primary tag; the tag record is the annotated tag
     message. The parent renders `release-record` only when some unit in the
     Release Model has `release_record: required`. It runs as a matrix over
-    `record_units` with `permissions: contents: write`, and is skipped when
-    `record_units` is empty. For each unit it creates exactly one published
-    GitHub Release, never a draft, on the primary tag with `gh release create
-    <tag> --verify-tag`, titled with the tag name; its `tag_name` is the
-    rendered primary tag name. A version with a prerelease part is created with
-    `--prerelease` and `--latest=false`. Of the other releases, only the unit
-    named by the parent's `latest_unit` answer is marked latest; the question
-    is asked only when more than one unit is `required`. The release notes
+    `record_units` with `permissions: contents: write`, under the condition in
+    job-graph, which skips it when `record` is `'false'` and does not skip it
+    when a build job for another unit was skipped. For each unit the outcome
+    is exactly one published GitHub Release, never left as a draft, on the
+    primary tag: its `tag_name` is the rendered primary tag name and its title
+    is the tag name. A version with a prerelease part is published as a
+    prerelease and not latest. Of the other releases, only the unit named by
+    the parent's `latest_unit` answer is marked latest; the question is asked
+    only when more than one unit is `required`. The release notes
     source is the section of the unit's changelog, the
     `release_units.<id>.changelog` file at the source commit, whose heading
     line is exactly `## <version>`, up to the next `## ` heading; a missing or
@@ -445,12 +547,52 @@ proposed-design:
     a unit downloads the artifacts that match `release-asset+<unit>+*`,
     attaches their files, and adds `SHA256SUMS` when it attaches any file. The
     `+` separator cannot occur in a Release Unit id, so one unit's pattern
-    never matches another unit's artifacts. When a release already exists on
-    the tag with the same asset names, the job succeeds without change; any
-    other existing release on the tag fails the job. A unit with
+    never matches another unit's artifacts. The expected asset names are the
+    files of the matching artifacts, plus `SHA256SUMS` when there is at least
+    one; a unit with no build assets expects none. The job creates a record
+    through the REST API in a fixed sequence, so that a retry can continue
+    it: create the release as a draft with the tag, title, and notes; upload
+    each expected asset; publish it by setting `draft` to false with the
+    prerelease and latest settings. Before it creates anything, it lists the
+    repository's releases, drafts included, and keeps those whose `tag_name`
+    is the primary tag; GitHub's get-by-tag endpoint returns published
+    releases only, so it cannot see a draft. With no release on the tag, the
+    job runs the whole sequence. With one draft whose asset names are all
+    expected names, the job completes it: it sets the title and notes,
+    deletes the draft's assets, uploads every expected asset from this run's
+    artifacts, and publishes it. A draft with any other asset name fails the
+    job and names the draft. With one published release, the job succeeds without
+    change only when its prerelease flag equals the version's and its asset
+    names equal the expected names exactly; any difference fails the job and
+    names it. More than one release on the tag fails the job. After it
+    creates or completes a record, the job reads it back through the
+    get-by-tag endpoint and succeeds only when that returns a release that is
+    not a draft, with the expected prerelease flag and asset names. A unit
+    with no assets therefore cannot succeed on an empty draft. A unit with
     `release_record: none` gets no release record; its tag record is its full
     record, and its build, publish, and verify jobs still run. A baseline tag
     record never gets a release record, because `resolve` never releases it.
+
+  implementation-validation: >-
+    The templates lane proves these cases on real GitHub Actions runs of a
+    rendered workflow in a test repository, because the job conditions rely
+    on GitHub's `needs` and status-function semantics. Skipped build: two
+    units with one build job each, one unit released; the other build job is
+    skipped, `release-record` runs, and the released unit's publish job runs
+    after it. Empty stage: a composition with build and verify jobs and no
+    publish jobs; each verify job starts after every build job and
+    `release-record`, and a failed build job skips it. Record gate: a failed
+    `release-record` skips every publish and verify job of a `required` unit.
+    Release record retry, each on a unit with no build assets and on one with
+    assets: no release; one draft with no assets; one draft with an expected
+    asset; one draft with an unexpected asset (fails); one published release
+    with the expected state (succeeds unchanged); one published release with
+    the wrong prerelease flag or asset names (fails); two releases on the tag
+    (fails). Each case that succeeds ends with a published release read back
+    by tag. Baseline: a dispatch on a commit with only baseline records fails.
+    Preflight: a missing declared credential fails `preflight` and no build
+    job starts. Under option B, the repository test of optional-parts-form
+    runs for every target.
 
   contract-versioning: >-
     Contract `release-process` version 1 is the extension point ids, their
@@ -461,7 +603,10 @@ proposed-design:
     existing child still validates. Removing or renaming any of these,
     narrowing a schema, or changing what an output or variable means is
     version 2; children declare the versions they accept, and Toha refuses a
-    child that does not accept the parent's version.
+    child that does not accept the parent's version. Under option B no other
+    template depends on the contract: the same names are internal to the
+    parent, every change ships as a parent revision, and version 1 still
+    names them for Airlock and the tests of this repository.
 
   security-surface: >-
     These choices need the user's approval before implementation: the
