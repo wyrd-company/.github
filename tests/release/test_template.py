@@ -46,6 +46,16 @@ class ReleaseTemplate(unittest.TestCase):
         self.assertEqual((ROOT / 'release/schemas/release-model-1.schema.yml').read_bytes(), expected)
         jsonschema.validate(model(), load(ROOT / 'release/schemas/release-model-1.schema.yml'))
 
+    def test_generic_projection_survives_document_admission_and_render(self):
+        value = model()
+        value['release_units']['sample-tool']['projections'] = [{
+            'adapter': 'toml', 'file': 'package.toml', 'workspace_file': 'package.toml',
+            'mode': 'committed', 'generic': True, 'pointer': 'package.version',
+        }]
+        _, workflow, _ = render(self.root, value)
+        env = next(s['env'] for s in load(workflow)['jobs']['resolve']['steps'] if s.get('id') == 'resolve')
+        self.assertEqual(json.loads(env['RELEASE_MODEL']), value)
+
     def test_base_dispatch_outputs_and_pins(self):
         _, workflow, _ = render(self.root, model())
         parsed = check_parts(self.root / 'release', workflow, [], {})

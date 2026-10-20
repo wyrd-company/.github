@@ -1,11 +1,13 @@
 {
-  "relationships": {"references": "release-model"},
+  "relationships": {
+    "references": "release-model"
+  },
   "release-model-1.schema.yml": {
     "repository": "https://github.com/wyrd-company/intentional",
     "ref": "epic/workflow",
-    "commit": "b7cc3d2a9fbe0b5c9009e59a860a76c937c9029c",
+    "commit": "1d896ebc3a601595fb1a4e7cf337a6f484953f46",
     "path": "docs/specifications/release-model.schema.yml",
     "release_tag": null,
-    "refresh": "Use the first Intentional release tag that names release-model/1 when 0.3.0 exists. Check the generic-adapter conditional when refreshing."
+    "refresh": "Use the first Intentional release tag that names release-model/1 when 0.3.0 exists."
   }
 }
