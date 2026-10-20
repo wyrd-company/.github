@@ -8,6 +8,7 @@ schemas: schemas
 data:
   release_targets:
     crates-io: !include targets/crates-io/target.yml
+    npm: !include targets/npm/target.yml
 interview:
   - id: release_model
     type: document
@@ -18,8 +19,25 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: [crates-io]
+    options: [crates-io, npm]
     default: []
+  - id: npm_units
+    type: text
+    prompt: Release Units with npm packages (space separated)
+    when: "'npm' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: npm_trusted_publishing
+    type: confirm
+    prompt: Use npm trusted publishing configured for release.yml?
+    when: "'npm' in targets"
+    default: true
+  - id: npm_dry_run
+    type: confirm
+    prompt: Dry run npm publication without registry writes?
+    when: "'npm' in targets"
+    default: false
   - id: ci_workflow
     type: text
     prompt: CI workflow file name
@@ -42,4 +60,4 @@ interview:
     validate:
       regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
   - id: credential_answers
-    computed: '{}'
+    computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

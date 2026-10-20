@@ -5,3 +5,16 @@
 {% set body %}{% include 'targets/crates-io/publish-crates-io.yml' %}{% endset %}
 {{ ns.part_job('publish-crates-io', crates_io_units, 'publish', body) }}
 {% endif %}
+
+{% if 'npm' in targets %}
+{% if stage == 'publish' %}
+{% set body %}{% include 'targets/npm/publish-npm.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/npm/publish-npm.env.yml' %}{% endset %}
+{{ ns.part_job('publish-npm', npm_units, 'publish', body, extra_env) }}
+{% endif %}
+{% if stage == 'verify' %}
+{% set body %}{% include 'targets/npm/verify-npm-clients.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/npm/verify-npm-clients.env.yml' %}{% endset %}
+{{ ns.part_job('verify-npm-clients', npm_units, 'verify', body, extra_env) }}
+{% endif %}
+{% endif %}

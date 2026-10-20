@@ -2,6 +2,9 @@
 extends: default
 ignore:
   - release/partials/*.yml
+  - release/targets/npm/*npm.yml
+  - release/targets/npm/*clients.yml
+  - release/targets/npm/*.env.yml
   - release/targets/crates-io/publish-crates-io.yml
   - release/template/**/*.yml
 rules:

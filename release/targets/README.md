@@ -38,3 +38,46 @@ Evidence: `CratesPart.test_selected_and_deselected_contracts`,
 and `CratesPublisher.test_real_cargo_metadata_and_reproducible_package`.
 Live workflow proof requires the authorized test repository tracked by the
 parent's live-proof work. No local test publishes to a public registry.
+
+## npm
+
+Select `--with npm`. `npm_units` lists the Release Units served, separated by
+spaces. Each selected unit must require a release record and contain an npm
+projection (`adapter: npm`, `generic: false`); the projection's `file` locates
+its `package.json`, including launchers for non-Node binaries. A unit without a
+release record is refused before packaging or registry calls. Generic JSON
+projections are not npm packages. Package names follow the manifest and, when
+present, the projection's `native_identity`.
+
+`npm_trusted_publishing` defaults to true. Configure npm's trusted publisher
+for `.github/workflows/release.yml` on GitHub-hosted runners. A package must
+already exist before its trusted publisher can be configured; first publication
+needs the operator's granular token. With trusted publishing off, declare the
+repository secret `NPM_TOKEN`. Preflight checks its presence. No token is
+requested or emitted with trusted publishing on. Both paths request
+`id-token: write` and publish with provenance. The current npm client is
+installed on Node 24 for OIDC support. Registry evidence:
+[trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+`npm_dry_run` defaults to false. Set it to true for local preparation or a live
+workflow proof without public publication. It adds npm's `--dry-run`, makes no
+registry lookup, and skips client installation. Actual publication remains
+behind the parent's resolved Intentional tag record and successful release
+record. Run `intentional apply` only with the user's release approval.
+
+Packaging uses `npm pack --ignore-scripts`: commit ready-to-pack files, including
+launcher code and binary payloads. Build/prepare scripts do not run. An injected
+projection stamps the resolved version in a temporary copy; committed and none
+projections must already match. Publish uses that exact packed archive and
+checks npm's SHA512 integrity, name and version. A retry accepts identical bytes
+and refuses conflicting bytes. A concurrent matching publication is accepted.
+If npm has not exposed a successful write yet, the job fails and can be rerun
+on the same source commit; there is no polling timer. Prereleases use `next`;
+stable versions use `latest`.
+
+Clean clients install the exact package version on Linux amd64/arm64, macOS
+arm64 and Windows amd64, then check the installed manifest identity. Install
+scripts run, so binary launchers can fetch their release assets. Product-specific
+CLI checks belong to adoption. Named local tests use real npm packs and a fake
+registry boundary; they make no public publication. Live GitHub run receipts
+remain pending the authorized test repository.

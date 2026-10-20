@@ -203,6 +203,52 @@ mutation(r, "package.get('publish') is not None and ", '', 'test_crates_io.Crate
 mutation(r, " and 'crates-io' not in package['publish']", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
 mutation('release/targets/crates-io/publish-crates-io.yml', r" | replace('$', '\\u0024')", '', 'test_crates_io.CratesPart.test_model_dollar_data_stays_literal', 'python')
 
+# npm publication guards execute through named tests with real npm pack.
+r = 'release/targets/npm/npm.js'
+for old, new, test in [
+    ("platform !== 'win32'", 'false', 'windows'),
+    ("file => fs.existsSync(file)", 'file => true', 'windows'),
+    ("if (!cli)", 'if (false)', 'windows'),
+    ("'--ignore-scripts'", "'--foreground-scripts'", 'retry'),
+    ("'--provenance'", "'--no-provenance'", 'retry'),
+    ("fs.rmSync(scratch, {recursive: true, force: true});", 'void scratch;', 'retry'),
+    ("!unit || unit.release_record !== 'required'", 'false', 'record'),
+    ("p.adapter === 'npm' && p.generic === false", 'true', 'selection'),
+    ("!projections.length", 'false', 'projection'),
+    ("!released.has(id)", 'false', 'selection'),
+    ("!release || !release.version", 'false', 'release'),
+    ("!manifest.name || manifest.private === true", 'false', 'manifest'),
+    ("projection.native_identity && manifest.name !== projection.native_identity", 'false', 'manifest'),
+    ("projection.mode !== 'injected' && manifest.version !== release.version", 'false', 'manifest'),
+    ("packages.some(p => p.name === manifest.name)", 'false', 'duplicate'),
+    ("env.NPM_DRY_RUN !== 'true' && env.NPM_DRY_RUN !== 'false'", 'false', 'dry_choice'),
+    ("if (dry) continue;", 'if (false) continue;', 'dry'),
+    ("installed.name !== pkg.name || installed.version !== pkg.version", 'false', 'client'),
+    ("manifest.version = pkg.version;", "manifest.version = '0.0.0';", 'injected'),
+    ("packed.length !== 1 || packed[0].name !== pkg.name || packed[0].version !== pkg.version", 'false', 'pack'),
+    ("pkg.prerelease ? 'next' : 'latest'", "false ? 'next' : 'latest'", 'tags'),
+    ("if (dry) {", 'if (false) {', 'dry'),
+    ("[...args, '--dry-run']", '[...args]', 'dry'),
+    ("response.status === 404", 'false', 'retry'),
+    ("response.status !== 200", 'false', 'registry'),
+    ("remote.name !== pkg.name || remote.version !== pkg.version || remote.dist?.integrity !== integrity", 'false', 'registry'),
+    ("remote.dist?.integrity !== integrity", 'false', 'conflict'),
+    ("if (await lookup()) continue;", 'if (false) continue;', 'retry'),
+    ("if (await lookup()) continue; throw error;", 'if (false) continue; throw error;', 'race'),
+    ("if (!await lookup())", 'if (false)', 'readback'),
+]:
+    mutation(r, old, new, 'test_npm.NpmRuntime.test_' + test, 'python',
+             site_tests=([
+                 'test_npm.NpmRuntime.test_retry', 'test_npm.NpmRuntime.test_retry']
+                 if old == "'--ignore-scripts'" else [
+                 'test_npm.NpmRuntime.test_retry', 'test_npm.NpmRuntime.test_race']
+                 if old == 'if (await lookup()) continue;' else None))
+for name, test in [('publish-npm', 'publish'), ('verify-npm-clients', 'verify')]:
+    mutation('release/targets/npm/' + name + '.env.yml',
+             " | replace('$', '\\\\u0024')", '',
+             'test_npm.NpmPart.test_' + test + '_model_data_stays_literal', 'python')
+
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []
