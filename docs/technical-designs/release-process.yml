@@ -15,8 +15,8 @@ objective: >-
 background:
   current-design: >-
     Each Wyrd tool repository keeps a hand-written release workflow. The
-    Intentional repository's `.github/workflows/cd.yml` is the baseline: it
-    triggers on a pushed SemVer tag, checks a fixed list of three secrets,
+    Intentional repository's `.github/workflows/cd.yml` is the reference
+    workflow: it triggers on a pushed SemVer tag, checks a fixed list of three secrets,
     builds binaries, creates a GitHub Release for every tag, and publishes to
     crates.io, npm, and a Homebrew tap from jobs written for that repository.
     Other repositories copy and change it by hand. This repository holds the
@@ -33,17 +33,17 @@ background:
       A change to the release process is a hand edit in every repository, and
       no tool can tell which process a repository runs.
     - >-
-      The baseline trigger fires on every SemVer tag, including the baseline
-      tag that `intentional tag --baseline` creates for a repository that has
+      The reference workflow trigger fires on every SemVer tag, including the
+      baseline tag that `intentional tag --baseline` creates for a repository that has
       not released.
     - >-
-      The baseline creates a release record for every tag. Release Units with
-      `release_record: none` must have none.
+      The reference workflow creates a release record for every tag. Release
+      Units with `release_record: none` must have none.
     - >-
       The live organization policy requires the release workflow to be
       dispatched on a pinned source commit (`REPO-REL-04`, `REPO-REL-05`,
       `REPO-REL-06`) and every action to be pinned to a full commit SHA with a
-      version comment (`REPO-CI-04`). The baseline meets neither.
+      version comment (`REPO-CI-04`). The reference workflow meets neither.
     - >-
       GitHub expressions `${{ }}` and Jinja `{{ }}` use the same delimiters,
       and no convention says how a template writes a GitHub expression.
@@ -56,7 +56,7 @@ design-challenges:
     A publication job must never run on a baseline tag record, for a Release
     Unit the run does not release, or after a failed preflight. A target
     cannot be trusted to write that gate correctly, so the parent writes every
-    `needs` list and every job-level condition, and a contribution can only
+    `needs` list and every job-level condition, and a part job can only
     narrow the condition.
   action-version-comments: >-
     `REPO-CI-04` and Renovate read the version comment after a pinned action
@@ -64,7 +64,7 @@ design-challenges:
     as YAML text. Repository tests check the pinned reference together with
     its comment before validating the parsed job against the internal schema.
   two-template-languages: >-
-    Every workflow body and every contributed string is rendered by Jinja
+    Every workflow body and every part job string is rendered by Jinja
     before GitHub reads it. A GitHub expression must survive the Jinja render
     unchanged, and a rendered value must never be rendered a second time.
   evidence-without-network-in-render: >-
@@ -194,7 +194,7 @@ proposed-design:
     jobs; `release-record`, when the parent renders it; publish jobs; verify
     jobs. Every job needs every job of every earlier stage, not only the jobs
     of the stage before it. The order therefore holds when a stage is empty:
-    with no publish contributions, each verify job still needs every build job
+    with no part publish jobs, each verify job still needs every build job
     and `release-record`, so it starts after them and a failure in either is
     its ancestor. The parent writes every job condition. The preflight jobs
     have none, so GitHub's implicit `success()` runs them only after `resolve`
@@ -205,12 +205,12 @@ proposed-design:
     because GitHub evaluates it over every ancestor in a chain of dependent
     jobs; the `result` tests stop the job when `resolve` or a preflight job
     did not succeed for any other reason. A skipped build, publish, or verify
-    job does not stop a later job: a contributed job is skipped when it serves
+    job does not stop a later job: a part job is skipped when it serves
     no unit that the run releases, and GitHub's implicit `success()` would
     otherwise skip every job that needs it. `release-record` has the condition
     `<stage gate> && needs.resolve.outputs.record == 'true'`. Every
-    contributed job has the condition `<stage gate> && (<unit test>)` and,
-    when the contribution has `if`, `&& (<if>)`. The unit test joins one
+    part job has the condition `<stage gate> && (<unit test>)` and,
+    when the part job has `if`, `&& (<if>)`. The unit test joins one
     clause per id in `units` with `||`. For a build job, and for a unit whose
     Release Model policy is `none`, the clause is
     `contains(fromJSON(needs.resolve.outputs.units), '<id>')`. For a publish
@@ -223,8 +223,8 @@ proposed-design:
     dispatch on the same source commit: `release-record` accepts or completes
     its own earlier work (release-records), and a publish job succeeds when
     its version is already published, as the valid example does. Every
-    contributed job gets these environment values, which the parent sets and a
-    contribution cannot override: `RELEASE_SOURCE_SHA`, the source commit;
+    part job gets these environment values, which the parent sets and a
+    part job cannot override: `RELEASE_SOURCE_SHA`, the source commit;
     `RELEASE_UNITS`, the released Release Unit ids separated by one space; and
     `RELEASE_JSON`, an object that maps each released unit id to `tag`,
     `version`, and `prerelease`. `resolve` exposes the same facts as outputs
@@ -272,7 +272,7 @@ proposed-design:
     each include inside `{% if '<target>' in targets %}`. The
     partial writes `uses` lines as YAML text, so the version comment is kept
     as a YAML comment. A test in this repository
-    renders the parent once per target, parses each target job from the
+    renders the parent once per target, parses each part job from the
     rendered workflow with a comment-preserving parser, rejoins each external
     `uses` reference and its version comment as the schema's one string,
     removes the parent-owned members, adds `units` from the answer, and
@@ -285,8 +285,7 @@ proposed-design:
     `data`; questions with `when: "'npm' in targets"` were asked only when
     `npm` was selected; the included partial read the units answer and kept
     the `# v7.0.0` comment on its `uses` line; and an `unless` member left the
-    credential out when `trusted_publishing` was true. Every rule this design
-    states for a contributed job applies to a target job. The measured sample
+    credential out when `trusted_publishing` was true. The measured sample
     predates the part mechanism; selection flags, record writes and updates
     under the edited Toha contract are inferred until implementation validation.
 
@@ -515,14 +514,14 @@ proposed-design:
     and a change mints a new URI.
 
   security-surface: >-
-    The approved surface is the grantable part-job permissions (`contents:
+    The approved surface is the grantable part job permissions (`contents:
     read`, `actions: read`, `id-token: write`, `attestations: write`, `packages:
     read` or `write`) with `contents: write` reserved for the parent's
     release-record job; `actions: read` in `resolve` for the CI-run check;
     preflight checking presence only, of every declared credential, on every
     run; preflight jobs entering each declared environment; the dispatch-only
     trigger and source-commit checks; the parent-owned gate and refusal of
-    status functions in contributed conditions; schema rules that keep
+    status functions in part job conditions; schema rules that keep
     `${{ }}` out of scripts and require commit pins; no hooks in release-process
     v1 templates; and repository Renovate as the owner of pin updates.
     Answers and the applied record contain credential names, never values.
