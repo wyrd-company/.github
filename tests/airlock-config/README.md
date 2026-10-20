@@ -3,7 +3,7 @@
 # Airlock configuration template tests
 
 Use the Python dependencies in `../release/requirements.txt`. Set `TOHA_BIN` to
-Toha built from `8f148040` and `AIRLOCK_BIN` to Airlock built from `faa75fb4`.
+Toha built from `8f148040` and `AIRLOCK_BIN` to Airlock built from `fb99337bd650fdf769c6e1d40eaa6d581e827268`.
 Build each in its own scratch clone with `cargo build --locked -j2` (Airlock's
 package is `airlock-cli`). Remove owned clones and build output after testing.
 
