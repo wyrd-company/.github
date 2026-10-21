@@ -45,9 +45,28 @@ Both recipes write regular files directly in their output directory. Empty
 output fails (`if-no-files-found: error`). Each file is uploaded as a separate
 `release-asset+<unit>+<file>` artifact with the official `@actions/artifact`
 JavaScript client. The template installs that dependency under `runner.temp`
-with npm lifecycle scripts disabled; runners need npm for this setup. Artifact
-names must be distinct across targets and assembly. A duplicate fails upload;
-files cannot replace an earlier artifact. The parent owns artifact names,
+with `npm ci` and lifecycle scripts disabled; runners need npm for this setup.
+Toha generates `.github/release-artifact-client/package.json` and
+`package-lock.json` from the parent-owned inputs in
+`release/targets/product-build/artifact-client`. Setup copies both files into
+runner temporary storage. Missing inputs report `Artifact client dependency
+inputs are missing`; an inconsistent lock or failed installation reports
+`Artifact client locked dependency setup failed`. Setup uses the locked graph.
+Repository Renovate maintains the parent SDK manifest and complete lock through
+the existing Wyrd preset, with automerge disabled and weekly lock maintenance.
+Review and adopt dependency updates with:
+
+```sh
+toha apply gh:wyrd-company/.github#release . --update
+```
+
+`ArtifactDependencies.test_source_emitted_installed_graph_agreement` checks the
+source, generated inputs and installed graph using the official SDK offline.
+`ArtifactDependencies.test_official_updater_extracts_source_and_lock` checks
+actual Renovate extraction and the update owner.
+
+Artifact names must be distinct across targets and assembly. A duplicate fails
+upload; files cannot replace an earlier artifact. The parent owns artifact names,
 upload/download, job ordering and conditions. Both jobs request only
 `contents: read`, persist no checkout credential, declare no credentials and
 receive no user secrets.

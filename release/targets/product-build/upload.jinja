@@ -5,7 +5,18 @@
     working-directory: {% raw %}${{ runner.temp }}{% endraw %}
     env:
       ARTIFACT_CLIENT_DIRECTORY: {% raw %}${{ runner.temp }}/release-artifact-client{% endraw %}
-    run: npm install --prefix "$ARTIFACT_CLIENT_DIRECTORY" --ignore-scripts --no-audit --no-fund @actions/artifact@6.3.1
+      ARTIFACT_CLIENT_INPUTS: {% raw %}${{ github.workspace }}/.github/release-artifact-client{% endraw %}
+    run: |
+      set -euo pipefail
+      if ! mkdir -p "$ARTIFACT_CLIENT_DIRECTORY" ||
+         ! cp "$ARTIFACT_CLIENT_INPUTS/package.json" "$ARTIFACT_CLIENT_INPUTS/package-lock.json" "$ARTIFACT_CLIENT_DIRECTORY/"; then
+        echo "::error::Artifact client dependency inputs are missing"
+        exit 1
+      fi
+      if ! npm ci --prefix "$ARTIFACT_CLIENT_DIRECTORY" --ignore-scripts --no-audit --no-fund; then
+        echo "::error::Artifact client locked dependency setup failed"
+        exit 1
+      fi
   - name: Upload each release asset
     if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
     uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

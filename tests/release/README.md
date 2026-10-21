@@ -13,6 +13,8 @@ python3 -m venv .venv
 export PATH="$PWD/.venv/bin:$PATH"
 export TOHA_BIN=/path/to/toha
 export INTENTIONAL_DIR=/path/to/intentional
+export RELEASE_ARTIFACT_NPM_CACHE=/path/to/prefetched/npm-cache
+export RENOVATE_PACKAGE_DIR=/path/to/renovate/node_modules/renovate
 task ci
 python3 tests/release/mutations.py --report /tmp/release-mutations.json
 ```
@@ -66,6 +68,48 @@ must fail that observation. These tests do not measure GitHub job scheduling.
 The copy must be byte-identical to the named source path. Refresh from the first
 Intentional release tag that names line 1 and update the provenance and test
 source together. Keep the source commit available in `INTENTIONAL_DIR`.
+
+## Artifact dependency evidence
+
+`test_artifact_dependencies.py` needs an npm cache containing the complete
+committed `@actions/artifact` graph and an installed official Renovate package.
+The extraction harness uses Renovate's own file selection, npm extraction and
+package-rule functions. `RENOVATE_PACKAGE_DIR` selects that package directory;
+it does not start Renovate's hosted updater or resolve remote presets. Prepare
+these inputs with lifecycle scripts disabled in a separate scratch directory:
+
+```sh
+mkdir -p /path/to/sdk-inputs
+cp release/targets/product-build/artifact-client/package*.json /path/to/sdk-inputs/
+npm ci --prefix /path/to/sdk-inputs \
+  --cache /path/to/prefetched/npm-cache --ignore-scripts --no-audit --no-fund
+npm install --prefix /path/to/renovate --save-exact renovate@44.167.1 \
+  --cache /path/to/tool-cache --ignore-scripts --no-audit --no-fund
+```
+
+The SDK command is preparation; run it in an owned copy of the dependency
+inputs. The tests exercise the emitted setup offline using
+`RELEASE_ARTIFACT_NPM_CACHE`. They compare source and generated manifest/lock
+bytes, the actual setup's installed copies, and an independent `npm ls` graph.
+They import the official SDK's ESM entry point without uploading artifacts.
+Build and assembly must share the same setup, and an unselected product emits
+no dependency inputs.
+
+`test_corrupt_emitted_lock_fails_agreement_and_setup` replaces only the
+consumer's emitted lock. The byte agreement assertion and actual npm setup
+independently reject it, then exact restoration passes both again.
+`test_missing_emitted_lock_fails_without_unlocked_fallback` removes the lock
+and requires the named diagnostic before npm starts.
+`test_official_updater_extracts_source_and_lock` requires the parent SDK,
+associated complete lock, Wyrd preset, non-automerge owner and weekly lock
+maintenance. Official file filtering must keep every other release input
+excluded. `test_misdirected_official_extraction_fails_named_assertion` restores
+the blanket release exclusion in an isolated fixture; the extraction assertion
+must reject it before restored extraction passes. These tests do not establish
+hosted scheduling, registry publication, artifact permissions or service limits.
+
+Set `RELEASE_DEPENDENCY_RECEIPTS=/absolute/path` to retain raw commands, exits,
+outputs, source head and selected tool/cache paths for these tests.
 
 ## Product build and assembly evidence
 

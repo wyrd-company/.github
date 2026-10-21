@@ -79,7 +79,7 @@ async function main() {
         execFileSync(process.execPath, [path.join(actionDirectory, 'index.cjs')], {env: recipeEnv, stdio: 'pipe'});
       } else if (step.name === 'Install official artifact client') {
         // Dependency installation is outside product sources. No network in this fixture.
-        assert.match(step.run, /npm install --prefix "\$ARTIFACT_CLIENT_DIRECTORY" --ignore-scripts/);
+        assert.match(step.run, /npm ci --prefix "\$ARTIFACT_CLIENT_DIRECTORY" --ignore-scripts/);
         assert.equal(expand(step['working-directory'], matrix), temp);
       } else if (step.uses?.includes('github-script@')) {
         const stepEnv = Object.fromEntries(Object.entries(step.env).map(([key, value]) => [key, expand(value, matrix)]));
