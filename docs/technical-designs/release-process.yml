@@ -101,7 +101,8 @@ proposed-design:
     `release/template/.github/workflows/release.yml` (the workflow body). The
     rendered workflow path is fixed. `product-build` runs reviewed local product
     actions from the resolved source commit in read-only, no-secret build and
-    optional assembly jobs before the release record. The template provisions
+    optional assembly jobs before the release record, and an optional verification
+    recipe after publication. The template provisions
     the artifact dependency outside product sources. Each publication target
     has a directory
     `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
@@ -163,7 +164,9 @@ proposed-design:
     A credential key is a label that conventionally starts with the target name,
     for example `npm-token`. The interface determines the stage; there is no
     stage member to disagree with it. These interfaces are data inside the
-    parent, validated by its tests.
+    parent, validated by its tests. The product-build part contributes
+    `verify-product` to `verify_jobs` only when `product_verification` is true;
+    the parent writes it with the same part-job macro and interface schema.
 
   publish-job-schema: >-
     `release/schemas/publish-job.schema.json` (draft) validates one job
@@ -227,7 +230,10 @@ proposed-design:
     `(contains(fromJSON(needs.resolve.outputs.units), '<id>') &&
     needs.release-record.result == 'success')`, so a required unit's
     publication and verification never run without its release record,
-    whatever skipped `release-record`. A failed job stops every later job of
+    whatever skipped `release-record`. The product verification recipe step
+    also tests the matrix unit against the released and record-required unit
+    outputs, so a released unit with policy `none` cannot admit another matrix
+    unit whose required record did not succeed. A failed job stops every later job of
     the run, for every unit. The retry is a re-run of the failed jobs or a new
     dispatch on the same source commit: `release-record` accepts or completes
     its own earlier work (release-records), and a publish job succeeds when
@@ -295,9 +301,31 @@ proposed-design:
     conditions, artifact names, dependency setup, upload and download. Both
     recipe jobs request only `contents: read`, declare no credentials and
     receive no user secrets. The checkout selects the resolved source SHA and
-    does not persist credentials. Reviewed product code runs before the
-    release record; a broken recipe can fail the run or produce incorrect
+    does not persist credentials. Reviewed build and assembly code runs before
+    the release record; a broken recipe can fail the run or produce incorrect
     assets. Publication parts retain their checksum and format checks.
+    The product-build interview also asks `product_verification`, default false.
+    When enabled, `product_verification_recipe` defaults to
+    `./.github/actions/release-verify` and `product_verification_matrix` reads
+    `.github/release-verification.json`, validated by the draft schema
+    `release/schemas/product-verification-matrix.schema.json`. Its `runners`
+    array contains runner label strings or arrays of self-hosted labels, using
+    the build matrix's label rules. Products own these runner choices; assembly
+    and publication parts need not be selected. Each selected product-build unit
+    and runner entry contributes a `verify-product` matrix entry. The local
+    action receives `unit`, `matrix-entry` (the complete entry as JSON), `tag`,
+    `version`, and `prerelease` (JSON true or false). The last three inputs come
+    from that unit's resolved `RELEASE_JSON` entry, never the dispatch ref. It
+    inherits the parent release environment. Only released units run the recipe;
+    required units additionally require a successful release record. The job
+    needs resolve, every preflight, build, assembly, release-record and publish
+    job, preserving the parent stage gate when stages are empty or unrelated
+    work skips. Failure of the recipe fails the verification job and workflow.
+    It requests `contents: read` only, declares no credentials or protected
+    environment, and receives no user secrets. No answer enters a script or
+    GitHub expression. Default-off and deselected output adds no job; existing
+    npm verification retains its content and graph. Product verification is a
+    local-action recipe, not a Toha hook or a custom parent release gate.
 
   optional-parts-form: >-
     After `release_model` the parent asks `targets`, a top-level `multiselect`
@@ -549,7 +577,22 @@ proposed-design:
     checksum agreement, and no record after build failure. Named controls
     remove assembly build dependencies, resolve/preflight result guards, and
     the generic part's permission and credential checks. These local tests do
-    not establish GitHub scheduling. The templates lane proves these cases on
+    not establish GitHub scheduling. `ProductVerification` validates the optional
+    interview and runner schema, contents-read-only job interface, every earlier
+    dependency, required-record condition, empty stages, and deselection. Its
+    condition table covers success, skipped, failed, cancelled and empty states.
+    The local emitted-job runner executes the example verification action for
+    resolved identities that differ from the dispatch ref, recipe failure,
+    unreleased units, and a mixed-unit skipped-record case. Named controls remove
+    publish dependencies and required-record clauses, admit extra permission,
+    declared credentials or user secrets, and substitute dispatch-ref identities.
+    Disabled-output comparisons cover each existing part alone, each paired with
+    product-build, and all parts together, with assembly enabled and disabled.
+    These cases compare actual base and candidate workflow and SDK bytes; they
+    do not enumerate arbitrary input documents. Real verification after
+    publication on selected runners, recipe failure failing a hosted workflow,
+    and skipped unreleased-unit verification require separate live evidence.
+    The templates lane proves these cases on
     real GitHub Actions runs of a
     rendered workflow in a test repository, because the job conditions rely
     on GitHub's `needs` and status-function semantics. Assembly starts after
@@ -580,7 +623,9 @@ proposed-design:
     patterns, both draft schemas, `resolve` outputs, `RELEASE_` environment
     names, and job order and conditions in job-graph. Each part ships with the
     parent and changes with it; a change to an internal interface updates every
-    affected part and repository test in the same parent revision. Adding a
+    affected part and repository test in the same parent revision. The optional
+    product verification recipe is part of that parent contract revision; its
+    runner document schema retains its draft identity. Adding a
     target is a parent-template revision, and an outside target uses a fork of
     the parent. Airlock accepts parent revisions by organization-configured
     refs and reads selected parts from the applied entry; there is no separately
@@ -599,8 +644,10 @@ proposed-design:
     status functions in part job conditions; schema rules that keep
     `${{ }}` out of scripts and require commit pins; no hooks in release-process
     v1 templates; repository Renovate as the owner of pin updates; and reviewed
-    repository recipes in build/assembly jobs with read-only contents, no
-    declared credentials or user secrets. Artifact transport uses the runner's
+    repository recipes in build, assembly and optional verification jobs with
+    read-only contents, no declared credentials, protected environment or user
+    secrets. Verification inputs convey only the resolved release identity and
+    the product-owned unit/runner matrix entry. Artifact transport uses the runner's
     existing artifact credentials and introduces no user credential, permission
     grant, timer, timeout, or runtime version-check policy.
     Answers and the applied record contain credential names, never values.

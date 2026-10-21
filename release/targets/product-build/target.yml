@@ -4,5 +4,5 @@ units: product_build_units
 build: [build-product]
 assemble: [assemble-product]
 publish: []
-verify: []
+verify: [verify-product]
 credentials: {}

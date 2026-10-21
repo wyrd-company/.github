@@ -45,4 +45,7 @@
 {% set body %}{% include 'targets/product-build/assemble-product.jinja' %}{% endset %}
 {{ ns.part_job('assemble-product', product_build_units, 'assemble', body) }}
 {% endif %}
-{% endif %}
+{% if stage == 'verify' and product_verification | default(false) %}
+{% set body %}{% include 'targets/product-build/verify-product.jinja' %}{% endset %}
+{{ ns.part_job('verify-product', product_build_units, 'verify', body) }}
+{% endif %}{# Adjacent tags preserve disabled-output whitespace. #}{% endif %}

@@ -148,6 +148,8 @@ def check_parts(template, workflow, selected, answers):
             assert data['credentials'] == {}, 'Product recipes declare no credentials'
             if not answers.get('product_build_assembly', False):
                 data['assemble'] = []
+            if not answers.get('product_verification', False):
+                data['verify'] = []
         metadata[target] = data
         for stage in ('build', 'assemble', 'publish', 'verify'):
             for job in data.get(stage, []):
@@ -178,6 +180,9 @@ def check_parts(template, workflow, selected, answers):
                 body = copy.deepcopy(parsed['jobs'][name])
                 if target == 'product-build':
                     assert body['permissions'] == {'contents': 'read'}, 'Product recipes request contents: read only'
+                    if stage == 'verify':
+                        assert 'environment' not in body, 'Product verification declares no protected environment'
+                        assert 'secrets.' not in json.dumps(body), 'Product verification receives no user secrets'
                 condition = body.pop('if')
                 body.pop('needs')
                 clauses = []

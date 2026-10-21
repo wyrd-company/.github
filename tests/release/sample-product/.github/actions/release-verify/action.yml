@@ -1,0 +1,22 @@
+# relationships: validates: release-process
+name: Example verification recipe
+description: Record resolved identity or fail the example check
+inputs:
+  unit:
+    required: true
+    description: Release Unit
+  matrix-entry:
+    required: true
+    description: Complete unit and runner matrix entry as JSON
+  tag:
+    required: true
+    description: Resolved release tag
+  version:
+    required: true
+    description: Resolved release version
+  prerelease:
+    required: true
+    description: Resolved prerelease flag as JSON
+runs:
+  using: node24
+  main: index.cjs

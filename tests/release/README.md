@@ -486,3 +486,36 @@ Inspect `REPO-REL-04`, `REPO-REL-05`, `REPO-REL-06` and `REPO-CI-04` as actual
 observations. Unbuilt, manual, routed, unobserved or unavailable checks remain
 UNKNOWN/UNVERIFIED; they are not PASS. The harness supplies no audit outcome.
 Toha update tests are local and need no live repository.
+
+## Product verification recipe evidence
+
+`test_product_verification.py` renders the optional `verify-product` job with
+retained Toha and validates its part interface. `test_optional_interview_and_schema`
+checks default-off selection, local-action default and runner forms.
+`test_all_publish_dependencies` checks all preceding jobs;
+`test_stage_truth_table_and_required_record` covers success, skipped, failure,
+cancelled and empty states. `test_empty_build_assembly_publish_stages` and
+`test_verification_without_assembly_publication_or_record_stage` cover empty stages.
+`test_default_off_false_and_deselected` checks omitted jobs.
+
+The example action lives in `sample-product/.github/actions/release-verify`.
+`product-verification-rendered.cjs` runs emitted expressions and that action.
+`test_recipe_receives_resolved_identity` uses two units with different resolved
+tags, versions and prerelease flags, all different from the dispatch ref.
+`test_recipe_failure_fails_job`, `test_unreleased_unit_skips_recipe` and
+`test_mixed_units_required_record_step_gate` check failure and per-unit admission.
+The fixture models the local job result; hosted workflow failure and scheduling
+remain separate live cases.
+
+`test_rejects_extra_permission`, `test_rejects_declared_credential` and
+`test_rejects_user_secret_and_protected_environment` exercise read-only boundaries.
+`test_invalid_recipe_and_matrix_before_output` checks refusal before writes.
+`test_disabled_outputs_equal_base_bytes` renders 24 composition/assembly cases:
+each part alone, each other part with product-build, and all parts together,
+with assembly enabled and disabled. It compares workflow and generated SDK bytes
+against the recorded base; it does not claim all possible answer documents.
+Set `RELEASE_VERIFICATION_BASE` to that captured base and
+`RELEASE_VERIFICATION_RECEIPTS` to retain identity, truth-table and byte receipts.
+Named controls target publish dependencies, required-record clauses, permissions,
+credentials/secrets and dispatch-ref identity substitution. The complete mutation
+inventory must have positive site counts; a full mutation battery is separate.

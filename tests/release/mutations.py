@@ -485,6 +485,34 @@ mutation('tests/release/ghcr_oci_proof.py',
          'test_ghcr.GhcrCompilationProof.test_compiled_binary_readback_and_absence', 'python')
 
 
+
+# Optional product verification: named, independently falsifiable boundaries.
+mutation('release/partials/jobs.yml',
+         "(ns.publish if stage == 'verify' else [])", '[]',
+         'test_product_verification.ProductVerification.test_all_publish_dependencies', 'python')
+mutation('release/partials/jobs.yml',
+         " && needs.release-record.result == 'success')", "')",
+         'test_product_verification.ProductVerification.test_stage_truth_table_and_required_record', 'python')
+mutation('release/targets/product-build/verify-product.jinja',
+         " && (!contains(fromJSON(needs.resolve.outputs.record_units), matrix.unit) || needs.release-record.result == 'success')", '',
+         'test_product_verification.ProductVerification.test_mixed_units_required_record_step_gate', 'python')
+mutation('tests/release/harness.py',
+         "assert body['permissions'] == {'contents': 'read'}, 'Product recipes request contents: read only'", 'pass',
+         'test_product_verification.ProductVerification.test_rejects_extra_permission', 'python')
+mutation('tests/release/harness.py',
+         "assert data['credentials'] == {}, 'Product recipes declare no credentials'", 'pass',
+         'test_product_verification.ProductVerification.test_rejects_declared_credential', 'python')
+mutation('tests/release/harness.py',
+         "assert 'secrets.' not in json.dumps(body), 'Product verification receives no user secrets'", 'pass',
+         'test_product_verification.ProductVerification.test_rejects_user_secret_and_protected_environment', 'python')
+mutation('tests/release/harness.py',
+         "assert 'environment' not in body, 'Product verification declares no protected environment'", 'pass',
+         'test_product_verification.ProductVerification.test_rejects_user_secret_and_protected_environment', 'python')
+for member in ('tag', 'version'):
+    mutation('release/targets/product-build/verify-product.jinja',
+             'fromJSON(env.RELEASE_JSON)[matrix.unit].' + member, 'github.ref_name',
+             'test_product_verification.ProductVerification.test_recipe_receives_resolved_identity', 'python')
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

@@ -172,5 +172,24 @@ interview:
     required: true
     validate:
       regex: '^[A-Za-z0-9_.-]+$'
+  - id: product_verification
+    type: confirm
+    prompt: Verify released products with a repository recipe?
+    when: "'product-build' in targets"
+    default: false
+  - id: product_verification_recipe
+    type: text
+    prompt: Repository-owned local verification action
+    when: "'product-build' in targets and product_verification"
+    default: ./.github/actions/release-verify
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_verification_matrix
+    type: document
+    prompt: Product verification runners
+    when: "'product-build' in targets and product_verification"
+    schema: https://github.com/wyrd-company/.github/blob/main/release/schemas/product-verification-matrix.schema.json
+    input: .github/release-verification.json
   - id: credential_answers
     computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

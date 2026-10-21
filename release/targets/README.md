@@ -115,6 +115,52 @@ assembly stops all later stages. Skipped work for an unreleased unit and empty
 stages preserve ordering. The local fixture proves transport and record bytes;
 hosted scheduling cases require separate live evidence.
 
+## Product verification
+
+With `product-build` selected, enable `product_verification` to run an optional
+local verification action after publication. It defaults to false. Assembly and
+publication parts are optional. The units are `product_build_units`; the product
+owns the verification content and runner selection.
+
+`product_verification_recipe` defaults to `./.github/actions/release-verify` and
+must be a repository-local action path. Supply `.github/release-verification.json`
+or answer the `product_verification_matrix` document question. Its schema is
+`release/schemas/product-verification-matrix.schema.json`. Runner values use the
+same label-string or self-hosted-label-array forms as the build matrix:
+
+```json
+{
+  "runners": ["ubuntu-latest", ["self-hosted", "example-runner"]]
+}
+```
+
+The parent creates one `verify-product` matrix entry per selected unit and runner.
+The action receives these inputs:
+
+- `unit`: the Release Unit id;
+- `matrix-entry`: JSON containing the complete `unit` and `runner` entry;
+- `tag` and `version`: that unit's resolved identity from `RELEASE_JSON`;
+- `prerelease`: the resolved JSON boolean, `true` or `false`.
+
+It also inherits `RELEASE_SOURCE_SHA`, `RELEASE_UNITS` and `RELEASE_JSON`.
+The parent checks out the resolved source commit without persisted credentials.
+The job requests only `contents: read`, declares no credentials or protected
+environment, and receives no user secrets. The recipe runs only for a released
+unit and, for a required unit, after a successful release record. This per-unit
+check also applies when the matrix includes units with different record policies.
+
+The job needs every earlier resolve, preflight, build, assembly, release-record
+and publish job. A failure or cancellation in an earlier stage skips verification.
+Skipped unrelated work and empty stages do not stop it. Recipe failure fails the
+job and workflow. The existing npm client verification keeps its current behavior.
+With verification disabled or product-build deselected, existing generated
+workflow and SDK bytes remain unchanged.
+
+`ProductVerification` checks the interview, schema and graph, executes the emitted
+job against the example local action, and compares disabled base/candidate bytes.
+The local evidence does not establish hosted scheduling or released-client
+behavior on the product's selected runners; those need separate live evidence.
+
 ## crates.io
 
 Select `--with crates-io`, then answer `crates_io_units` with the Release Unit
@@ -194,7 +240,8 @@ the default tag.
 Clean clients install the exact package version on Linux amd64/arm64, macOS
 arm64 and Windows amd64, then check the installed manifest identity. Install
 scripts run, so binary launchers can fetch their release assets. Product-specific
-CLI checks belong to adoption. Named local tests use real npm packs and a fake
+CLI checks are supplied by adoption through the optional product verification
+recipe described above. Named local tests use real npm packs and a fake
 registry boundary; they make no public publication. Live GitHub run receipts
 remain pending the authorized test repository.
 

@@ -11,7 +11,7 @@
 {% set ns.assemble = ns.assemble + (data.assemble | default([])) %}
 {% endif %}
 {% set ns.publish = ns.publish + data.publish %}
-{% set ns.verify = ns.verify + data.verify %}
+{% set ns.verify = ns.verify + (data.verify if target != 'product-build' or product_verification | default(false) else []) %}
 {% for key, credential in data.credentials | dictsort %}
 {% if not credential.unless or not credential_answers[credential.unless] %}
 {% set ns.credentials = ns.credentials + [credential] %}
