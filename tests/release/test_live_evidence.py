@@ -111,9 +111,13 @@ class Evidence(unittest.TestCase):
         values = fixture(); values[2]['jobs_endpoint'] = 'actions/runs/42/jobs?per_page=100'
         self.rejected(values, 'Historical attempt endpoints differ')
 
+    def test_job_missing_run_attempt_fails_closed(self):
+        values = fixture(); del values[2]['jobs_pages'][0]['jobs'][0]['run_attempt']
+        self.rejected(values, '^Missing job attempt$')
+
     def test_historical_job_cannot_mix_with_current_attempt(self):
         values = fixture(); values[2]['jobs_pages'][0]['jobs'][0]['run_attempt'] = 1
-        self.rejected(values, 'Wrong job attempt')
+        self.rejected(values, '^Wrong job attempt$')
 
     def test_actual_dispatch_input_marker_required(self):
         values = fixture(); values[2]['resolve_logs'] = 'script printed but no runtime marker'
@@ -210,13 +214,18 @@ class Evidence(unittest.TestCase):
         self.assertTrue(self.check(values,previous)['continuation'])
 
     def test_partial_continuation_missing_failed_and_mismatched(self):
-        for field in ('missing', 'failure', 'release', 'source'):
+        errors = {'missing': '^Missing first-attempt record logs$',
+                  'failure': '^First attempt did not fail$',
+                  'release': '^Continuation lost existing Release/assets$',
+                  'source': '^Wrong source SHA$'}
+        for field, error in errors.items():
             values, previous = self.continuation()
             if field == 'missing': previous['evidence']['record_logs'] = []
             if field == 'failure': previous['evidence']['run']['conclusion'] = 'success'
-            if field == 'release': values[2]['before']['records'][0]['id'] = 99
+            # Preserve the draft ID so only the retained-partial equality can reject.
+            if field == 'release': values[2]['before']['records'][0]['assets'] = []
             if field == 'source': previous['evidence']['run']['head_sha'] = 'b'*40
-            with self.subTest(field=field), self.assertRaises(ValueError):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, error):
                 self.check(values,previous)
 
     def test_report_failure_nonzero_no_pass_and_no_overwrite(self):
@@ -313,10 +322,10 @@ class CommandBoundary(unittest.TestCase):
         case,receipt,evidence,_ = fixture()
         endpoints = []
         def run(command,**kwargs):
-            endpoint = command[-1].removeprefix('repos/'+REPO+'/'); endpoints.append(endpoint)
+            endpoint = command[-1]; endpoints.append(endpoint)
             responses = {
                 evidence['run_endpoint']: evidence['run'], evidence['jobs_endpoint']: evidence['jobs_pages'][0],
-                'actions/runs/9': evidence['ci'], '': evidence['repository'],
+                'actions/runs/9': evidence['ci'],
                 'contents/'+WORKFLOW+'?ref='+SHA: {'content':base64.b64encode(b'workflow bytes').decode()},
                 'actions/jobs/100/logs': evidence['resolve_logs'],
                 'actions/jobs/104/logs': 'upload failed',
@@ -324,6 +333,9 @@ class CommandBoundary(unittest.TestCase):
                 'releases/20/assets?per_page=100': evidence['after']['records'][0]['assets'],
                 'releases/tags/1.2.3': evidence['after']['records'][0],
             }
+            responses = {f'repos/{REPO}/{path}': value for path, value in responses.items()}
+            responses[f'repos/{REPO}'] = evidence['repository']
+            self.assertIn(endpoint, responses, 'Noncanonical API route')
             value = responses[endpoint]
             return subprocess.CompletedProcess(command,0,value if endpoint.endswith('/logs') else json.dumps(value),'')
         with tempfile.TemporaryDirectory() as tmp,patch('live.subprocess.run',side_effect=run):
@@ -331,7 +343,10 @@ class CommandBoundary(unittest.TestCase):
             self.assertEqual(result['status'],'COMPLETE')
             self.assertEqual(result['workflow_bytes'],'workflow bytes')
             self.assertEqual(result['resolve_logs'],evidence['resolve_logs'])
-            self.assertEqual(endpoints[:2],[evidence['run_endpoint'],evidence['jobs_endpoint']])
+            self.assertEqual(endpoints[:2],[f'repos/{REPO}/' + evidence['run_endpoint'],
+                                            f'repos/{REPO}/' + evidence['jobs_endpoint']])
+            self.assertIn(f'repos/{REPO}', endpoints)
+            self.assertNotIn(f'repos/{REPO}/', endpoints)
             self.assertTrue((output/'commands.jsonl').is_file())
             self.assertFalse(any('/runs/42/jobs' in endpoint for endpoint in endpoints))
 
@@ -391,3 +406,38 @@ class CommandBoundary(unittest.TestCase):
             with patch('live_evidence.save_new',side_effect=interrupted), self.assertRaisesRegex(OSError,'interrupted'):
                 live.main(argv)
             self.assertEqual(json.loads((root/'report.json').read_text())['status'],'INCOMPLETE')
+
+    def test_seed_after_readback_keyerror_preserves_original_upload_failure(self):
+        case = fixture('published-expected')[0]
+        created = dict(record(draft=True), upload_url='https://uploads.example.invalid/assets{?name}')
+        responses = [
+            (0, [], ''),
+            (1, {'message': 'Not Found'}, 'HTTP 404 Not Found'),
+            (0, created, ''),
+            (0, {'id': 30, 'name': 'sample.tar'}, ''),
+            (1, {'message': 'upload failed'}, 'HTTP 503 upload failed'),
+            (0, [{'id': 20}], ''),  # Malformed terminal readback: missing tag_name.
+        ]
+        def run(command, **kwargs):
+            status, value, stderr = responses.pop(0)
+            return subprocess.CompletedProcess(command, status, json.dumps(value), stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)/'seed'
+            with patch('live.subprocess.run', side_effect=run):
+                with self.assertRaisesRegex(ValueError, '^Seed refused/partial: UNVERIFIED;'):
+                    live.seed(REPO, case, output)
+            saved = json.loads((output/'seed.json').read_text())
+            commands = [json.loads(line) for line in (output/'commands.jsonl').read_text().splitlines()]
+            self.assertFalse(responses)
+            self.assertEqual(saved['status'], 'INCOMPLETE')
+            self.assertEqual(saved['commands'], commands)
+            self.assertEqual(saved['readback_error'], "'tag_name'")
+            self.assertIn('non-zero exit status 1', saved['error'])
+            self.assertEqual(saved['before']['records'], [])
+            self.assertNotIn('after', saved)
+            self.assertEqual(commands[3]['exit'], 0)
+            self.assertEqual(json.loads(commands[3]['stdout'])['name'], 'sample.tar')
+            self.assertEqual(commands[4]['input'], 'sample\n')
+            self.assertEqual(commands[4]['stderr'], 'HTTP 503 upload failed')
+            self.assertEqual(json.loads(commands[4]['stdout']), {'message': 'upload failed'})
+            self.assertEqual(json.loads(commands[5]['stdout']), [{'id': 20}])

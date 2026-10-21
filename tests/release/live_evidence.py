@@ -97,7 +97,8 @@ def jobs_for(run, case, evidence, partial=False):
             name = 'release-record' if job['name'].startswith('release-record') else job['name']
             require(name not in jobs, f'Duplicate observed job: {name}')
             require(job['run_id'] == run['id'] and job['head_sha'] == run['head_sha'], 'Wrong job source/run')
-            require(job.get('run_attempt', run['run_attempt']) == run['run_attempt'], 'Wrong job attempt')
+            require('run_attempt' in job, 'Missing job attempt')
+            require(job['run_attempt'] == run['run_attempt'], 'Wrong job attempt')
             jobs[name] = job
     require(evidence['jobs_pages'] and len(jobs) == evidence['jobs_pages'][0]['total_count'], 'Incomplete job inventory')
     expected = dict(case['expected_jobs'])
@@ -214,10 +215,10 @@ def verify(repo, run_id, case, receipt, evidence, before, seed, previous=None):
         require(case['assets'] and case['expect_success'], 'Partial continuation needs an asset success case')
         prior = identity(repo, first_receipt['run_id'], case, first_receipt, first)
         require((str(prior['id']), prior['run_attempt']) != (str(run['id']), run['run_attempt']), 'Continuation reuses first attempt')
-        require(prior['conclusion'] == 'failure', 'Missing first-attempt failure/logs')
+        require(prior['conclusion'] == 'failure', 'First attempt did not fail')
         prior_jobs = jobs_for(prior, case, first, partial=True)
         require(any(item['job_id'] == prior_jobs['release-record']['id'] and item['logs'].strip()
-                    for item in first['record_logs']), 'Missing first-attempt failure/logs')
+                    for item in first['record_logs']), 'Missing first-attempt record logs')
         require(timestamp(seed['after']['captured_at']) <= timestamp(prior['run_started_at']),
                 'Seed snapshot follows first attempt')
         partial = release_state(first['after'], repo, case['tag'])

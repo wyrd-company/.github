@@ -107,7 +107,8 @@ def api(repo, endpoint, method='GET', payload=None, journal=None, raw=False):
     command = ['gh', 'api']
     if method == 'GET' and not raw:
         command.append('--paginate')
-    command.append(endpoint if endpoint.startswith('https://') else f'repos/{repo}/{endpoint}')
+    route = f'repos/{repo}/{endpoint}' if endpoint else f'repos/{repo}'
+    command.append(endpoint if endpoint.startswith('https://') else route)
     if method != 'GET':
         command += ['--method', method]
     if payload is not None:
@@ -177,7 +178,7 @@ def seed(repo, case, output):
     finally:
         try:
             result['after'] = snapshot(repo, case, journal)
-        except (ValueError, subprocess.CalledProcessError) as error:
+        except (KeyError, ValueError, subprocess.CalledProcessError) as error:
             result['status'] = 'INCOMPLETE'
             result['readback_error'] = str(error)
         result['commands'] = [json.loads(line) for line in journal.read_text().splitlines()] if journal.exists() else []
