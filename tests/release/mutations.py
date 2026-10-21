@@ -491,7 +491,7 @@ mutation('release/partials/jobs.yml',
          "(ns.publish if stage == 'verify' else [])", '[]',
          'test_product_verification.ProductVerification.test_all_publish_dependencies', 'python')
 mutation('release/partials/jobs.yml',
-         " && needs.release-record.result == 'success')", "')",
+         " && needs.release-record.result == 'success')", ")",
          'test_product_verification.ProductVerification.test_stage_truth_table_and_required_record', 'python')
 mutation('release/targets/product-build/verify-product.jinja',
          " && (!contains(fromJSON(needs.resolve.outputs.record_units), matrix.unit) || needs.release-record.result == 'success')", '',
