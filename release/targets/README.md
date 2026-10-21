@@ -129,6 +129,9 @@ for a concurrent tag, then sets and reads back the version tag. A failed tag
 write can be retried from the same source commit. There is no polling timer.
 Registry tags are mutable; the parent serializes this workflow's releases.
 External writers must not move a release tag concurrently.
+A successful first publication can log expected `level=fatal` diagnostics with
+`manifest unknown` from missing-tag lookups before and after the digest copy.
+These lookup diagnostics alone do not establish workflow failure.
 
 GHCR creates new packages as private. The source label links the package before
 its first publication for repository access inheritance. For a public repository,
@@ -161,12 +164,18 @@ matching-retry and conflicting-byte proof. Local registry results do not prove
 GHCR's answer to `GITHUB_TOKEN` for a never-published package.
 `GhcrPublisher.test_ghcr_unmeasured_denials_fail_closed` covers unrecognized
 denials as refusal fixtures; it is not a captured authenticated response.
+Captured authenticated GHCR response evidence:
+`test_captured_authenticated_ghcr_first_lookup`,
+`test_captured_authenticated_ghcr_matching_retry`,
+`test_captured_authenticated_ghcr_conflict`,
+`test_captured_authenticated_ghcr_unauthorized_near_miss` and
+`test_captured_authenticated_ghcr_denied_near_miss`.
 Failed tools print captured stdout and stderr, with the raw token redacted.
 `test_build_failure_diagnostics`, `test_builder_failure_diagnostics`,
 `test_login_failure_diagnostics`, `test_local_inspect_failure_diagnostics`,
-`test_remote_inspect_failure_diagnostics` and `test_copy_failure_diagnostics`
+`test_remote_inspect_failure_diagnostics`, `test_copy_failure_diagnostics`,
+`test_tag_copy_failure_diagnostics` and `test_cleanup_failure_diagnostics`
 check the diagnostic and failure outcome.
-
 
 ## Homebrew tap
 
