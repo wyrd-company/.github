@@ -1,5 +1,6 @@
 // relationships: validates: release-process
 // Exercise official Renovate selection, npm extraction and package-rule ownership offline.
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -11,7 +12,7 @@ const {GlobalConfig} = await import(tool + 'config/global.js');
 const {getConfig} = await import(tool + 'config/defaults.js');
 const {validateConfig} = await import(tool + 'config/validation.js');
 const {resolveConfigPresets} = await import(tool + 'config/presets/index.js');
-const {set} = await import(tool + 'util/cache/memory/index.js');
+const {init: initMemory, get, set} = await import(tool + 'util/cache/memory/index.js');
 const {buildCacheKey} = await import(tool + 'util/cache/package/key.js');
 const {mergeChildConfig} = await import(tool + 'config/utils.js');
 const {getFilteredFileList, getMatchingFiles} = await import(tool + 'workers/repository/extract/file-match.js');
@@ -24,7 +25,10 @@ const owner = JSON.parse(read('renovate-config.json'));
 // Supply the exact local owner-preset input to the official cache, then resolve its
 // bundled extends with Renovate itself. No remote preset fetch or hosted run occurs.
 const ownerReference = 'github>wyrd-company/.github:renovate-config';
-set(buildCacheKey('preset', ownerReference), structuredClone(owner));
+const ownerKey = buildCacheKey('preset', ownerReference);
+initMemory();
+set(ownerKey, structuredClone(owner));
+assert.deepEqual(get(ownerKey), owner, 'Local owner preset cache retains intended input');
 const validation = {repository: await validateConfig('repo', repository), owner: await validateConfig('repo', owner)};
 const resolution = await resolveConfigPresets(structuredClone(repository));
 const config = mergeChildConfig(getConfig(), resolution.config);

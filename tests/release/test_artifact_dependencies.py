@@ -137,7 +137,7 @@ class ArtifactDependencies(unittest.TestCase):
             file.write_bytes(original)
         self.assert_input_agreement(project)
 
-    def extraction(self, config=None):
+    def extraction(self, config=None, owner=None):
         fixture = self.root / 'extraction'
         fixture.mkdir(exist_ok=True)
         shutil.copytree(ROOT / SOURCE, fixture / SOURCE, dirs_exist_ok=True)
@@ -146,6 +146,8 @@ class ArtifactDependencies(unittest.TestCase):
             shutil.copyfile(ROOT / name, fixture / name)
         if config is not None:
             (fixture / 'renovate.json').write_text(json.dumps(config))
+        if owner is not None:
+            (fixture / 'renovate-config.json').write_text(json.dumps(owner))
         files = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard'],
                                         cwd=ROOT, text=True).splitlines()
         (fixture / 'files.json').write_text(json.dumps(files))
@@ -177,6 +179,20 @@ class ArtifactDependencies(unittest.TestCase):
         self.assertEqual(sorted(f for f in result['filtered'] if f.startswith('release/')),
                          sorted([(SOURCE / name).as_posix() for name in ('package.json', 'package-lock.json')]),
                          'Other release inputs retain their updater exclusions')
+
+    def test_local_owner_fixture_is_resolved(self):
+        owner = json.loads((ROOT / 'renovate-config.json').read_text())
+        marker = 'local-input-fixture'
+        self.assertNotIn(marker, json.dumps(owner), 'Fixture marker is absent from the real owner preset')
+        marked = dict(owner, labels=owner.get('labels', []) + [marker])
+        result = self.extraction(owner=marked)
+        self.assert_extraction(result)
+        self.assertIn(marker, result['resolved']['labels'], 'Resolved preset consumes local-only owner fixture')
+        dependency, = result['extracted'][0]['dependencies']
+        self.assertIn(marker, dependency['labels'], 'Official extraction consumes the resolved local fixture')
+        restored = self.extraction()
+        self.assert_extraction(restored)
+        self.assertNotIn(marker, restored['resolved'].get('labels', []))
 
     def test_official_updater_extracts_source_and_lock(self):
         self.assert_extraction(self.extraction())

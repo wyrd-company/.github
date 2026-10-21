@@ -76,10 +76,14 @@ committed `@actions/artifact` graph and an installed official Renovate package.
 The extraction harness uses Renovate's own preset resolver, file selection, npm
 extraction and package-rule functions. `RENOVATE_PACKAGE_DIR` selects that
 package directory; it does not start Renovate's hosted updater. The exact local
-Wyrd preset is
-supplied to Renovate's preset cache; its bundled inherited presets are resolved
-by the installed official tool, without fetching remote presets. Prepare
-these inputs with lifecycle scripts disabled in a separate scratch directory:
+Wyrd preset is supplied to Renovate's initialized memory cache, and an exact
+readback assertion must pass before preset resolution. Its bundled inherited
+presets are resolved by the installed official tool.
+`test_local_owner_fixture_is_resolved` follows a local-only owner marker through
+resolved configuration and manager extraction. Run the affected module with
+network access denied to prove that remote presets cannot replace that input.
+Prepare these inputs with lifecycle scripts disabled in a separate scratch
+directory:
 
 ```sh
 mkdir -p /path/to/sdk-inputs
@@ -144,8 +148,18 @@ exact configuration bytes and passes.
 the generated SDK without the exclusion, then removes or misdirects only that
 entry and requires the named ownership assertion to fail. Exact restoration
 passes. Parent source and lock extraction is checked independently.
-These tests do not establish hosted scheduling, registry publication, artifact
-permissions or service limits.
+For a local network namespace where `unshare -rn` is supported, run the complete
+module after preparation with the required tool/cache variables set:
+
+```sh
+unshare -rn -- python3 -B -m unittest discover \
+  -s tests/release -p test_artifact_dependencies.py -v
+```
+
+This isolation denies network access to the tests and their child processes.
+A missing cache input must fail; do not fetch a replacement inside the isolated
+run. These tests do not establish hosted scheduling, registry publication,
+artifact permissions or service limits.
 
 Set `RELEASE_DEPENDENCY_RECEIPTS=/absolute/path` to retain raw commands, exits,
 outputs, source head and selected tool/cache paths for these tests.
