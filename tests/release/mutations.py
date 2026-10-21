@@ -451,6 +451,15 @@ mutation('release/targets/ghcr/publish.py',
 mutation('release/targets/ghcr/publish.py',
          "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
          'test_ghcr.GhcrPublisher.test_ghcr_unmeasured_denials_fail_closed', 'python')
+# The real wrapped diagnostic must be accepted, while same-shape denials fail closed.
+mutation('release/targets/ghcr/publish.py',
+         "missing and b'manifest unknown' in (error.stderr or b'').lower()",
+         "missing and (error.stderr or b'').lower() == b'manifest unknown'",
+         'test_ghcr.GhcrPublisher.test_captured_authenticated_ghcr_first_lookup', 'python')
+for test in ('unauthorized', 'denied'):
+    mutation('release/targets/ghcr/publish.py',
+             "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
+             'test_ghcr.GhcrPublisher.test_captured_authenticated_ghcr_' + test + '_near_miss', 'python')
 for old, new, test in [
     ('FROM --platform=$BUILDPLATFORM ', 'FROM ', 'native_build_stage_contract'),
     ('GOOS=$TARGETOS GOARCH=$TARGETARCH go build', 'GOOS=linux GOARCH=amd64 go build', 'native_build_stage_contract'),

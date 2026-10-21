@@ -27,9 +27,15 @@ exec(compile(Path(spec.origin).read_text(), spec.origin, 'exec'), ghcr.__dict__)
 RAW = b'{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json"}'
 DIGEST = 'sha256:' + hashlib.sha256(RAW).hexdigest()
 
+# Captured authenticated GHCR diagnostic grammar; destination only is normalized.
+AUTHENTICATED_MISSING_MANIFEST = (
+    b'time="2026-10-21T03:30:43Z" level=fatal msg="Error parsing image name \\"docker://ghcr.io/example-org/sample-tool/sample-tool:1.2.3\\": reading manifest 1.2.3 in ghcr.io/example-org/sample-tool/sample-tool: manifest unknown"\n',
+    b'time="2026-10-21T03:49:24Z" level=fatal msg="Error parsing image name \\"docker://ghcr.io/example-org/sample-tool/sample-tool:1.2.3\\": reading manifest 1.2.3 in ghcr.io/example-org/sample-tool/sample-tool: manifest unknown"\n',
+)
+
 
 class Transport:
-    def __init__(self, tag=None, error=None, fail_tag=False, invisible=False, digest_raw=RAW):
+    def __init__(self, tag=None, error=None, fail_tag=False, invisible=False, digest_raw=RAW, missing_error=b'manifest unknown'):
         self.calls = []
         self.tag = tag
         self.error = error
@@ -37,6 +43,7 @@ class Transport:
         self.invisible = invisible
         self.digest_raw = digest_raw
         self.pushed = False
+        self.missing_error = missing_error
 
     def __call__(self, args, **kwargs):
         self.calls.append((args, kwargs))
@@ -53,7 +60,7 @@ class Transport:
             if '@' in ref and self.pushed:
                 return self.digest_raw
             if self.tag is None:
-                raise subprocess.CalledProcessError(1, args, stderr=b'manifest unknown')
+                raise subprocess.CalledProcessError(1, args, stderr=self.missing_error)
             return self.tag
         if args[:2] == ['skopeo', 'copy']:
             if '@' in args[-1]:
@@ -145,6 +152,50 @@ class GhcrPublisher(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'lookup failed'):
                     self.publish(transport)
                 self.assertEqual(transport.writes(), [])
+
+    def test_captured_authenticated_ghcr_first_lookup(self):
+        for diagnostic in AUTHENTICATED_MISSING_MANIFEST:
+            with self.subTest(diagnostic=diagnostic):
+                transport = Transport(missing_error=diagnostic)
+                try:
+                    self.publish(transport)
+                except RuntimeError as error:
+                    self.fail('Captured authenticated missing-manifest response refused: ' + str(error))
+                writes = transport.writes()
+                self.assertEqual(len(writes), 2)
+                self.assertEqual(writes[0][-1], 'docker://ghcr.io/example-org/sample-tool/sample-tool@' + DIGEST)
+                self.assertEqual(writes[1][-2], writes[0][-1])
+                self.assertEqual(writes[1][-1], 'docker://ghcr.io/example-org/sample-tool/sample-tool:1.2.3')
+
+    def test_captured_authenticated_ghcr_matching_retry(self):
+        for diagnostic in AUTHENTICATED_MISSING_MANIFEST:
+            with self.subTest(diagnostic=diagnostic):
+                transport = Transport(tag=RAW, missing_error=diagnostic)
+                self.publish(transport)
+                self.assertEqual(transport.writes(), [])
+
+    def test_captured_authenticated_ghcr_conflict(self):
+        for diagnostic in AUTHENTICATED_MISSING_MANIFEST:
+            with self.subTest(diagnostic=diagnostic):
+                transport = Transport(tag=b'different image bytes', missing_error=diagnostic)
+                with self.assertRaisesRegex(ValueError, 'different image bytes'):
+                    self.publish(transport)
+                self.assertEqual(transport.writes(), [])
+
+    def assert_captured_denial_refused(self, replacement):
+        for diagnostic in AUTHENTICATED_MISSING_MANIFEST:
+            with self.subTest(diagnostic=diagnostic):
+                error = diagnostic.replace(b'manifest unknown', replacement)
+                transport = Transport(error=error)
+                with self.assertRaisesRegex(RuntimeError, 'lookup failed'):
+                    self.publish(transport)
+                self.assertEqual(transport.writes(), [])
+
+    def test_captured_authenticated_ghcr_unauthorized_near_miss(self):
+        self.assert_captured_denial_refused(b'unauthorized: authentication required')
+
+    def test_captured_authenticated_ghcr_denied_near_miss(self):
+        self.assert_captured_denial_refused(b'denied: requested access to the resource is denied')
 
     def test_fresh_and_matching_retry(self):
         transport = Transport()
