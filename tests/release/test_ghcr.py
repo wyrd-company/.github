@@ -359,6 +359,15 @@ class GhcrCompilationProof(unittest.TestCase):
         self.assertNotIn('RUN ', final)
         self.assertIn('COPY --from=build /out/sample-tool /sample-tool', final)
 
+    def test_documented_build_and_dry_run_contract(self):
+        documentation = ' '.join((ROOT / 'release/targets/README.md').read_text().split('## GHCR', 1)[1].split())
+        self.assertIn('`FROM --platform=$BUILDPLATFORM` stages', documentation)
+        self.assertIn('using `TARGETOS` and `TARGETARCH` for the compiler target', documentation)
+        self.assertIn('final stage copies the target binary and has no `RUN` instructions', documentation)
+        self.assertIn('Target-platform `RUN` instructions need emulation, which this job does not configure', documentation)
+        self.assertIn('without GHCR lookup, login or push', documentation)
+        self.assertIn('BuildKit and base-image registry pulls may occur', documentation)
+
     def test_compiled_binary_readback_and_absence(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = Path(tmp) / 'image.tar'

@@ -460,6 +460,13 @@ for test in ('unauthorized', 'denied'):
     mutation('release/targets/ghcr/publish.py',
              "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
              'test_ghcr.GhcrPublisher.test_captured_authenticated_ghcr_' + test + '_near_miss', 'python')
+for old, new in [
+    ('`FROM --platform=$BUILDPLATFORM` stages', '`FROM` stages'),
+    ('without GHCR lookup, login or push', 'without GHCR push'),
+    ('BuildKit and base-image registry pulls may', 'BuildKit and base-image registry pulls never'),
+]:
+    mutation('release/targets/README.md', old, new,
+             'test_ghcr.GhcrCompilationProof.test_documented_build_and_dry_run_contract', 'python')
 for old, new, test in [
     ('FROM --platform=$BUILDPLATFORM ', 'FROM ', 'native_build_stage_contract'),
     ('GOOS=$TARGETOS GOARCH=$TARGETARCH go build', 'GOOS=linux GOARCH=amd64 go build', 'native_build_stage_contract'),
