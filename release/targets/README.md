@@ -3,9 +3,62 @@
 # Publication targets
 
 Publication parts live here. The repository test fixture in
-`tests/release/sample-target/` demonstrates the four internal interfaces.
+`tests/release/sample-target/` demonstrates the five internal interfaces.
 Run `task test` after adding a part; the harness tests each part alone and all
 parts together, including credential labels and job ids.
+
+## Product build and assembly
+
+Select `--with product-build` and set `product_build_units` to the Release Unit
+ids separated by spaces. Supply `.github/release-builds.json` or answer the
+`product_build_matrix` document question. Target names belong to the product;
+runner values accept a GitHub runner label or an array of self-hosted labels.
+For example:
+
+```json
+{
+  "targets": [
+    {"target": "linux-amd64", "runner": "ubuntu-latest"},
+    {"target": "linux-arm64", "runner": "ubuntu-24.04-arm"},
+    {"target": "darwin-arm64", "runner": "macos-latest"},
+    {"target": "windows-amd64", "runner": "windows-latest"}
+  ]
+}
+```
+
+`product_build_recipe` defaults to `./.github/actions/release-build`. The local
+action receives `unit`, `target`, and `output-directory` inputs. It inherits
+`RELEASE_SOURCE_SHA`, `RELEASE_UNITS` and `RELEASE_JSON` from the parent. Each
+released unit/target pair runs at the resolved source commit. Entries for
+unreleased units skip recipes and artifact transport. The product action owns
+compiler commands, tool pins, archives, packages and product checks.
+
+Enable `product_build_assembly` to call `product_assembly_recipe` (default
+`./.github/actions/release-assemble`) after every build job succeeds or skips.
+`product_assembly_runner` defaults to `ubuntu-latest`. The action receives
+`unit`, `input-directory` and `output-directory`. The input directory contains
+this run's `release-asset+<unit>+*` artifacts in per-artifact subdirectories;
+no token, repository or run-id input is used to download them. Assembly can
+produce a formula, package-selection manifest or other aggregate release file.
+
+Both recipes write regular files directly in their output directory. Empty
+output fails (`if-no-files-found: error`). Each file is uploaded as a separate
+`release-asset+<unit>+<file>` artifact with the official `@actions/artifact`
+JavaScript client. The template installs that dependency under `runner.temp`
+with npm lifecycle scripts disabled; runners need npm for this setup. Artifact
+names must be distinct across targets and assembly. A duplicate fails upload;
+files cannot replace an earlier artifact. The parent owns artifact names,
+upload/download, job ordering and conditions. Both jobs request only
+`contents: read`, persist no checkout credential, declare no credentials and
+receive no user secrets.
+
+The parent release-record job attaches build and assembly files and their
+`SHA256SUMS`. Homebrew receives the product-written `<unit>.rb` through the
+existing release-asset convention; repo.wyrd.foo receives its package assets
+and product-written package-selection manifest the same way. A failed build or
+assembly stops all later stages. Skipped work for an unreleased unit and empty
+stages preserve ordering. The local fixture proves transport and record bytes;
+hosted scheduling cases require separate live evidence.
 
 ## crates.io
 
@@ -220,7 +273,8 @@ that already match. No polling or new timeout is added.
 Evidence: `HomebrewPart.test_selected_contract_and_emitted_dry_run`,
 `HomebrewPart.test_deselected_has_no_job_or_credential`,
 `HomebrewRuntime.test_record`, `test_retry`, `test_conflict`, `test_checksum`,
-`test_version`, `test_urls`, `test_downgrade`, `test_ordering`, `test_dry`, `test_race`, and `test_readback`.
+`test_version`, `test_urls`, `test_downgrade`, `test_ordering`, `test_dry`,
+`test_race`, and `test_readback`.
 These named tests exercise the emitted entry point and separate source/tap
 API boundaries without remote writes. Live GitHub workflow proof remains with
 the parent's authorized test repository work.

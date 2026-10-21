@@ -1,5 +1,5 @@
 {# relationships: implements: release-process #}
-{% set ns = namespace(build=[], publish=[], verify=[], credentials=[], preflight=['preflight'], environments=[''], record_units=[], phase_errors=[]) %}
+{% set ns = namespace(build=[], assemble=[], publish=[], verify=[], credentials=[], preflight=['preflight'], environments=[''], record_units=[], phase_errors=[]) %}
 {% for unit, value in release_model.release_units | dictsort %}
 {% if value.release_record == 'required' %}{% set ns.record_units = ns.record_units + [unit] %}{% endif %}
 {% for stream, tag in value.tags | dictsort %}{% if tag.role == 'primary' and tag.require_phase == 'after-publication' %}{% set ns.phase_errors = ns.phase_errors + [unit ~ '/' ~ stream] %}{% endif %}{% endfor %}
@@ -7,6 +7,9 @@
 {% for target in targets %}
 {% set data = release_targets[target] %}
 {% set ns.build = ns.build + data.build %}
+{% if target != 'product-build' or product_build_assembly %}
+{% set ns.assemble = ns.assemble + (data.assemble | default([])) %}
+{% endif %}
 {% set ns.publish = ns.publish + data.publish %}
 {% set ns.verify = ns.verify + data.verify %}
 {% for key, credential in data.credentials | dictsort %}
@@ -87,9 +90,11 @@ jobs:
 {% endfor %}
 {% set stage = 'build' %}
 {% include 'partials/parts.yml' %}
+{% set stage = 'assemble' %}
+{% include 'partials/parts.yml' %}
 {% if ns.record_units %}
   release-record:
-    needs: {{ (['resolve'] + ns.preflight + ns.build) | tojson }}
+    needs: {{ (['resolve'] + ns.preflight + ns.build + ns.assemble) | tojson }}
     if: >-
       {{ ns.gate() }} && needs.resolve.outputs.record == 'true'
     runs-on: ubuntu-latest

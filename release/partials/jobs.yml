@@ -4,9 +4,9 @@
 {%- endmacro %}
 {% macro part_job(id, units, stage, body, extra_env='', extra_if='') %}
   {{ id }}:
-    needs: {{ (['resolve'] + ns.preflight + (ns.build if stage != 'build' else []) + (['release-record'] if ns.record_units and stage != 'build' else []) + (ns.publish if stage == 'verify' else [])) | tojson }}
+    needs: {{ (['resolve'] + ns.preflight + (ns.build if stage != 'build' else []) + (ns.assemble if stage in ['publish', 'verify'] else []) + (['release-record'] if ns.record_units and stage in ['publish', 'verify'] else []) + (ns.publish if stage == 'verify' else [])) | tojson }}
     if: >-
-      {{ gate() }} && ({% for unit in units | split(' ') %}{% if not loop.first %} || {% endif %}{% if stage != 'build' and release_model.release_units[unit].release_record == 'required' %}({% endif %}contains(fromJSON(needs.resolve.outputs.units), '{{ unit }}'){% if stage != 'build' and release_model.release_units[unit].release_record == 'required' %} && needs.release-record.result == 'success'){% endif %}{% endfor %}){% if extra_if %} && ({{ extra_if }}){% endif %}
+      {{ gate() }} && ({% for unit in units | split(' ') %}{% if not loop.first %} || {% endif %}{% if stage in ['publish', 'verify'] and release_model.release_units[unit].release_record == 'required' %}({% endif %}contains(fromJSON(needs.resolve.outputs.units), '{{ unit }}'){% if stage in ['publish', 'verify'] and release_model.release_units[unit].release_record == 'required' %} && needs.release-record.result == 'success'){% endif %}{% endfor %}){% if extra_if %} && ({{ extra_if }}){% endif %}
     env:
       RELEASE_SOURCE_SHA: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
       RELEASE_UNITS: {% raw %}${{ join(fromJSON(needs.resolve.outputs.units), ' ') }}{% endraw %}

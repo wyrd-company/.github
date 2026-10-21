@@ -35,3 +35,14 @@
 {% set body %}{% include 'targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml' %}{% endset %}
 {{ ns.part_job('publish-repo-wyrd-foo', repo_wyrd_foo_units, 'publish', body) }}
 {% endif %}
+
+{% if 'product-build' in targets %}
+{% if stage == 'build' %}
+{% set body %}{% include 'targets/product-build/build-product.jinja' %}{% endset %}
+{{ ns.part_job('build-product', product_build_units, 'build', body) }}
+{% endif %}
+{% if stage == 'assemble' and product_build_assembly %}
+{% set body %}{% include 'targets/product-build/assemble-product.jinja' %}{% endset %}
+{{ ns.part_job('assemble-product', product_build_units, 'assemble', body) }}
+{% endif %}
+{% endif %}

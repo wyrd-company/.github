@@ -67,6 +67,32 @@ The copy must be byte-identical to the named source path. Refresh from the first
 Intentional release tag that names line 1 and update the provenance and test
 source together. Keep the source commit available in `INTENTIONAL_DIR`.
 
+## Product build and assembly evidence
+
+`test_product_build.py` uses real Toha renders to validate the assembly key
+pattern and existing job schema, all earlier-stage dependencies, optional and
+empty stages, selection, local recipe inputs and output transport. Existing
+parts keep their interfaces and permissions. `stage-conditions.cjs` evaluates
+the emitted expression subset for success, skipped, failure and cancellation
+results, with independent cancellation, failure, resolve and preflight guards.
+This is a local truth table, not a GitHub scheduler implementation.
+
+`sample-product/` contains two small JavaScript local actions. They write two
+target text files and an aggregate of their checksums without a compiler.
+`product-build-rendered.cjs` simulates the emitted matrix, per-file upload and
+same-run download, then executes the actual emitted release-record entry point
+with fake GitHub REST. It checks every attached checksum against the bytes and
+the independently produced aggregate. Failed/empty builds create no record;
+unreleased units run no recipe. Dependency provisioning is asserted but makes
+no network request in the fixture; the SDK and REST transport boundaries are
+fake. No hosted upload or publication is claimed.
+
+Set `RELEASE_PRODUCT_RECEIPTS=/absolute/path` to retain the truth table and
+artifact/record receipts. Named controls remove assembly build dependencies,
+resolve/preflight guards, and separately the generic part's exact permission
+and no-credential checks. The full mutation battery is a separate command;
+`mutations.inventory()` checks literal site counts without running that battery.
+
 ## Mutation sites and reports
 
 `mutations.py` inventories every row before writing source. A row declares one
@@ -99,7 +125,7 @@ Use `sample-target/` as a fixture for the interface. Add the target directory to
 and add its literal name to `targets.options`. Add its units answer and other
 questions after `targets`, each with a `when` condition on that selection.
 Target metadata contains `units` (the units answer id), stage lists `build`,
-`publish`, and `verify`, and the `credentials` map.
+optional `assemble`, `publish`, and `verify`, and the `credentials` map.
 
 Every credential `unless` selector names a boolean answer. Add that answer to
 the `credential_answers` computed map so the parent can resolve the selector.

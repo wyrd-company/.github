@@ -99,7 +99,11 @@ proposed-design:
     `release/schemas/credential.schema.json` (the internal part schemas),
     `release/partials/` (shared workflow fragments), and
     `release/template/.github/workflows/release.yml` (the workflow body). The
-    rendered workflow path is fixed. Each publication target has a directory
+    rendered workflow path is fixed. `product-build` runs reviewed local product
+    actions from the resolved source commit in read-only, no-secret build and
+    optional assembly jobs before the release record. The template provisions
+    the artifact dependency outside product sources. Each publication target
+    has a directory
     `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
     `repo-wyrd-foo`, `ghcr`, or `winget`, holding `target.yml` and its job
     partials (optional-parts-form). GHCR builds each selected unit path's
@@ -144,11 +148,12 @@ proposed-design:
     renders no Intentional file.
 
   internal-part-interfaces: >-
-    The parent's four internal part interfaces are `build_jobs`, `publish_jobs`,
-    `verify_jobs`, and `credentials`. `build_jobs` has key pattern
-    `^build-[a-z0-9]+(-[a-z0-9]+)*$`, `publish_jobs` has
+    The parent's five internal part interfaces are `build_jobs`, `assemble_jobs`,
+    `publish_jobs`, `verify_jobs`, and `credentials`. `build_jobs` has key pattern
+    `^build-[a-z0-9]+(-[a-z0-9]+)*$`, `assemble_jobs` has
+    `^assemble-[a-z0-9]+(-[a-z0-9]+)*$`, `publish_jobs` has
     `^publish-[a-z0-9]+(-[a-z0-9]+)*$`, and `verify_jobs` has
-    `^verify-[a-z0-9]+(-[a-z0-9]+)*$`; all three use
+    `^verify-[a-z0-9]+(-[a-z0-9]+)*$`; all four use
     `release/schemas/publish-job.schema.json`. `credentials` has key pattern
     `^[a-z0-9]+(-[a-z0-9]+)*$` and uses
     `release/schemas/credential.schema.json`. A job key is its GitHub job id.
@@ -193,13 +198,13 @@ proposed-design:
     `check-jsonschema` against the draft schema.
 
   job-graph: >-
-    The parent renders the jobs in six stages, in this order: `resolve`; the
+    The parent renders the jobs in seven stages, in this order: `resolve`; the
     preflight jobs (`preflight` and each `preflight-<environment>`); build
-    jobs; `release-record`, when the parent renders it; publish jobs; verify
+    jobs; assembly jobs; `release-record`, when the parent renders it; publish jobs; verify
     jobs. Every job needs every job of every earlier stage, not only the jobs
     of the stage before it. The order therefore holds when a stage is empty:
-    with no part publish jobs, each verify job still needs every build job
-    and `release-record`, so it starts after them and a failure in either is
+    with no part publish jobs, each verify job still needs every build and
+    assembly job and `release-record`, so it starts after them and a failure in either is
     its ancestor. The parent writes every job condition. The preflight jobs
     have none, so GitHub's implicit `success()` runs them only after `resolve`
     succeeds. Every later job starts from the stage gate `!cancelled() &&
@@ -208,14 +213,14 @@ proposed-design:
     each preflight job. `!failure()` is false when any ancestor job failed,
     because GitHub evaluates it over every ancestor in a chain of dependent
     jobs; the `result` tests stop the job when `resolve` or a preflight job
-    did not succeed for any other reason. A skipped build, publish, or verify
+    did not succeed for any other reason. A skipped build, assembly, publish, or verify
     job does not stop a later job: a part job is skipped when it serves
     no unit that the run releases, and GitHub's implicit `success()` would
     otherwise skip every job that needs it. `release-record` has the condition
     `<stage gate> && needs.resolve.outputs.record == 'true'`. Every
     part job has the condition `<stage gate> && (<unit test>)` and,
     when the part job has `if`, `&& (<if>)`. The unit test joins one
-    clause per id in `units` with `||`. For a build job, and for a unit whose
+    clause per id in `units` with `||`. For a build or assembly job, and for a unit whose
     Release Model policy is `none`, the clause is
     `contains(fromJSON(needs.resolve.outputs.units), '<id>')`. For a publish
     or verify job and a unit whose policy is `required`, the clause is
@@ -244,6 +249,35 @@ proposed-design:
     checkout of every job is the source commit, because `resolve` requires
     `github.sha` to equal `source-sha`.
 
+  product-recipes: >-
+    Selecting `product-build` asks for Release Unit ids, a document whose
+    `targets` entries pair a product target identifier with a runner label or
+    label array, a local build action path, and whether assembly is enabled.
+    The default input is `.github/release-builds.json`; the document is validated
+    against `release/schemas/product-build-matrix.schema.json`. Recipe paths are
+    validated local action paths and no answer is interpolated into a script.
+    Each released unit and target calls the build action with `unit`, `target`,
+    and `output-directory`. The optional assembly action receives `unit`,
+    `input-directory`, and its own `output-directory`. Both inherit
+    `RELEASE_SOURCE_SHA`, `RELEASE_UNITS`, and `RELEASE_JSON`. Matrix entries for
+    unreleased units skip recipes and transport. Recipes write regular files
+    directly in the output directory, with distinct asset names across targets
+    and assembly. Empty output fails with `if-no-files-found: error` semantics.
+    The parent provisions the official `@actions/artifact` package in runner
+    temporary storage with npm lifecycle scripts disabled, then calls its
+    JavaScript upload API once per file. Each artifact is named
+    `release-asset+<unit>+<file>`. Existing names fail rather than overwrite.
+    Assembly downloads only the current run's matching build artifacts, without
+    a token or run-id input, into per-artifact subdirectories. Products own
+    compilation, tool pins, archive/package layouts, formula and manifest
+    writers, and product checks; the template owns stages, dependencies,
+    conditions, artifact names, dependency setup, upload and download. Both
+    recipe jobs request only `contents: read`, declare no credentials and
+    receive no user secrets. The checkout selects the resolved source SHA and
+    does not persist credentials. Reviewed product code runs before the
+    release record; a broken recipe can fail the run or produce incorrect
+    assets. Publication parts retain their checksum and format checks.
+
   optional-parts-form: >-
     After `release_model` the parent asks `targets`, a top-level `multiselect`
     with `parts: true`, no `when`, and literal target-name options matching
@@ -260,12 +294,12 @@ proposed-design:
     serves. Each target is a directory `release/targets/<target>/` that holds
     `target.yml` and job partials. `target.yml` is loaded into the parent's
     `data` with Toha's YAML `!include` tag as `release_targets.<target>`. It
-    lists the target's job ids by stage (`build`, `publish`, `verify`, with
+    lists the target's job ids by stage (`build`, optional `assemble`, `publish`, `verify`, with
     the prefixes and key patterns of internal-part-interfaces), the answer id
     that holds its units, and its credentials, each a value of the credential schema
     with an optional `unless` naming a boolean answer, for example
     `trusted_publishing`. Each job body is a partial
-    `release/targets/<target>/<job id>.yml` that writes the job's YAML below
+    `release/targets/<target>/<job id>.yml` (or `.jinja` for product recipes) that writes the job's YAML below
     the line the parent writes for its id: `name`, `runs-on`, `permissions`,
     `steps`, and the other members the publish-job schema admits except
     `env`. The parent writes each job's id, `needs`, and condition from
@@ -440,7 +474,7 @@ proposed-design:
     Release Model has `release_record: required`. It runs as a matrix over
     `record_units` with `permissions: contents: write`, under the condition in
     job-graph, which skips it when `record` is `'false'` and does not skip it
-    when a build job for another unit was skipped. For each unit the outcome
+    when a build or assembly job for another unit was skipped. For each unit the outcome
     is exactly one published GitHub Release, never left as a draft, on the
     primary tag: its `tag_name` is the rendered primary tag name and its title
     is the tag name. A version with a prerelease part is published as a
@@ -450,7 +484,7 @@ proposed-design:
     source is the section of the unit's changelog, the
     `release_units.<id>.changelog` file at the source commit, whose heading
     line is exactly `## <version>`, up to the next `## ` heading; a missing or
-    empty section fails the job. Build jobs that produce release assets upload
+    empty section fails the job. Build and assembly jobs that produce release assets upload
     workflow artifacts named `release-asset+<unit>+<name>`; the record job for
     a unit downloads the artifacts that match `release-asset+<unit>+*`,
     attaches their files, and adds `SHA256SUMS` when it attaches any file. The
@@ -478,13 +512,27 @@ proposed-design:
     not a draft, with the expected prerelease flag and asset names. A unit
     with no assets therefore cannot succeed on an empty draft. A unit with
     `release_record: none` gets no release record; its tag record is its full
-    record, and its build, publish, and verify jobs still run. A baseline tag
+    record, and its build, assembly, publish, and verify jobs still run. A baseline tag
     record never gets a release record, because `resolve` never releases it.
 
   implementation-validation: >-
-    The templates lane proves these cases on real GitHub Actions runs of a
+    Local render tests validate the assembly interface and every earlier-stage
+    dependency, empty stages, build without assembly, assembly without build,
+    and selection/deselection. A condition table checks success, skips, failure,
+    cancellation, empty released units, and each assembly gate conjunct in
+    isolation. A lightweight two-target product fixture executes emitted upload
+    and download steps and the emitted release-record entry point against fake
+    transport and REST boundaries. It proves build and aggregate attachments,
+    checksum agreement, and no record after build failure. Named controls
+    remove assembly build dependencies, resolve/preflight result guards, and
+    the generic part's permission and credential checks. These local tests do
+    not establish GitHub scheduling. The templates lane proves these cases on
+    real GitHub Actions runs of a
     rendered workflow in a test repository, because the job conditions rely
-    on GitHub's `needs` and status-function semantics. Skipped build: two
+    on GitHub's `needs` and status-function semantics. Assembly starts after
+    every build. A failed build skips assembly and the record, and a failed
+    assembly skips every later stage. A skipped unrelated build or assembly
+    does not stop the released unit's record. Skipped build: two
     units with one build job each, one unit released; the other build job is
     skipped, `release-record` runs, and the released unit's publish job runs
     after it. Empty stage: a selection with build and verify jobs and no
@@ -527,7 +575,11 @@ proposed-design:
     trigger and source-commit checks; the parent-owned gate and refusal of
     status functions in part job conditions; schema rules that keep
     `${{ }}` out of scripts and require commit pins; no hooks in release-process
-    v1 templates; and repository Renovate as the owner of pin updates.
+    v1 templates; repository Renovate as the owner of pin updates; and reviewed
+    repository recipes in build/assembly jobs with read-only contents, no
+    declared credentials or user secrets. Artifact transport uses the runner's
+    existing artifact credentials and introduces no user credential, permission
+    grant, timer, timeout, or runtime version-check policy.
     Answers and the applied record contain credential names, never values.
 
   agreements: >-

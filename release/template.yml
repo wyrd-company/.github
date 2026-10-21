@@ -7,6 +7,7 @@ description: Release workflow from the Intentional Release Model
 schemas: schemas
 data:
   release_targets:
+    product-build: !include targets/product-build/target.yml
     crates-io: !include targets/crates-io/target.yml
     npm: !include targets/npm/target.yml
     ghcr: !include targets/ghcr/target.yml
@@ -22,7 +23,7 @@ interview:
     type: multiselect
     parts: true
     prompt: Publication targets
-    options: [crates-io, npm, ghcr, homebrew-tap, repo-wyrd-foo]
+    options: [crates-io, npm, ghcr, homebrew-tap, repo-wyrd-foo, product-build]
     default: []
   - id: npm_units
     type: text
@@ -129,5 +130,47 @@ interview:
     prompt: Validate package selection without submitting to repo.wyrd.foo?
     when: "'repo-wyrd-foo' in targets"
     default: false
+  - id: product_build_units
+    type: text
+    prompt: Release Units built by repository recipes (space separated)
+    when: "'product-build' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: product_build_matrix
+    type: document
+    prompt: Product build targets and runner labels
+    when: "'product-build' in targets"
+    schema: https://github.com/wyrd-company/.github/blob/main/release/schemas/product-build-matrix.schema.json
+    input: .github/release-builds.json
+  - id: product_build_recipe
+    type: text
+    prompt: Repository-owned local build action
+    when: "'product-build' in targets"
+    default: ./.github/actions/release-build
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_build_assembly
+    type: confirm
+    prompt: Assemble the build outputs with a repository recipe?
+    when: "'product-build' in targets"
+    default: false
+  - id: product_assembly_recipe
+    type: text
+    prompt: Repository-owned local assembly action
+    when: "'product-build' in targets and product_build_assembly"
+    default: ./.github/actions/release-assemble
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_assembly_runner
+    type: text
+    prompt: Runner label for assembly
+    when: "'product-build' in targets and product_build_assembly"
+    default: ubuntu-latest
+    required: true
+    validate:
+      regex: '^[A-Za-z0-9_.-]+$'
   - id: credential_answers
     computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/wyrd-company/.github/blob/main/release/schemas/publish-job.schema.json",
   "title": "Release-process v1 part job",
-  "description": "Validates the value of one entry in the build_jobs, publish_jobs, or verify_jobs part interface of contract release-process version 1. The part job key is the GitHub job id. The parent owns needs, the release gate, and the reserved RELEASE_ environment.",
+  "description": "Validates the value of one entry in the build_jobs, assemble_jobs, publish_jobs, or verify_jobs part interface of contract release-process version 1. The part job key is the GitHub job id. The parent owns needs, the release gate, and the reserved RELEASE_ environment.",
   "type": "object",
   "additionalProperties": false,
   "required": ["units", "job"],

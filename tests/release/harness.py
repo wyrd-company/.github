@@ -26,7 +26,7 @@ def dump(path, value):
         YAML_RT.dump(value, stream)
 
 
-def prepare(template, samples=1, omit_publish=False):
+def prepare(template, samples=1, omit_publish=False, assembly_samples=0, omit_build=False):
     shutil.copytree(ROOT / 'release', template)
     config = load(template / 'template.yml')
     part_question = next(q for q in config['interview'] if q.get('id') == 'targets')
@@ -39,8 +39,11 @@ def prepare(template, samples=1, omit_publish=False):
         directory = template / 'targets' / target
         shutil.copytree(ROOT / 'tests/release/sample-target', directory)
         data = load(directory / 'target.yml')
-        for stage in ('build', 'publish', 'verify'):
+        data['assemble'] = ['assemble-sample'] if number < assembly_samples else []
+        for stage in ('build', 'assemble', 'publish', 'verify'):
             data[stage] = [job + suffix for job in data[stage]]
+        if omit_build:
+            data['build'] = []
         if omit_publish:
             data['publish'] = []
         data['units'] = 'sample_target_units' + ('_' + str(number + 1) if number else '')
@@ -65,7 +68,7 @@ def prepare(template, samples=1, omit_publish=False):
         switches[switch] = switch
         with (template / 'partials/parts.yml').open('a') as stream:
             stream.write("\n{% if '" + target + "' in targets %}\n")
-            for stage in ('build', 'publish', 'verify'):
+            for stage in ('build', 'assemble', 'publish', 'verify'):
                 stream.write("{% if stage == '" + stage + "' %}\n")
                 for job in data[stage]:
                     stream.write("{% set body %}{% include 'targets/" + target + '/' + job + ".yml' %}{% endset %}\n")
@@ -81,9 +84,9 @@ def prepare(template, samples=1, omit_publish=False):
     return config
 
 
-def render(root, model, samples=0, selected=None, answers=None, omit_publish=False):
+def render(root, model, samples=0, selected=None, answers=None, omit_publish=False, assembly_samples=0, omit_build=False):
     template = root / 'release'
-    prepare(template, samples, omit_publish)
+    prepare(template, samples, omit_publish, assembly_samples, omit_build)
     target = root / 'project'
     (target / '.intentional').mkdir(parents=True)
     (target / '.intentional/release-model.json').write_text(json.dumps(model))
@@ -141,9 +144,13 @@ def check_parts(template, workflow, selected, answers):
     metadata = {}
     for target in selected:
         data = load(template / 'targets' / target / 'target.yml')
+        if target == 'product-build':
+            assert data['credentials'] == {}, 'Product recipes declare no credentials'
+            if not answers.get('product_build_assembly', False):
+                data['assemble'] = []
         metadata[target] = data
-        for stage in ('build', 'publish', 'verify'):
-            for job in data[stage]:
+        for stage in ('build', 'assemble', 'publish', 'verify'):
+            for job in data.get(stage, []):
                 assert re.fullmatch(stage + r'-[a-z0-9]+(-[a-z0-9]+)*', job), job
                 assert job not in jobs_seen, f'Duplicate job id: {job}'
                 jobs_seen.add(job)
@@ -166,16 +173,18 @@ def check_parts(template, workflow, selected, answers):
     for target, data in metadata.items():
         units = answers[data['units']]
         assert all(unit in json.loads(next(s['env']['RELEASE_MODEL'] for s in parsed['jobs']['resolve']['steps'] if s.get('id') == 'resolve'))['release_units'] for unit in units.split(' ')), 'Unknown unit'
-        for stage in ('build', 'publish', 'verify'):
-            for name in data[stage]:
+        for stage in ('build', 'assemble', 'publish', 'verify'):
+            for name in data.get(stage, []):
                 body = copy.deepcopy(parsed['jobs'][name])
+                if target == 'product-build':
+                    assert body['permissions'] == {'contents': 'read'}, 'Product recipes request contents: read only'
                 condition = body.pop('if')
                 body.pop('needs')
                 clauses = []
                 release_model = json.loads(next(s['env']['RELEASE_MODEL'] for s in parsed['jobs']['resolve']['steps'] if s.get('id') == 'resolve'))
                 for unit in units.split(' '):
                     clause = f"contains(fromJSON(needs.resolve.outputs.units), '{unit}')"
-                    if stage != 'build' and release_model['release_units'][unit]['release_record'] == 'required':
+                    if stage in ('publish', 'verify') and release_model['release_units'][unit]['release_record'] == 'required':
                         clause = f"({clause} && needs.release-record.result == 'success')"
                     clauses.append(clause)
                 gate = "!cancelled() && !failure() && needs.resolve.result == 'success'"

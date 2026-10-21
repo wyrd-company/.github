@@ -1,0 +1,18 @@
+{# relationships: implements: release-process #}
+  - name: Install official artifact client
+    if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
+    shell: bash
+    working-directory: {% raw %}${{ runner.temp }}{% endraw %}
+    env:
+      ARTIFACT_CLIENT_DIRECTORY: {% raw %}${{ runner.temp }}/release-artifact-client{% endraw %}
+    run: npm install --prefix "$ARTIFACT_CLIENT_DIRECTORY" --ignore-scripts --no-audit --no-fund @actions/artifact@6.3.1
+  - name: Upload each release asset
+    if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
+    uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+    env:
+      ARTIFACT_CLIENT_DIRECTORY: {% raw %}${{ runner.temp }}/release-artifact-client{% endraw %}
+      ASSET_UNIT: {% raw %}${{ matrix.unit }}{% endraw %}
+      ASSET_DIRECTORY: {% raw %}${{ runner.temp }}/release-product/{% endraw %}{{ stage }}{% raw %}/${{ matrix.unit }}{% endraw %}{% if stage == 'build' %}{% raw %}/${{ matrix.target }}{% endraw %}{% endif %}
+    with:
+      script: |
+{% set upload_script %}{% include 'targets/product-build/upload.js' %}{% endset %}{{ upload_script | indent(8, true) }}

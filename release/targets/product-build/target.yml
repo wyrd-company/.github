@@ -1,0 +1,8 @@
+# relationships: implements: release-process
+# Reads release_model.release_units keys through the units answer only.
+units: product_build_units
+build: [build-product]
+assemble: [assemble-product]
+publish: []
+verify: []
+credentials: {}
