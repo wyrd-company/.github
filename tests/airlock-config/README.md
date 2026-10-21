@@ -23,9 +23,15 @@ key fails the same loader. No hosted Airlock schema exists at this input, so
 there is no document question or vendored schema.
 
 `test_declarations_are_opt_in` proves supplied declaration answers cannot enable
-the declaration block. The required/guard tests reject empty and malformed
-answers before output. `test_all_optional_answers` checks exact scalar types,
-boolean values, topic splitting and quoted multiline text. `test_contract`
+the declaration block. `test_rendered_config_has_exactly_one_final_newline`
+checks exact bytes, parsed values and YAML lint for the default and declared
+branches. It covers valid single- and multi-topic lists and accepted-generation
+variants, and compares parsed output with the original template. The topic array
+uses comma-space formatting. Focused mutation rows cover the declaration guard,
+EOF whitespace and topic-array separator formatting. The required/guard tests
+reject empty and malformed answers before output. `test_all_optional_answers`
+checks exact scalar types, boolean values, topic splitting and quoted multiline
+text. `test_contract`
 checks the interview inventory, conditional questions and absence of hooks or
 document/schema declarations. Mutation rows remove each validation constraint
 and conditional question, bypass the opt-in block, or drop description escaping.

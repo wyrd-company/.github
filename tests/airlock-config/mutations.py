@@ -36,8 +36,14 @@ def run(report):
                         {'accepted_generation': 'test_generation', 'description': 'test_description',
                          'topics': 'test_topics'}[key] + ('_required' if guard == 'required' else '_guard'))
                 rows.append((key + '-' + guard, CONFIG, (key, guard), test))
-    rows += [('declarations-opt-in', TEMPLATE, ('{% if declare_repository %}', '{% if true %}'),
+    rows += [('declarations-opt-in', TEMPLATE, ('{% if declare_repository -%}', '{% if true -%}'),
               'test_declarations_are_opt_in'),
+             ('rendered-final-newline', TEMPLATE, ('{% endif -%}', '{% endif %}'),
+              'test_rendered_config_has_exactly_one_final_newline'),
+             ('rendered-topic-comma-spacing', TEMPLATE,
+              ('''topics: ["{{ topics | split(' ') | join('", "') }}"]''',
+               '''topics: {{ topics | split(' ') | tojson }}'''),
+              'test_rendered_config_has_exactly_one_final_newline'),
              ('description-quoted', TEMPLATE, ('description | tojson', 'description'), 'test_all_optional_answers')]
     try:
         for name, path, change, test in rows:

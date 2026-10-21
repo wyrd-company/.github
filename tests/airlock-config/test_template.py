@@ -11,9 +11,31 @@ import unittest
 from ruamel.yaml import YAML
 
 ROOT = Path(__file__).resolve().parents[2]
+BASE_HEAD = 'b22497203f2619b5d3ebcc6cb13d04ad334f6958'
 FIELDS = dict(description='Sample utility: "quoted"\nsecond line', topics='cli rust',
               squash=False, rebase=False, merge_commit=True, delete_branch_on_merge=False,
               wiki=True, projects=True, discussions=True)
+
+
+def expected_declared_bytes(version, topics):
+    topic_list = ', '.join(f'"{topic}"' for topic in topics)
+    return (b'# relationships:\n#   references: release-process\n'
+            b'# Repository requests are honored only where organization authority permits.\n'
+            b'# Add exceptions.<rule> with reason; severity: none requests a waiver.\n'
+            b'# Classification and organization-only rule parameters do not belong here.\n'
+            + f'version: "{version}"\n'.encode()
+            + b'description: "Sample utility: \\"quoted\\"\\nsecond line"\n'
+            + f'topics: [{topic_list}]\n'.encode()
+            + b'merge:\n  squash: false\n  rebase: false\n  merge_commit: true\n'
+            b'  delete_branch_on_merge: false\nfeatures:\n  wiki: true\n'
+            b'  projects: true\n  discussions: true\n')
+
+
+def expected_declared_config(version, topics):
+    return {'version': version, 'description': FIELDS['description'], 'topics': topics,
+            'merge': {'squash': False, 'rebase': False, 'merge_commit': True,
+                      'delete_branch_on_merge': False},
+            'features': {'wiki': True, 'projects': True, 'discussions': True}}
 
 
 class AirlockTemplate(unittest.TestCase):
@@ -77,6 +99,66 @@ class AirlockTemplate(unittest.TestCase):
 
     def test_declarations_are_opt_in(self):
         self.assertEqual(self.render(dict(declare_repository=False, **FIELDS)), {'version': '0.6.0'})
+
+    def test_rendered_config_has_exactly_one_final_newline(self):
+        historical_source = subprocess.check_output(
+            ['git', 'show', f'{BASE_HEAD}:airlock-config/template/.github/airlock.yml'],
+            cwd=ROOT, text=True)
+        historical_template = self.root / 'historical-airlock-config'
+        shutil.copytree(ROOT / 'airlock-config', historical_template)
+        historical_file = historical_template / 'template/.github/airlock.yml'
+        historical_file.write_text(historical_source)
+
+        header = (b'# relationships:\n#   references: release-process\n'
+                  b'# Repository requests are honored only where organization authority permits.\n'
+                  b'# Add exceptions.<rule> with reason; severity: none requests a waiver.\n'
+                  b'# Classification and organization-only rule parameters do not belong here.\n')
+        cases = [({}, header + b'version: "0.6.0"\n', {'version': '0.6.0'})]
+        for version in ('0.6.0', '1.2.3', '0.7.0-rc.1+sample.2'):
+            cases.append((dict(declare_repository=True, accepted_generation=version, **FIELDS),
+                          expected_declared_bytes(version, ['cli', 'rust']),
+                          expected_declared_config(version, ['cli', 'rust'])))
+        single_topic_answers = dict(declare_repository=True, **dict(FIELDS, topics='utility'))
+        cases.append((single_topic_answers, expected_declared_bytes('0.6.0', ['utility']),
+                      expected_declared_config('0.6.0', ['utility'])))
+        for version in ('1.2.3', '0.7.0-rc.1+sample.2'):
+            cases.append(({'accepted_generation': version},
+                          header + f'version: "{version}"\n'.encode(), {'version': version}))
+
+        for index, (answers, expected_bytes, expected_config) in enumerate(cases):
+            with self.subTest(answers=answers):
+                shutil.rmtree(self.target)
+                self.target.mkdir()
+                current = self.apply(answers)
+                self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
+                self.file = self.target / '.github/airlock.yml'
+                rendered = self.file.read_bytes()
+                parsed = YAML(typ='safe').load(rendered.decode())
+                self.assertEqual(parsed, expected_config)
+                self.assertTrue(rendered.endswith(b'\n') and not rendered.endswith(b'\n\n'), rendered)
+                self.assertEqual(rendered, expected_bytes)
+
+                whitespace = subprocess.run(
+                    ['git', 'diff', '--no-index', '--check', '/dev/null', str(self.file)],
+                    text=True, capture_output=True)
+                self.assertEqual(whitespace.returncode, 1, whitespace.stdout + whitespace.stderr)
+                self.assertEqual(whitespace.stdout + whitespace.stderr, '')
+
+                historical_answers = self.root / 'historical-answers.json'
+                historical_answers.write_text(json.dumps(
+                    {'template': str(historical_template), 'answers': answers}))
+                historical_target = self.root / f'historical-project-{index}'
+                historical_target.mkdir()
+                historical = subprocess.run(
+                    [os.environ['TOHA_BIN'], 'apply', str(historical_template), str(historical_target),
+                     '--answers', str(historical_answers)], text=True, capture_output=True)
+                self.assertEqual(historical.returncode, 0, historical.stdout + historical.stderr)
+                old_file = historical_target / '.github/airlock.yml'
+                self.assertEqual(YAML(typ='safe').load(old_file.read_text()), expected_config)
+                lint = subprocess.run(
+                    ['ryl', 'check', '-c', '.ryl.yml', '--stdin-filename', '.github/airlock.yml', '-'],
+                    cwd=ROOT, input=rendered.decode(), text=True, capture_output=True)
+                self.assertEqual(lint.returncode, 0, lint.stdout + lint.stderr)
 
     def test_unknown_repository_key_rejected(self):
         self.render()

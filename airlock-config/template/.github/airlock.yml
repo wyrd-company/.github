@@ -4,9 +4,9 @@
 # Add exceptions.<rule> with reason; severity: none requests a waiver.
 # Classification and organization-only rule parameters do not belong here.
 version: {{ accepted_generation | tojson }}
-{% if declare_repository %}
+{% if declare_repository -%}
 description: {{ description | tojson }}
-topics: {{ topics | split(' ') | tojson }}
+topics: ["{{ topics | split(' ') | join('", "') }}"]
 merge:
   squash: {{ squash | tojson }}
   rebase: {{ rebase | tojson }}
@@ -16,4 +16,4 @@ features:
   wiki: {{ wiki | tojson }}
   projects: {{ projects | tojson }}
   discussions: {{ discussions | tojson }}
-{% endif %}
+{% endif -%}
