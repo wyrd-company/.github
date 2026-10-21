@@ -18,7 +18,7 @@ python3 tests/release/mutations.py --report /tmp/release-mutations.json
 ```
 
 The Toha build used for the document, part selection and update contract is
-commit `61dd5065088b7293e53deadd2c8df63c16833a94`. Build it in an isolated clone
+commit `8f148040130563ce897e4955dfdef9ae0597eae7`. Build it in an isolated clone
 with `cargo build --release`; do not build in the shared composition worktree.
 The harness retains `parts: true` and selects parts with `--with`. No marker
 adaptation is needed. Production targets remain optional; `prepare` registers
@@ -168,34 +168,55 @@ assets, and accepts a matching published release unchanged.
 
 ## Live proof procedure
 
-Use an authorized, disposable GitHub test repository with Actions enabled and
-the default branch `main`. Do not create one as part of local tests. Use dummy
-values, never registry credentials. Configure repository variable
+All live commands below require root admission for the named disposable test
+repository, dummy setup, owned resources and exact source. Offline preparation
+and checking do not grant permission to seed, push, dispatch, rerun, audit or
+change settings. Preserve failed commands and partial state. Frozen private
+container proof is historical evidence; it supplies no generic live result.
+
+Use Actions on default branch `main`. Configure repository variable
 `SAMPLE_CHANNEL=sample`, environment `sample`, and environment secret
-`SAMPLE_ENV_TOKEN=present`. Set repository secret `SAMPLE_TOKEN=present` except
-for the `missing-credential` case. The fixture jobs publish no registry package.
+`SAMPLE_ENV_TOKEN=present` with dummy values. Leave `SAMPLE_TOKEN` absent in
+all effective scopes. Normal prepared cases omit its declaration through
+`trusted_publishing`; `missing-credential` declares the absent token. The
+fixture has no registry publication. A push, including a tag push, runs CI;
+it does not trigger a release. Release uses explicit default-branch dispatch.
 
-Use a clean repository/tag for each case, or have the authorized operator remove
-its old releases and tag before reusing it. The preparer refuses to overwrite
-files and the seeder refuses to replace a release. Keep all receipts outside
-the test repository so the source commit stays fixed.
+Use a clean repository/tag per case. Reuse requires the admitted operator to
+inventory and remove only that case's owned resources. Never delete foreign
+refs, Releases, assets or failed observations. `prepare` requires empty output;
+`seed` refuses an existing same-tag Release. Evidence directories, receipts and
+report paths must be new. Keep them outside the fixture source repository.
 
-1. Prepare a case. Run from this repository with `TOHA_BIN` set:
+1. Prepare locally with the selected `TOHA_BIN`:
 
    ```sh
    python3 tests/release/live.py prepare \
      --output /tmp/release-case --scenario skipped-build --assets
    ```
 
-2. Copy `/tmp/release-case/project/` into the test checkout, including hidden
-   files. Commit `.intentional/release-model.json`, the workflows, changelog,
-   and `.live-case.json`, then push `main`. No publication target is installed.
+   This renders two generic parts, adds a fixture-only dispatch identity log
+   step, and writes the model, minimal genuine Intentional config, workflows,
+   changelog and `.live-case.json`. The LIVE primary tag template is `{version}`
+   and its case/seed/readback tag is `1.2.3`. Shared fixtures and production
+   model-driven tag capability retain their supported forms. Config uses
+   `https://intentional.foo/schemas/0.2/config`, `contract-1`, and the same units,
+   tag templates and Release record declarations as the model. It chooses no
+   Airlock policy and proves no audit capability. The config schema input is
+   Intentional commit `acbb793427b8de35ca84c9a2e9f371b71738b230`, path
+   `docs/specifications/release-workspace.schema.yml`.
 
-3. Create the annotated tag on that source commit, then push it. Use `true`
-   for the baseline case and `false` for every other case:
+2. After admission, install `/tmp/release-case/project/`, including hidden
+   files, into the test checkout. Commit all fixture inputs and push `main`.
+   Save the source commit, template source, actual renderer source/binary hash,
+   Intentional schema source and rendered workflow bytes with the evidence.
+   An old renderer receipt does not qualify a new render.
+
+3. Create an annotated Intentional record on that exact fixture source. Use
+   `baseline: true` only for `baseline`; use `false` otherwise:
 
    ```sh
-   git tag -a sample-tool-1.2.3 -F - <<RECORD
+   git tag -a 1.2.3 -F - <<RECORD
    intentional release record
 
    contract: contract-1
@@ -206,63 +227,139 @@ the test repository so the source commit stays fixed.
    baseline: false
    target: $(git rev-parse HEAD)
    RECORD
-   git push origin refs/tags/sample-tool-1.2.3
+   git push origin refs/tags/1.2.3
    ```
 
-4. Wait for successful push CI on the exact source SHA. From the template
-   checkout, seed the case when it needs an existing release:
+   This is a fixture record, not a generated release plan or public release.
+   Retain the real source/CI prerequisites; do not invent CI success. Wait for
+   successful push CI on the exact full source SHA and save its numeric run ID.
+
+4. Seed and retain the before/after state, original requests and results:
 
    ```sh
    python3 tests/release/live.py seed --repo example-org/sample-tool \
-     --case /path/to/test-checkout/.live-case.json
+     --case /path/to/test-checkout/.live-case.json --output /tmp/case-seed
    ```
 
-   For `published-expected`, capture `gh api
-   repos/example-org/sample-tool/releases/tags/sample-tool-1.2.3` before and
-   after the run. Compare release id, `updated_at`, prerelease flag, and asset
-   ids/names to prove no write occurred. An `expected-draft` with no build
-   assets is an empty draft: its expected-name set is empty. Record that fact
-   instead of inventing an expected asset.
+   Every case needs a seed receipt, including cases that require no Release.
+   `seed.json` and `commands.jsonl` preserve exact duplicate-Release API refusal,
+   failed uploads and partial state. A refused or impossible two-Release seed
+   stays UNVERIFIED; do not dispatch it as a passing case. An `expected-draft`
+   without assets is an empty draft. Snapshot includes complete same-tag
+   inventory, exact-tag lookup, Release ID/`updated_at`/draft/prerelease and
+   asset IDs/names/`updated_at`. A lookup error other than 404 is incomplete.
 
-5. Dispatch `release.yml` on `main`, passing its current source SHA:
+5. Dispatch only after admission and successful source CI:
 
    ```sh
    gh workflow run release.yml --repo example-org/sample-tool --ref main \
      -f source-sha="$(git -C /path/to/test-checkout rev-parse HEAD)"
    ```
 
-6. Once the run is complete, use its numeric run id:
+   Preserve the dispatch request/result, actual workflow ID, run ID and explicit
+   attempt. `gh workflow run` acceptance alone is not a measured run. After
+   obtaining those actual IDs, bind an external receipt from the clean committed
+   fixture checkout (numeric values below are examples):
+
+   ```sh
+   python3 tests/release/live.py bind --source /path/to/test-checkout \
+     --repo example-org/sample-tool --run-id 123 --attempt 1 --workflow-id 456 \
+     --dispatch-ref refs/heads/main --output /tmp/case-receipt.json
+   ```
+
+   Bind reads committed case and workflow bytes, records full source/workflow
+   revision, workflow ID/ref/hash, dispatch ref/input, run ID/attempt and source
+   commit/receipt times. It creates the receipt after the source commit; it
+   never embeds a commit's own SHA into that commit. Keep source and evidence
+   fixed. Each rerun/attempt needs a new receipt and output directory.
+
+6. After the admitted attempt completes, collect its original observations:
+
+   ```sh
+   python3 tests/release/live.py observe \
+     --case /path/to/test-checkout/.live-case.json \
+     --receipt /tmp/case-receipt.json \
+     --ci-run-id 789 --output /tmp/case-attempt-1
+   ```
+
+   `observe` uses `/actions/runs/ID/attempts/ATTEMPT` and that attempt's jobs
+   endpoint, retains paginated jobs and raw logs, fetches workflow bytes at the
+   observed run head, captures exact-source push CI and reads Release state.
+   It never dispatches or writes Releases. Failed observation stays INCOMPLETE
+   with original command exit/stdout/stderr. Do not substitute latest jobs or
+   overwrite an earlier attempt. Historical evidence stays separately named.
+
+7. Check entirely offline:
 
    ```sh
    python3 tests/release/live.py check --repo example-org/sample-tool \
-     --case /path/to/test-checkout/.live-case.json --run-id 123
+     --case /path/to/test-checkout/.live-case.json --run-id 123 \
+     --receipt /tmp/case-receipt.json \
+     --evidence /tmp/case-attempt-1/evidence.json \
+     --seed /tmp/case-seed/seed.json --report /tmp/case-report-1.json
    ```
 
-   The checker requires the exact workflow and every expected job conclusion,
-   and reads every successful release back by tag. It prints `PASS` only after
-   all checks finish. Save the output, workflow file, run URL, source SHA, and
-   job timestamps. For the empty publish stage, compare verify start times with
-   every build and release-record completion time. For missing credentials,
-   confirm no build starts. For every failed record, confirm publish and verify
-   are skipped. A two-release seed refused by GitHub is not a measured run;
-   record the raw API refusal and leave that case unverified.
+   The checker requires matching event/source/ref/workflow ID/revision/bytes,
+   dispatch input and explicit attempt. The fixture log marker reports only
+   those identity fields; it never logs the whole GitHub context or credentials.
+   Every expected job must be observed with its distinct conclusion. Completed
+   jobs need coherent job/step times and start evidence. A skipped missing-token
+   build needs no steps and no assigned runner; an absent build cannot prove
+   it never started. For empty publication, verification starts after every
+   required build and Release record finishes. Published matching cases prove
+   no-write through unchanged actual Release and asset metadata, including IDs
+   and timestamps. Missing/contradictory evidence fails nonzero without PASS.
+   A fresh report starts INCOMPLETE before inputs load; failure is UNVERIFIED.
+   Existing reports are never overwritten.
 
-Run `skipped-build`, `empty-publish`, `empty-publish-failed-build`, `record-gate`,
-`baseline`, and `missing-credential`. Run each of the following both with and
-without `--assets`: `no-release`, `empty-draft`, `expected-draft`,
-`unexpected-draft`, `published-expected`, `published-wrong-prerelease`,
-`published-wrong-assets`, and `two-releases`. The preparer has local tests for
-all 28 case/asset combinations; live outcomes require actual run receipts.
+The required live matrix is six graph/gate cases (`skipped-build`,
+`empty-publish`, `empty-publish-failed-build`, `record-gate`, `baseline`,
+`missing-credential`) plus eight retry states with and without assets:
+`no-release`, `empty-draft`, `expected-draft`, `unexpected-draft`,
+`published-expected`, `published-wrong-prerelease`, `published-wrong-assets`,
+`two-releases`. This is 22 required live cases, plus partial continuation.
+The preparer tests cover all 28 scenario/asset combinations locally. Prepared
+combinations and synthetic checker tests are not measured live results.
 
-Also rerun a case after a partial draft upload. With the operator's read-only
-Airlock credentials configured, run the live organization policy at the source
-revision and save the complete output:
+### Partial draft upload continuation
+
+Under separate execution admission, retain the first failed workflow attempt,
+its bound receipt, record-job failure logs and terminal Release snapshot. The
+snapshot must contain one draft with a nonempty proper subset of expected
+assets. Do not create a second Release or overwrite the first attempt. No
+partial failure is induced by this harness; absence of a real failed attempt
+leaves this live case UNVERIFIED.
+
+Before the admitted continuation, collect a separate snapshot:
+
+```sh
+python3 tests/release/live.py snapshot --repo example-org/sample-tool \
+  --case /path/to/test-checkout/.live-case.json --output /tmp/continuation-before
+```
+
+Retain the original seed receipt unchanged. Bind and observe the continuation
+with its own full source/run/attempt identity. Create `/tmp/first-attempt.json`
+outside source with two objects: `receipt` (first receipt JSON) and `evidence`
+(first `evidence.json`). Check the continuation using its ordinary check
+arguments plus `--before /tmp/continuation-before/snapshot.json` and
+`--previous /tmp/first-attempt.json`. The checker requires the retained partial
+state to agree with continuation's before state and requires publication of the
+same Release ID with the full expected asset set. Missing, failed, mismatched
+or reused continuation evidence fails; no real continuation remains UNVERIFIED.
+
+### Audit evidence
+
+Airlock executable provenance, suitable read-only profile, intended generation
+and authoritative organization policy remain separate unresolved inputs.
+Do not select or generate a policy from this fixture. After root admits those
+inputs and the live audit, preserve complete output at the exact source:
 
 ```sh
 airlock audit example-org/sample-tool --ref SOURCE_SHA --format json \
   > /tmp/release-airlock.json
 ```
 
-Inspect `REPO-REL-04`, `REPO-REL-05`, `REPO-REL-06`, and `REPO-CI-04` in that
-output. An unobserved or routed result is not a pass.
-Toha update cases run locally in `test_toha_updates.py`; they require no live repository.
+Inspect `REPO-REL-04`, `REPO-REL-05`, `REPO-REL-06` and `REPO-CI-04` as actual
+observations. Unbuilt, manual, routed, unobserved or unavailable checks remain
+UNKNOWN/UNVERIFIED; they are not PASS. The harness supplies no audit outcome.
+Toha update tests are local and need no live repository.
