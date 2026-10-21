@@ -274,11 +274,15 @@ proposed-design:
     them to runner temporary storage and fails with a named diagnostic if the
     inputs are missing or locked installation fails. Repository Renovate owns
     the source manifest and lock through the Wyrd preset, with automerge disabled
-    and weekly lock maintenance. Adopters append
-    `.github/release-artifact-client/**` to their existing Renovate `ignorePaths`
-    array so automatic updates of that generated copy stay parent-owned. Existing
-    exclusions and other updater configuration are preserved. Other npm inputs
-    and external-action pins retain their adopter owners. Operator edits retain
+    and weekly lock maintenance. Adopters add
+    `.github/release-artifact-client/**` to Renovate's full effective `ignorePaths`
+    list so automatic updates of that generated copy stay parent-owned. Because
+    this array replaces inherited values, adopters resolve and retain all existing
+    inherited exclusions, or append to an existing explicit array. The product
+    recipe guide gives the complete Wyrd-preset entry for repositories without an
+    explicit array or additional inherited exclusions. Preset updates include
+    review of that effective list. Other updater configuration is preserved. Other
+    npm inputs and external-action pins retain their adopter owners. Operator edits retain
     the existing Toha three-way update merge and conflict-resolution behavior.
     Toha adoption carries reviewed updates into product repositories. The pinned
     Node action calls the SDK's

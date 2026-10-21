@@ -54,13 +54,35 @@ inputs are missing`; an inconsistent lock or failed installation reports
 `Artifact client locked dependency setup failed`. Setup uses the locked graph.
 Repository Renovate maintains the parent SDK manifest and complete lock through
 the existing Wyrd preset, with automerge disabled and weekly lock maintenance.
-Adopting repositories append this entry to their existing Renovate
-`ignorePaths` array so that automatic updates of the generated SDK copy stay
-with the parent template. Preserve existing exclusions and other configuration.
+Adopting repositories add `.github/release-artifact-client/**` to Renovate's
+**effective** `ignorePaths` list so that automatic updates of the generated SDK
+copy stay with the parent template. `ignorePaths` replaces inherited values;
+it does not merge them. Resolve the existing configuration first and preserve
+its full effective list. If an explicit `ignorePaths` array already exists,
+append only the generated-directory entry to that array. Preserve all other
+configuration.
+
+For the Wyrd preset without an explicit array or additional inherited
+exclusions, the complete entry is:
 
 ```json
-{"ignorePaths": [".github/release-artifact-client/**"]}
+{
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    ".github/release-artifact-client/**"
+  ]
+}
 ```
+
+Repositories with additional inherited exclusions must retain those too.
+Review the effective list when adopting preset updates.
 
 This exclusion covers only the generated SDK directory. Other npm inputs and
 external-action pins retain their adopter update owners. Operator edits retain

@@ -41,8 +41,8 @@ class ArtifactDependencies(unittest.TestCase):
                 'renovate': os.environ.get('RENOVATE_PACKAGE_DIR')}, indent=2) + '\n')
         return result
 
-    def emitted(self):
-        _, workflow, _ = render(self.root, model(), selected=['product-build'], answers=product_answers())
+    def emitted(self, root=None):
+        _, workflow, _ = render(root or self.root, model(), selected=['product-build'], answers=product_answers())
         parsed = load(workflow)
         steps = [next(s for s in parsed['jobs'][job]['steps'] if s.get('name') == 'Install official artifact client')
                  for job in ('build-product', 'assemble-product')]
@@ -190,14 +190,19 @@ class ArtifactDependencies(unittest.TestCase):
             self.assert_extraction(result)
         self.assert_extraction(self.extraction())
 
-    def adopter(self):
-        project, _ = self.emitted()
+    def adopter(self, explicit=False):
+        project, _ = self.emitted(self.root / ('adopter-explicit' if explicit else 'adopter-inherited'))
         (project / 'package.json').write_text(json.dumps({'private': True, 'dependencies': {'is-number': '7.0.0'}}))
-        ignored = project / 'example-ignore'
-        ignored.mkdir()
-        (ignored / 'package.json').write_text(json.dumps({'dependencies': {'is-odd': '3.0.1'}}))
-        existing = {'extends': ['github>wyrd-company/.github:renovate-config'],
-                    'ignorePaths': ['example-ignore/**'], 'labels': ['dependencies']}
+        excluded = ['tests', 'examples/demo', 'vendor/lib']
+        if explicit:
+            excluded.append('example-ignore')
+        for name in excluded:
+            directory = project / name
+            directory.mkdir(parents=True)
+            (directory / 'package.json').write_text(json.dumps({'dependencies': {'is-odd': '3.0.1'}}))
+        existing = {'extends': ['github>wyrd-company/.github:renovate-config'], 'labels': ['dependencies']}
+        if explicit:
+            existing['ignorePaths'] = ['**/tests/**', '**/examples/**', '**/vendor/**', 'example-ignore/**']
         (project / 'renovate.json').write_text(json.dumps(existing))
         shutil.copyfile(ROOT / 'renovate-config.json', project / 'renovate-config.json')
         files = sorted(p.relative_to(project).as_posix() for p in project.rglob('*') if p.is_file())
@@ -205,8 +210,27 @@ class ArtifactDependencies(unittest.TestCase):
         guide = (ROOT / 'release/targets/README.md').read_text().split('## Product build and assembly\n', 1)[1].split('\n## ', 1)[0]
         fragments = [json.loads(block) for block in re.findall(r'```json\n(.*?)\n```', guide, re.S)]
         addition, = [fragment for fragment in fragments if 'ignorePaths' in fragment]
-        configured = dict(existing, ignorePaths=existing['ignorePaths'] + addition['ignorePaths'])
+        configured = dict(existing, ignorePaths=(existing['ignorePaths'] + [addition['ignorePaths'][-1]]
+                                                if explicit else addition['ignorePaths']))
         return project, existing, configured
+
+    def assert_adopter_preservation(self, result, baseline):
+        generated = (GENERATED / '**').as_posix()
+        self.assertEqual([entry for entry in result['resolved']['ignorePaths'] if entry != generated],
+                         baseline['resolved']['ignorePaths'],
+                         'Effective inherited or explicit adopter exclusions remain intact')
+        for file in ('tests/package.json', 'examples/demo/package.json', 'vendor/lib/package.json'):
+            self.assertNotIn(file, result['filtered'], 'Previously excluded adopter inputs remain excluded')
+        before = dict(baseline['resolved'])
+        after = dict(result['resolved'])
+        del before['ignorePaths'], after['ignorePaths']
+        self.assertEqual(after, before, 'Existing effective action and update policy remains intact')
+        self.assertIn('config:recommended', result['visitedPresets']['merged'])
+        self.assertIn(':ignoreModulesAndTests', result['visitedPresets']['merged'])
+        self.assertEqual(sorted(set(baseline['filtered']) - set(result['filtered'])),
+                         sorted([(GENERATED / name).as_posix() for name in ('package.json', 'package-lock.json')]),
+                         'Only the generated SDK manifest and lock leave the updater surface')
+        self.assertEqual(set(result['filtered']) - set(baseline['filtered']), set())
 
     def assert_adopter_ownership(self, result):
         self.assertEqual(result['validation']['repository']['errors'], [])
@@ -217,26 +241,54 @@ class ArtifactDependencies(unittest.TestCase):
         dependency, = ordinary['dependencies']
         self.assertEqual((dependency['depName'], dependency['currentValue']), ('is-number', '7.0.0'))
         self.assertIn('.github/workflows/release.yml', result['filtered'], 'Adopter external-action pins remain included')
-        self.assertNotIn('example-ignore/package.json', result['filtered'], 'Existing adopter exclusions remain intact')
-        self.assertIn(':maintainLockFilesWeekly', result['owner']['extends'])
+        self.assertTrue(result['resolved']['lockFileMaintenance']['enabled'])
         self.assertFalse(dependency['automerge'])
 
     def test_rendered_adopter_excludes_only_generated_sdk(self):
-        project, existing, configured = self.adopter()
-        workflow = project / '.github/workflows/release.yml'
-        workflow_bytes = workflow.read_bytes()
-        (project / 'renovate.json').write_text(json.dumps(configured))
-        result = self.extract_fixture(project, 'configured-adopter')
-        self.assert_adopter_ownership(result)
-        self.assertEqual(result['repository'], configured)
-        for key, value in existing.items():
-            if key != 'ignorePaths':
-                self.assertEqual(result['repository'][key], value, 'Existing adopter configuration preserved')
-        self.assertEqual(workflow.read_bytes(), workflow_bytes)
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit):
+                project, existing, configured = self.adopter(explicit)
+                workflow = project / '.github/workflows/release.yml'
+                workflow_bytes = workflow.read_bytes()
+                baseline = self.extract_fixture(project, 'unexcluded-adopter')
+                (project / 'renovate.json').write_text(json.dumps(configured))
+                result = self.extract_fixture(project, 'configured-adopter')
+                self.assertNotIn((GENERATED / 'package.json').as_posix(), result['selected'],
+                                 'Generated SDK graph is excluded from adopter automatic updates')
+                self.assert_adopter_preservation(result, baseline)
+                self.assert_adopter_ownership(result)
+                self.assertEqual(result['repository'], configured)
+                for key, value in existing.items():
+                    if key != 'ignorePaths':
+                        self.assertEqual(result['repository'][key], value, 'Existing adopter configuration preserved')
+                self.assertEqual(workflow.read_bytes(), workflow_bytes)
+                shutil.rmtree(project)
         self.assert_extraction(self.extraction())
 
+    def test_replacing_inherited_exclusions_fails_preservation(self):
+        project, _, configured = self.adopter()
+        file = project / 'renovate.json'
+        baseline = self.extract_fixture(project, 'inherited-baseline')
+        restored = (json.dumps(configured) + '\n').encode()
+        file.write_bytes(restored)
+        self.assert_adopter_preservation(self.extract_fixture(project, 'preserved-adopter'), baseline)
+        try:
+            changed = dict(configured, ignorePaths=[(GENERATED / '**').as_posix()])
+            file.write_text(json.dumps(changed))
+            result = self.extract_fixture(project, 'replaced-inherited-exclusions')
+            self.assertTrue({'tests/package.json', 'examples/demo/package.json', 'vendor/lib/package.json'}
+                            <= set(result['selected']))
+            with self.assertRaisesRegex(AssertionError, 'Effective inherited or explicit adopter exclusions remain intact'):
+                self.assert_adopter_preservation(result, baseline)
+        finally:
+            file.write_bytes(restored)
+        self.assertEqual(file.read_bytes(), restored)
+        result = self.extract_fixture(project, 'restored-preservation')
+        self.assert_adopter_preservation(result, baseline)
+        self.assert_adopter_ownership(result)
+
     def test_missing_or_misdirected_adopter_exclusion_fails_ownership(self):
-        project, existing, configured = self.adopter()
+        project, _, configured = self.adopter()
         baseline = self.extract_fixture(project, 'unexcluded-adopter')
         generated, = [entry for entry in baseline['extracted']
                       if entry['packageFile'] == (GENERATED / 'package.json').as_posix()]
@@ -250,7 +302,7 @@ class ArtifactDependencies(unittest.TestCase):
         try:
             for exclusion in ([], ['.github/absent-client/**']):
                 with self.subTest(exclusion=exclusion):
-                    changed = dict(existing, ignorePaths=existing['ignorePaths'] + exclusion)
+                    changed = dict(configured, ignorePaths=configured['ignorePaths'][:-1] + exclusion)
                     file.write_text(json.dumps(changed))
                     result = self.extract_fixture(project, 'misdirected-adopter')
                     with self.assertRaisesRegex(AssertionError, 'Generated SDK graph is excluded from adopter automatic updates'):
@@ -258,7 +310,9 @@ class ArtifactDependencies(unittest.TestCase):
         finally:
             file.write_bytes(restored)
         self.assertEqual(file.read_bytes(), restored)
-        self.assert_adopter_ownership(self.extract_fixture(project, 'restored-adopter'))
+        result = self.extract_fixture(project, 'restored-adopter')
+        self.assert_adopter_ownership(result)
+        self.assert_adopter_preservation(result, baseline)
 
     def test_unselected_product_emits_no_dependency_inputs(self):
         _, workflow, _ = render(self.root, model(), selected=[])

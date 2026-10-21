@@ -73,9 +73,12 @@ source together. Keep the source commit available in `INTENTIONAL_DIR`.
 
 `test_artifact_dependencies.py` needs an npm cache containing the complete
 committed `@actions/artifact` graph and an installed official Renovate package.
-The extraction harness uses Renovate's own file selection, npm extraction and
-package-rule functions. `RENOVATE_PACKAGE_DIR` selects that package directory;
-it does not start Renovate's hosted updater or resolve remote presets. Prepare
+The extraction harness uses Renovate's own preset resolver, file selection, npm
+extraction and package-rule functions. `RENOVATE_PACKAGE_DIR` selects that
+package directory; it does not start Renovate's hosted updater. The exact local
+Wyrd preset is
+supplied to Renovate's preset cache; its bundled inherited presets are resolved
+by the installed official tool, without fetching remote presets. Prepare
 these inputs with lifecycle scripts disabled in a separate scratch directory:
 
 ```sh
@@ -83,7 +86,10 @@ mkdir -p /path/to/sdk-inputs
 cp release/targets/product-build/artifact-client/package*.json /path/to/sdk-inputs/
 npm ci --prefix /path/to/sdk-inputs \
   --cache /path/to/prefetched/npm-cache --ignore-scripts --no-audit --no-fund
-npm cache add @actions/artifact@6.3.1 \
+artifact_sdk=$(node -p '
+  const p = require("./release/targets/product-build/artifact-client/package.json");
+  "@actions/artifact@" + p.dependencies["@actions/artifact"]')
+npm cache add "$artifact_sdk" \
   --cache /path/to/prefetched/npm-cache --ignore-scripts \
   --registry https://registry.npmjs.org
 mkdir -p /path/to/renovate
@@ -96,9 +102,11 @@ Use separate initially empty SDK and tool caches. `npm ci` fetches the SDK's
 locked tarballs; `npm cache add` prepares the SDK package-spec data used by
 npm's resolver, including a metadata response and package-spec tarball key.
 A fresh tarball-only cache fails the corrupt-version proof with `ENOTCACHED`.
-Use the exact SDK version from the committed manifest for `npm cache add`.
+The command derives the exact SDK coordinate from the committed manifest.
 The tool manifest and complete lock under `tests/release/tools/renovate` identify
-the verified Renovate 44.167.1 graph; copy both files and use `npm ci`.
+the Renovate graph; copy both files and use `npm ci`. Parent Renovate maintains
+both SDK and tool inputs; update review includes these documented preparation
+commands and the official resolver/extraction tests.
 These commands are preparation; run them in owned copies of the dependency
 inputs. The tests exercise the emitted setup offline using
 `RELEASE_ARTIFACT_NPM_CACHE`. They compare source and generated manifest/lock
@@ -124,9 +132,14 @@ the blanket release exclusion in an isolated fixture; the extraction assertion
 must reject it before restored extraction passes.
 
 `test_rendered_adopter_excludes_only_generated_sdk` renders a real adopter,
-merges the exact documented `ignorePaths` addition into existing configuration,
-and runs official extraction. The generated SDK copy is excluded while an
-unrelated npm input and the rendered workflow retain their adopter ownership.
+applies the documented complete inherited list or appends to an existing explicit
+array, and runs official preset resolution and extraction. Both cases preserve
+their effective exclusions, unrelated root dependency, action/update policy and
+unchanged workflow. Tests, examples and vendor inputs stay excluded; the
+generated SDK manifest and lock alone leave the automatic update surface.
+`test_replacing_inherited_exclusions_fails_preservation` independently drops
+the inherited list and requires the named preservation assertion, then restores
+exact configuration bytes and passes.
 `test_missing_or_misdirected_adopter_exclusion_fails_ownership` first observes
 the generated SDK without the exclusion, then removes or misdirects only that
 entry and requires the named ownership assertion to fail. Exact restoration
