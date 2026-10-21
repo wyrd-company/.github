@@ -274,8 +274,14 @@ proposed-design:
     them to runner temporary storage and fails with a named diagnostic if the
     inputs are missing or locked installation fails. Repository Renovate owns
     the source manifest and lock through the Wyrd preset, with automerge disabled
-    and weekly lock maintenance. Toha adoption carries reviewed updates into
-    product repositories. The pinned Node action calls the SDK's
+    and weekly lock maintenance. Adopters append
+    `.github/release-artifact-client/**` to their existing Renovate `ignorePaths`
+    array so automatic updates of that generated copy stay parent-owned. Existing
+    exclusions and other updater configuration are preserved. Other npm inputs
+    and external-action pins retain their adopter owners. Operator edits retain
+    the existing Toha three-way update merge and conflict-resolution behavior.
+    Toha adoption carries reviewed updates into product repositories. The pinned
+    Node action calls the SDK's
     JavaScript upload API once per file. Each artifact is named
     `release-asset+<unit>+<file>`. Existing names fail rather than overwrite.
     Assembly downloads only the current run's matching build artifacts, without

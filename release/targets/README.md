@@ -54,6 +54,20 @@ inputs are missing`; an inconsistent lock or failed installation reports
 `Artifact client locked dependency setup failed`. Setup uses the locked graph.
 Repository Renovate maintains the parent SDK manifest and complete lock through
 the existing Wyrd preset, with automerge disabled and weekly lock maintenance.
+Adopting repositories append this entry to their existing Renovate
+`ignorePaths` array so that automatic updates of the generated SDK copy stay
+with the parent template. Preserve existing exclusions and other configuration.
+
+```json
+{"ignorePaths": [".github/release-artifact-client/**"]}
+```
+
+This exclusion covers only the generated SDK directory. Other npm inputs and
+external-action pins retain their adopter update owners. Operator edits retain
+Toha's existing three-way update merge behavior, including conflict resolution.
+`ArtifactDependencies.test_rendered_adopter_excludes_only_generated_sdk` checks
+actual official extraction after this documented configuration addition.
+
 Review and adopt dependency updates with:
 
 ```sh

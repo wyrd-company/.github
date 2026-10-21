@@ -83,11 +83,23 @@ mkdir -p /path/to/sdk-inputs
 cp release/targets/product-build/artifact-client/package*.json /path/to/sdk-inputs/
 npm ci --prefix /path/to/sdk-inputs \
   --cache /path/to/prefetched/npm-cache --ignore-scripts --no-audit --no-fund
-npm install --prefix /path/to/renovate --save-exact renovate@44.167.1 \
+npm cache add @actions/artifact@6.3.1 \
+  --cache /path/to/prefetched/npm-cache --ignore-scripts \
+  --registry https://registry.npmjs.org
+mkdir -p /path/to/renovate
+cp tests/release/tools/renovate/package*.json /path/to/renovate/
+npm ci --prefix /path/to/renovate \
   --cache /path/to/tool-cache --ignore-scripts --no-audit --no-fund
 ```
 
-The SDK command is preparation; run it in an owned copy of the dependency
+Use separate initially empty SDK and tool caches. `npm ci` fetches the SDK's
+locked tarballs; `npm cache add` prepares the SDK package-spec data used by
+npm's resolver, including a metadata response and package-spec tarball key.
+A fresh tarball-only cache fails the corrupt-version proof with `ENOTCACHED`.
+Use the exact SDK version from the committed manifest for `npm cache add`.
+The tool manifest and complete lock under `tests/release/tools/renovate` identify
+the verified Renovate 44.167.1 graph; copy both files and use `npm ci`.
+These commands are preparation; run them in owned copies of the dependency
 inputs. The tests exercise the emitted setup offline using
 `RELEASE_ARTIFACT_NPM_CACHE`. They compare source and generated manifest/lock
 bytes, the actual setup's installed copies, and an independent `npm ls` graph.
@@ -95,9 +107,13 @@ They import the official SDK's ESM entry point without uploading artifacts.
 Build and assembly must share the same setup, and an unselected product emits
 no dependency inputs.
 
-`test_corrupt_emitted_lock_fails_agreement_and_setup` replaces only the
-consumer's emitted lock. The byte agreement assertion and actual npm setup
-independently reject it, then exact restoration passes both again.
+`test_corrupt_emitted_lock_fails_agreement_and_setup` changes only the SDK
+version in the consumer's complete emitted lock. It requires npm's `EUSAGE`
+in-sync refusal with the named invalid SDK version; `ENOTCACHED` is rejected.
+The byte agreement assertion independently rejects the corruption. The actual
+emitted setup with `npm install` substituted must succeed against the same
+corrupt input and cache, so an unlocked fallback falsifies the guard. Exact
+restoration passes agreement and locked setup again.
 `test_missing_emitted_lock_fails_without_unlocked_fallback` removes the lock
 and requires the named diagnostic before npm starts.
 `test_official_updater_extracts_source_and_lock` requires the parent SDK,
@@ -105,8 +121,18 @@ associated complete lock, Wyrd preset, non-automerge owner and weekly lock
 maintenance. Official file filtering must keep every other release input
 excluded. `test_misdirected_official_extraction_fails_named_assertion` restores
 the blanket release exclusion in an isolated fixture; the extraction assertion
-must reject it before restored extraction passes. These tests do not establish
-hosted scheduling, registry publication, artifact permissions or service limits.
+must reject it before restored extraction passes.
+
+`test_rendered_adopter_excludes_only_generated_sdk` renders a real adopter,
+merges the exact documented `ignorePaths` addition into existing configuration,
+and runs official extraction. The generated SDK copy is excluded while an
+unrelated npm input and the rendered workflow retain their adopter ownership.
+`test_missing_or_misdirected_adopter_exclusion_fails_ownership` first observes
+the generated SDK without the exclusion, then removes or misdirects only that
+entry and requires the named ownership assertion to fail. Exact restoration
+passes. Parent source and lock extraction is checked independently.
+These tests do not establish hosted scheduling, registry publication, artifact
+permissions or service limits.
 
 Set `RELEASE_DEPENDENCY_RECEIPTS=/absolute/path` to retain raw commands, exits,
 outputs, source head and selected tool/cache paths for these tests.

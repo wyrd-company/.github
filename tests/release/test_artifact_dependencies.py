@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ from test_product_build import product_answers
 
 SOURCE = Path('release/targets/product-build/artifact-client')
 GENERATED = Path('.github/release-artifact-client')
+TOOL = Path('tests/release/tools/renovate')
 
 
 class ArtifactDependencies(unittest.TestCase):
@@ -92,14 +94,27 @@ class ArtifactDependencies(unittest.TestCase):
         file = project / GENERATED / 'package-lock.json'
         original = file.read_bytes()
         try:
-            file.write_text('{"lockfileVersion":3,"packages":{}}\n')
+            corrupt = json.loads(original)
+            corrupt['packages']['node_modules/@actions/artifact']['version'] = '0.0.0'
+            corrupt_bytes = (json.dumps(corrupt, indent=2) + '\n').encode()
+            file.write_bytes(corrupt_bytes)
             with self.assertRaisesRegex(AssertionError, 'Source and emitted dependency bytes agree: package-lock.json'):
                 self.assert_input_agreement(project)
             _, result = self.setup(project, step, 'corrupt-lock')
             self.assertNotEqual(result.returncode, 0, 'Corrupt lock must fail setup')
             self.assertIn('Artifact client locked dependency setup failed', result.stdout + result.stderr)
-            self.assertIn('npm error', result.stderr)
-            self.assertEqual(file.read_text(), '{"lockfileVersion":3,"packages":{}}\n')
+            self.assertIn('npm error code EUSAGE', result.stderr, 'Locked consistency refusal must be observed')
+            self.assertIn("Invalid: lock file's @actions/artifact@0.0.0", result.stderr)
+            self.assertNotIn('ENOTCACHED', result.stderr, 'Missing metadata cannot prove locked consistency')
+            self.assertEqual(file.read_bytes(), corrupt_bytes)
+            # The real alternate command must install successfully with exactly this cache/input.
+            alternate = dict(step, run=step['run'].replace('npm ci --prefix', 'npm install --prefix', 1))
+            installed, falsifier = self.setup(project, alternate, 'unlocked-falsifier')
+            self.assertEqual(falsifier.returncode, 0, 'Unlocked alternate must falsify the guard: ' + falsifier.stdout + falsifier.stderr)
+            expected = json.loads(original)['packages']['node_modules/@actions/artifact']['version']
+            actual = json.loads((installed / 'node_modules/@actions/artifact/package.json').read_text())['version']
+            self.assertEqual(actual, expected)
+            self.assertEqual(file.read_bytes(), corrupt_bytes)
         finally:
             file.write_bytes(original)
         self.assertEqual(hashlib.sha256(file.read_bytes()).digest(), hashlib.sha256(original).digest())
@@ -126,6 +141,7 @@ class ArtifactDependencies(unittest.TestCase):
         fixture = self.root / 'extraction'
         fixture.mkdir(exist_ok=True)
         shutil.copytree(ROOT / SOURCE, fixture / SOURCE, dirs_exist_ok=True)
+        shutil.copytree(ROOT / TOOL, fixture / TOOL, dirs_exist_ok=True)
         for name in ('renovate.json', 'renovate-config.json'):
             shutil.copyfile(ROOT / name, fixture / name)
         if config is not None:
@@ -133,7 +149,10 @@ class ArtifactDependencies(unittest.TestCase):
         files = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard'],
                                         cwd=ROOT, text=True).splitlines()
         (fixture / 'files.json').write_text(json.dumps(files))
-        result = self.command(['node', str(ROOT / 'tests/release/artifact-updater.mjs'), str(fixture)], 'extraction')
+        return self.extract_fixture(fixture)
+
+    def extract_fixture(self, fixture, label='extraction'):
+        result = self.command(['node', str(ROOT / 'tests/release/artifact-updater.mjs'), str(fixture)], label)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout)
 
@@ -141,8 +160,8 @@ class ArtifactDependencies(unittest.TestCase):
         self.assertEqual(result['validation']['repository']['errors'], [], 'Repository configuration passes official validation')
         self.assertEqual(result['validation']['owner']['errors'], [], 'Owner preset passes official validation')
         manifest = (SOURCE / 'package.json').as_posix()
-        self.assertEqual(result['selected'], [manifest], 'Official updater extracts the parent SDK source')
-        self.assertEqual([e['packageFile'] for e in result['extracted']], [manifest])
+        self.assertEqual(result['selected'], [manifest, (TOOL / 'package.json').as_posix()], 'Official updater extracts the parent SDK source')
+        self.assertEqual([e['packageFile'] for e in result['extracted']], result['selected'])
         self.assertEqual(result['extracted'][0]['npmLock'], (SOURCE / 'package-lock.json').as_posix(),
                          'Official updater owns the complete source lock')
         dependency, = result['extracted'][0]['dependencies']
@@ -150,6 +169,9 @@ class ArtifactDependencies(unittest.TestCase):
         self.assertEqual((dependency['depName'], dependency['currentValue']), ('@actions/artifact', expected_sdk))
         self.assertEqual(dependency.get('groupName'), 'release artifact client', 'Parent SDK update rule applies')
         self.assertFalse(dependency['automerge'])
+        tool = result['extracted'][1]
+        self.assertEqual(tool['npmLock'], (TOOL / 'package-lock.json').as_posix())
+        self.assertEqual(tool['dependencies'][0]['depName'], 'renovate')
         self.assertIn(':maintainLockFilesWeekly', result['owner']['extends'])
         self.assertEqual(result['repository']['extends'], ['github>wyrd-company/.github:renovate-config'])
         self.assertEqual(sorted(f for f in result['filtered'] if f.startswith('release/')),
@@ -167,6 +189,76 @@ class ArtifactDependencies(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'Official updater extracts the parent SDK source'):
             self.assert_extraction(result)
         self.assert_extraction(self.extraction())
+
+    def adopter(self):
+        project, _ = self.emitted()
+        (project / 'package.json').write_text(json.dumps({'private': True, 'dependencies': {'is-number': '7.0.0'}}))
+        ignored = project / 'example-ignore'
+        ignored.mkdir()
+        (ignored / 'package.json').write_text(json.dumps({'dependencies': {'is-odd': '3.0.1'}}))
+        existing = {'extends': ['github>wyrd-company/.github:renovate-config'],
+                    'ignorePaths': ['example-ignore/**'], 'labels': ['dependencies']}
+        (project / 'renovate.json').write_text(json.dumps(existing))
+        shutil.copyfile(ROOT / 'renovate-config.json', project / 'renovate-config.json')
+        files = sorted(p.relative_to(project).as_posix() for p in project.rglob('*') if p.is_file())
+        (project / 'files.json').write_text(json.dumps(files))
+        guide = (ROOT / 'release/targets/README.md').read_text().split('## Product build and assembly\n', 1)[1].split('\n## ', 1)[0]
+        fragments = [json.loads(block) for block in re.findall(r'```json\n(.*?)\n```', guide, re.S)]
+        addition, = [fragment for fragment in fragments if 'ignorePaths' in fragment]
+        configured = dict(existing, ignorePaths=existing['ignorePaths'] + addition['ignorePaths'])
+        return project, existing, configured
+
+    def assert_adopter_ownership(self, result):
+        self.assertEqual(result['validation']['repository']['errors'], [])
+        self.assertNotIn((GENERATED / 'package.json').as_posix(), result['selected'],
+                         'Generated SDK graph is excluded from adopter automatic updates')
+        self.assertEqual(result['selected'], ['package.json'], 'Unrelated adopter npm input remains extracted')
+        ordinary, = result['extracted']
+        dependency, = ordinary['dependencies']
+        self.assertEqual((dependency['depName'], dependency['currentValue']), ('is-number', '7.0.0'))
+        self.assertIn('.github/workflows/release.yml', result['filtered'], 'Adopter external-action pins remain included')
+        self.assertNotIn('example-ignore/package.json', result['filtered'], 'Existing adopter exclusions remain intact')
+        self.assertIn(':maintainLockFilesWeekly', result['owner']['extends'])
+        self.assertFalse(dependency['automerge'])
+
+    def test_rendered_adopter_excludes_only_generated_sdk(self):
+        project, existing, configured = self.adopter()
+        workflow = project / '.github/workflows/release.yml'
+        workflow_bytes = workflow.read_bytes()
+        (project / 'renovate.json').write_text(json.dumps(configured))
+        result = self.extract_fixture(project, 'configured-adopter')
+        self.assert_adopter_ownership(result)
+        self.assertEqual(result['repository'], configured)
+        for key, value in existing.items():
+            if key != 'ignorePaths':
+                self.assertEqual(result['repository'][key], value, 'Existing adopter configuration preserved')
+        self.assertEqual(workflow.read_bytes(), workflow_bytes)
+        self.assert_extraction(self.extraction())
+
+    def test_missing_or_misdirected_adopter_exclusion_fails_ownership(self):
+        project, existing, configured = self.adopter()
+        baseline = self.extract_fixture(project, 'unexcluded-adopter')
+        generated, = [entry for entry in baseline['extracted']
+                      if entry['packageFile'] == (GENERATED / 'package.json').as_posix()]
+        self.assertEqual(generated['npmLock'], (GENERATED / 'package-lock.json').as_posix())
+        sdk, = generated['dependencies']
+        self.assertEqual(sdk['depName'], '@actions/artifact')
+        file = project / 'renovate.json'
+        restored = (json.dumps(configured) + '\n').encode()
+        file.write_bytes(restored)
+        self.assert_adopter_ownership(self.extract_fixture(project, 'configured-adopter'))
+        try:
+            for exclusion in ([], ['.github/absent-client/**']):
+                with self.subTest(exclusion=exclusion):
+                    changed = dict(existing, ignorePaths=existing['ignorePaths'] + exclusion)
+                    file.write_text(json.dumps(changed))
+                    result = self.extract_fixture(project, 'misdirected-adopter')
+                    with self.assertRaisesRegex(AssertionError, 'Generated SDK graph is excluded from adopter automatic updates'):
+                        self.assert_adopter_ownership(result)
+        finally:
+            file.write_bytes(restored)
+        self.assertEqual(file.read_bytes(), restored)
+        self.assert_adopter_ownership(self.extract_fixture(project, 'restored-adopter'))
 
     def test_unselected_product_emits_no_dependency_inputs(self):
         _, workflow, _ = render(self.root, model(), selected=[])
