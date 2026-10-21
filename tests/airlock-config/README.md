@@ -26,7 +26,8 @@ there is no document question or vendored schema.
 the declaration block. `test_rendered_config_has_exactly_one_final_newline`
 checks exact bytes, parsed values and YAML lint for the default and declared
 branches. It covers valid single- and multi-topic lists and accepted-generation
-variants, and compares parsed output with the original template. The topic array
+variants. Independently authored expected bytes and complete parsed configurations
+form the oracle; this regression needs no Git history. The topic array
 uses comma-space formatting. Focused mutation rows cover the declaration guard,
 EOF whitespace and topic-array separator formatting. The required/guard tests
 reject empty and malformed answers before output. `test_all_optional_answers`

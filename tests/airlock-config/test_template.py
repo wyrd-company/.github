@@ -11,7 +11,6 @@ import unittest
 from ruamel.yaml import YAML
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_HEAD = 'b22497203f2619b5d3ebcc6cb13d04ad334f6958'
 FIELDS = dict(description='Sample utility: "quoted"\nsecond line', topics='cli rust',
               squash=False, rebase=False, merge_commit=True, delete_branch_on_merge=False,
               wiki=True, projects=True, discussions=True)
@@ -101,14 +100,6 @@ class AirlockTemplate(unittest.TestCase):
         self.assertEqual(self.render(dict(declare_repository=False, **FIELDS)), {'version': '0.6.0'})
 
     def test_rendered_config_has_exactly_one_final_newline(self):
-        historical_source = subprocess.check_output(
-            ['git', 'show', f'{BASE_HEAD}:airlock-config/template/.github/airlock.yml'],
-            cwd=ROOT, text=True)
-        historical_template = self.root / 'historical-airlock-config'
-        shutil.copytree(ROOT / 'airlock-config', historical_template)
-        historical_file = historical_template / 'template/.github/airlock.yml'
-        historical_file.write_text(historical_source)
-
         header = (b'# relationships:\n#   references: release-process\n'
                   b'# Repository requests are honored only where organization authority permits.\n'
                   b'# Add exceptions.<rule> with reason; severity: none requests a waiver.\n'
@@ -125,7 +116,7 @@ class AirlockTemplate(unittest.TestCase):
             cases.append(({'accepted_generation': version},
                           header + f'version: "{version}"\n'.encode(), {'version': version}))
 
-        for index, (answers, expected_bytes, expected_config) in enumerate(cases):
+        for answers, expected_bytes, expected_config in cases:
             with self.subTest(answers=answers):
                 shutil.rmtree(self.target)
                 self.target.mkdir()
@@ -144,17 +135,6 @@ class AirlockTemplate(unittest.TestCase):
                 self.assertEqual(whitespace.returncode, 1, whitespace.stdout + whitespace.stderr)
                 self.assertEqual(whitespace.stdout + whitespace.stderr, '')
 
-                historical_answers = self.root / 'historical-answers.json'
-                historical_answers.write_text(json.dumps(
-                    {'template': str(historical_template), 'answers': answers}))
-                historical_target = self.root / f'historical-project-{index}'
-                historical_target.mkdir()
-                historical = subprocess.run(
-                    [os.environ['TOHA_BIN'], 'apply', str(historical_template), str(historical_target),
-                     '--answers', str(historical_answers)], text=True, capture_output=True)
-                self.assertEqual(historical.returncode, 0, historical.stdout + historical.stderr)
-                old_file = historical_target / '.github/airlock.yml'
-                self.assertEqual(YAML(typ='safe').load(old_file.read_text()), expected_config)
                 lint = subprocess.run(
                     ['ryl', 'check', '-c', '.ryl.yml', '--stdin-filename', '.github/airlock.yml', '-'],
                     cwd=ROOT, input=rendered.decode(), text=True, capture_output=True)
