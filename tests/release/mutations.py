@@ -530,7 +530,7 @@ for old, test in [
 # Admit that one property through both layers for a realistic semantic revert.
 mutation('tests/release/harness.py',
          "assert 'environment' not in job, 'Major tag declares no environment'\n    assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'",
-         "assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps', 'environment'}, 'Major tag has a fixed parent job surface'",
+         "assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) - {'environment'} == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'",
          'test_major_tag.MajorTag.test_rejects_environment', 'python')
 mutation('release/partials/major-tag.js', 'const {version, tag} = release;',
          'const {tag} = release; const version = process.env.GITHUB_REF_NAME;',
