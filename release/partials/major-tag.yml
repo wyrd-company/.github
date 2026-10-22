@@ -1,0 +1,22 @@
+{# relationships: implements: release-process #}
+  update-major-tag:
+    needs: {{ (['resolve'] + ns.preflight + ns.build + ns.assemble + ['release-record'] + ns.publish + ns.verify) | tojson }}
+    if: >-
+      {{ ns.gate() }} && contains(fromJSON(needs.resolve.outputs.units), '{{ major_tag_unit | replace("'", "''") }}') && needs.release-record.result == 'success'{% for verify in ns.major_verify %} && needs.{{ verify }}.result == 'success'{% endfor %}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_SOURCE_SHA: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      RELEASE_JSON: {% raw %}${{ needs.resolve.outputs.releases }}{% endraw %}
+      MAJOR_TAG_UNIT: {{ major_tag_unit | toyaml }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+          fetch-depth: 0
+      - name: Update numeric major tag for a plain stable version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+{% set major_script %}{% include 'partials/major-tag.js' %}{% endset %}{{ major_script | indent(12, true) }}

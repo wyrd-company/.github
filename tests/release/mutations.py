@@ -513,6 +513,30 @@ for member in ('tag', 'version'):
              'fromJSON(env.RELEASE_JSON)[matrix.unit].' + member, 'github.ref_name',
              'test_product_verification.ProductVerification.test_recipe_receives_resolved_identity', 'python')
 
+# Optional parent-owned final major tag: seven obligations, split at independent assertions.
+MAJOR_TAG_CASE_START = len(CASES)
+mutation('release/partials/major-tag.yml', ' + ns.verify) | tojson', ') | tojson',
+         'test_major_tag.MajorTag.test_needs_every_earlier_job', 'python')
+mutation('release/partials/major-tag.yml', " && needs.{{ verify }}.result == 'success'", '',
+         'test_major_tag.MajorTag.test_named_unit_verification_truth_table', 'python')
+for old, test in [
+    ("assert parsed['permissions'] == {}, 'Major tag keeps workflow permissions empty'", 'test_rejects_workflow_write'),
+    ("assert body.get('permissions', {}).get('contents') != 'write', 'Major tag adds no other contents writer'", 'test_rejects_other_job_write'),
+    ("assert set(job['env']) == {'RELEASE_SOURCE_SHA', 'RELEASE_JSON', 'MAJOR_TAG_UNIT'}, 'Major tag declares no credential'", 'test_rejects_credential'),
+    ("assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'", 'test_rejects_secret'),
+    ("assert 'environment' not in job, 'Major tag declares no environment'", 'test_rejects_environment'),
+]:
+    mutation('tests/release/harness.py', old, 'pass', 'test_major_tag.MajorTag.' + test, 'python')
+mutation('release/partials/major-tag.js', 'const {version, tag} = release;',
+         'const {tag} = release; const version = process.env.GITHUB_REF_NAME;',
+         'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
+mutation('release/partials/major-tag.js', 'if (BigInt(major) === 0n)', 'if (false)',
+         'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
+mutation('release/partials/major-tag.js', 'if (!/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(version))', 'if (false)',
+         'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
+MAJOR_TAG_CASE_END = len(CASES)
+
+
 def inventory(root=ROOT, cases=None):
     """Freeze every expected site before any source write or test invocation."""
     sites = []

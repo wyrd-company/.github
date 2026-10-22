@@ -191,5 +191,15 @@ interview:
     when: "'product-build' in targets and product_verification"
     schema: https://github.com/wyrd-company/.github/blob/main/release/schemas/product-verification-matrix.schema.json
     input: .github/release-verification.json
+  - id: major_tag_update
+    type: confirm
+    prompt: Update a numeric major tag after release verification?
+    default: false
+  - id: major_tag_unit
+    type: select
+    prompt: Release Unit whose release moves the numeric major tag
+    when: major_tag_update
+    options: "release_model.release_units | dictsort | selectattr('1.release_record', 'equalto', 'required') | map(attribute='0') | list"
+    required: true
   - id: credential_answers
     computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

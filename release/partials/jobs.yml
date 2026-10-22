@@ -2,7 +2,7 @@
 {% macro gate() -%}
 !cancelled() && !failure() && needs.resolve.result == 'success'{% for preflight in ns.preflight %} && needs.{{ preflight }}.result == 'success'{% endfor %}
 {%- endmacro %}
-{% macro part_job(id, units, stage, body, extra_env='', extra_if='') %}
+{% macro part_job(id, units, stage, body, extra_env='', extra_if='') %}{% if major_tag_update | default(false) and stage == 'verify' and major_tag_unit in units | split(' ') %}{% set ns.major_verify = ns.major_verify + [id] %}{% endif %}
   {{ id }}:
     needs: {{ (['resolve'] + ns.preflight + (ns.build if stage != 'build' else []) + (ns.assemble if stage in ['publish', 'verify'] else []) + (['release-record'] if ns.record_units and stage in ['publish', 'verify'] else []) + (ns.publish if stage == 'verify' else [])) | tojson }}
     if: >-

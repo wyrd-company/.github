@@ -166,6 +166,8 @@ def check_parts(template, workflow, selected, answers):
                 assert unless in answers and isinstance(answers[unless], bool), f'Invalid unless selector: {unless}'
             jsonschema.validate(credential, json.loads((template / 'schemas/credential.schema.json').read_text()))
     parsed = load(workflow)
+    if 'update-major-tag' in parsed['jobs']:
+        check_major_tag(parsed)
     for job in parsed['jobs'].values():
         for step in job.get('steps', []):
             if 'uses' in step:
@@ -222,6 +224,27 @@ def check_parts(template, workflow, selected, answers):
                     check_condition(entry['if'])
                 jsonschema.validate(entry, json.loads((template / 'schemas/publish-job.schema.json').read_text()))
     return parsed
+
+
+def check_major_tag(parsed):
+    """The optional writer has a fixed parent surface and automatic token only."""
+    job = parsed['jobs']['update-major-tag']
+    assert parsed['permissions'] == {}, 'Major tag keeps workflow permissions empty'
+    for name, body in parsed['jobs'].items():
+        if name not in ('release-record', 'update-major-tag'):
+            assert body.get('permissions', {}).get('contents') != 'write', 'Major tag adds no other contents writer'
+    assert job['permissions'] == {'contents': 'write'}, 'Major tag has only job-local contents write'
+    assert 'environment' not in job, 'Major tag declares no environment'
+    assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'
+    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'
+    assert set(job['env']) == {'RELEASE_SOURCE_SHA', 'RELEASE_JSON', 'MAJOR_TAG_UNIT'}, 'Major tag declares no credential'
+    assert job['env']['RELEASE_SOURCE_SHA'] == '${{ needs.resolve.outputs.source_sha }}', 'Major tag source is resolved'
+    assert job['env']['RELEASE_JSON'] == '${{ needs.resolve.outputs.releases }}', 'Major tag releases are resolved'
+    checkout, writer = job['steps']
+    assert set(checkout) == {'uses', 'with'} and set(checkout['with']) == {'ref', 'fetch-depth'}, 'Major tag uses automatic checkout credentials'
+    assert checkout['with'] == {'ref': '${{ needs.resolve.outputs.source_sha }}', 'fetch-depth': 0}, 'Major tag checks out resolved source'
+    assert set(writer) == {'name', 'uses', 'with'} and set(writer['with']) == {'script'}, 'Major tag uses automatic script credentials'
+    assert '${{' not in writer['with']['script'], 'Major tag script has no expression interpolation'
 
 
 if __name__ == '__main__':

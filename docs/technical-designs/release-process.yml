@@ -83,7 +83,8 @@ proposed-design:
     of Release Units the run releases. Preflight jobs check that every declared
     credential is present. Part build jobs run next, then one release record per
     released unit whose policy is `required`, then part publish jobs, then part
-    verify jobs. Four internal part interfaces describe jobs and credentials,
+    verify jobs, then the optional parent-owned final numeric major-tag update.
+    Four internal part interfaces describe jobs and credentials,
     validated by draft JSON Schemas in `release/schemas/`. `.toha.json` records
     the selected parts, answers including the rendered model, and path ownership.
     Delivery runs inside `release.yml`; no `cd.yml` is rendered. Repository
@@ -183,8 +184,8 @@ proposed-design:
     the parent owns ordering and gating, and v1 has no reusable-workflow call.
     `permissions` is an object that admits only `contents: read`,
     `actions: read`, `id-token: write`, `attestations: write`, and
-    `packages: read` or `write`; `contents: write` stays with the parent's
-    release-record job. `env` names cannot start with `RELEASE_` or `GITHUB_`.
+    `packages: read` or `write`; `contents: write` is not grantable to parts.
+    The parent's release-record and optional final major-tag jobs own that permission. `env` names cannot start with `RELEASE_` or `GITHUB_`.
     A step has exactly one of `uses` and `run`. `uses` is either a local
     action path starting with `./` or `owner/repo[/path]@<40-hex commit> #
     <version>`, the form `REPO-CI-04` requires. `run` and step `if` cannot
@@ -201,10 +202,10 @@ proposed-design:
     `check-jsonschema` against the draft schema.
 
   job-graph: >-
-    The parent renders the jobs in seven stages, in this order: `resolve`; the
+    The parent renders the jobs in eight stages, in this order: `resolve`; the
     preflight jobs (`preflight` and each `preflight-<environment>`); build
     jobs; assembly jobs; `release-record`, when the parent renders it; publish jobs; verify
-    jobs. Every job needs every job of every earlier stage, not only the jobs
+    jobs; the optional final `update-major-tag` job. Every job needs every job of every earlier stage, not only the jobs
     of the stage before it. The order therefore holds when a stage is empty:
     with no part publish jobs, each verify job still needs every build and
     assembly job and `release-record`, so it starts after them and a failure in either is
@@ -216,8 +217,8 @@ proposed-design:
     each preflight job. `!failure()` is false when any ancestor job failed,
     because GitHub evaluates it over every ancestor in a chain of dependent
     jobs; the `result` tests stop the job when `resolve` or a preflight job
-    did not succeed for any other reason. A skipped build, assembly, publish, or verify
-    job does not stop a later job: a part job is skipped when it serves
+    did not succeed for any other reason. A skipped build, assembly, or publish job, or a verify job that serves only
+    other units, does not stop a later job: a part job is skipped when it serves
     no unit that the run releases, and GitHub's implicit `success()` would
     otherwise skip every job that needs it. `release-record` has the condition
     `<stage gate> && needs.resolve.outputs.record == 'true'`. Every
@@ -233,7 +234,8 @@ proposed-design:
     whatever skipped `release-record`. The product verification recipe step
     also tests the matrix unit against the released and record-required unit
     outputs, so a released unit with policy `none` cannot admit another matrix
-    unit whose required record did not succeed. A failed job stops every later job of
+    unit whose required record did not succeed. The final major-tag job additionally requires every verify job that serves its
+    selected unit to succeed, including a matrix job as a whole. A failed job stops every later job of
     the run, for every unit. The retry is a re-run of the failed jobs or a new
     dispatch on the same source commit: `release-record` accepts or completes
     its own earlier work (release-records), and a publish job succeeds when
@@ -254,6 +256,37 @@ proposed-design:
     preserving the action version comments (optional-parts-form). The default
     checkout of every job is the source commit, because `resolve` requires
     `github.sha` to equal `source-sha`.
+
+  major-tag-update: >-
+    The parent asks `major_tag_update`, an optional confirm with default false.
+    When true, `major_tag_unit` selects a Release Model unit with
+    `release_record: required`. No part is required. An absent or false answer
+    emits no job and preserves workflow and generated SDK bytes. The final
+    stage holds only `update-major-tag`, which needs every job of every earlier
+    stage, including every verify job. Its condition requires the stage gate,
+    the selected unit among released units, `release-record` success, and
+    success of each verify job that serves that unit. A skipped or cancelled
+    verifier of that unit refuses the update; unrelated verifiers may be
+    skipped. A verifier with several units must succeed as a whole. An empty
+    verify stage for the named unit adds no verification conjunct. The select
+    answer is a validated model ID, escaped as a string literal in the fixed
+    implicit condition and serialized separately as a YAML environment scalar;
+    scripts and explicit GitHub expressions are fixed.
+    Only this new job receives job-local `contents: write`, through the
+    automatic per-run `GITHUB_TOKEN`. It declares no user credential, stored
+    secret or environment. The checkout ref and tag target are
+    `needs.resolve.outputs.source_sha`. The script reads the selected unit's
+    `version` and `tag` from `RELEASE_JSON`, never the dispatch ref or another
+    unit. A version matching `^[0-9]+\.[0-9]+\.[0-9]+$` with major at least 1
+    force-creates or force-updates the annotated numeric tag without `v`, as
+    `github-actions[bot]`, with message `Update <major> to <tag>`, then
+    force-pushes only that tag. Major zero, prereleases and build metadata log
+    a skip and succeed. The operation preserves force-update behavior: an older
+    run repeated after a newer run moves the major tag backward. It adds no
+    monotonicity rule or release-eligibility restriction. Primary and record
+    tags retain their phased-tags flow. The product only opts in and names the
+    unit; no write recipe or hook is exposed. Before the first real 1.x update,
+    repository tag rules and automatic-token compatibility need live evidence.
 
   product-recipes: >-
     Selecting `product-build` asks for Release Unit ids, a document whose
@@ -588,6 +621,18 @@ proposed-design:
     declared credentials or user secrets, and substitute dispatch-ref identities.
     Disabled-output comparisons cover each existing part alone, each paired with
     product-build, and all parts together, with assembly enabled and disabled.
+    `MajorTag` checks all earlier-stage edges, strict selected-unit verifier
+    success and skip-tolerant unrelated verifiers, empty verification, and
+    every condition conjunct. It executes the emitted writer in disposable
+    local repositories with a local bare remote and file-only Git transport,
+    proving creation, annotated movement, tagger/message, major-zero and
+    non-plain skips, resolved identity, identical rerun and older-run rollback.
+    Named controls independently remove the verify edge, accept a skipped
+    selected-unit verifier, broaden workflow or another job's write permission,
+    accept credentials, secrets or an environment, substitute a dispatch version,
+    remove major-zero skip and remove plain-version validation. Disabled-output
+    comparisons add product verification enabled and disabled to each part,
+    product-build pair, all-parts and assembly case.
     These cases compare actual base and candidate workflow and SDK bytes; they
     do not enumerate arbitrary input documents. Real verification after
     publication on selected runners, recipe failure failing a hosted workflow,
@@ -624,7 +669,7 @@ proposed-design:
     names, and job order and conditions in job-graph. Each part ships with the
     parent and changes with it; a change to an internal interface updates every
     affected part and repository test in the same parent revision. The optional
-    product verification recipe is part of that parent contract revision; its
+    product verification recipe and final major-tag job are part of that parent contract revision; the recipe's
     runner document schema retains its draft identity. Adding a
     target is a parent-template revision, and an outside target uses a fork of
     the parent. Airlock accepts parent revisions by organization-configured
@@ -636,8 +681,8 @@ proposed-design:
   security-surface: >-
     The approved surface is the grantable part job permissions (`contents:
     read`, `actions: read`, `id-token: write`, `attestations: write`, `packages:
-    read` or `write`) with `contents: write` reserved for the parent's
-    release-record job; `actions: read` in `resolve` for the CI-run check;
+    read` or `write`) with `contents: write` owned by the parent's
+    release-record and optional final major-tag jobs; `actions: read` in `resolve` for the CI-run check;
     preflight checking presence only, of every declared credential, on every
     run; preflight jobs entering each declared environment; the dispatch-only
     trigger and source-commit checks; the parent-owned gate and refusal of

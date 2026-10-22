@@ -519,3 +519,36 @@ Set `RELEASE_VERIFICATION_BASE` to that captured base and
 Named controls target publish dependencies, required-record clauses, permissions,
 credentials/secrets and dispatch-ref identity substitution. The complete mutation
 inventory must have positive site counts; a full mutation battery is separate.
+
+## Final numeric major-tag evidence
+
+`test_major_tag.py` renders with the real retained Toha renderer. `MajorTag`
+checks the default-off interview, required-record unit selector, refusal of
+unknown or injected selections, fixed script and explicit expressions, resolved
+checkout, every earlier-stage dependency, and the parent-only write surface.
+`major-tag-conditions.cjs` tests each result and condition conjunct, mixed units,
+skipped unrelated verification, whole-matrix success and empty named-unit
+verification. These local expression checks do not establish hosted scheduling.
+
+`test_local_tag_semantics` executes the emitted writer using the parsed job
+environment. `major-tag-rendered.cjs` creates disposable repositories and a
+local bare remote, permits only Git's file protocol, and checks creation and
+movement, annotation, message, tagger, no `v`, major-zero and non-plain skips,
+identity differing from the dispatch ref and other unit, and an identical
+rerun. It measures both the emitted writer and the retained old job moving a
+major tag backward on an older-run retry. The copied old script in
+`sample-major-tag/old-job.sh` comes from Intentional commit `2a8385ca`; its old
+workflow only admitted plain stable version tags. No remote service is used.
+
+`test_default_off_outputs_equal_base_bytes` compares 48 composition cases with
+major-tag answers absent and false against base `ee7a1be`: each part alone,
+each other part with product-build, and all parts; assembly and product
+verification each enabled and disabled. Workflow and generated SDK bytes must
+match. `test_only_new_job_adds_write_permission` compares enabled and disabled
+earlier jobs, including their YAML bytes and action pin comments.
+Set `RELEASE_MAJOR_TAG_RECEIPTS` to retain byte digests, truth tables and local
+Git observations. Named controls independently target verify dependencies,
+skipped named verification, workflow and other-job write grants, credentials,
+secrets, environments, dispatch-version substitution, major zero and the plain
+version check. Mutation inventory site counts are separate from a full battery.
+A real token push, repository tag rules and hosted scheduling remain unverified.

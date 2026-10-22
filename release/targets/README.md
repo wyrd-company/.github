@@ -441,3 +441,29 @@ the operator pin answers and the emitted dry-run entry point. `PackageRuntime`
 executes record, digest, source and dry-run guards with a fake GitHub transport.
 The submission Action's named retry/conflict tests provide its retry evidence;
 live workflow and pin qualification receipts belong to adoption/UAT.
+
+## Final numeric major tag
+
+Set the parent answer `major_tag_update` to `true` and select `major_tag_unit`.
+The selector lists only Release Units with `release_record: required`. This
+option requires no publication part and defaults to off. The product supplies
+no write command, hook, credential or environment.
+
+The parent updates the numeric major tag only after every earlier job finishes,
+the named unit is released, its release record succeeds, and every verification
+job that serves it succeeds. An unrelated verification job may be skipped;
+a matrix verification job for the named unit must succeed as a whole.
+The job uses the resolved source, version and primary tag, with job-local
+`contents: write` through the automatic `GITHUB_TOKEN`.
+
+A plain stable version such as `1.5.0` moves annotated tag `1`, without `v`,
+with message `Update 1 to <primary-tag>` as `github-actions[bot]`. Major zero,
+prereleases and versions with build metadata log a skip. A repeated older run
+force-moves the major tag backward; there is no monotonicity guard. Primary
+and release-record tags keep their existing flow. `MajorTag` in
+`tests/release/test_major_tag.py` validates these behaviors with local Git
+fixtures and rendered conditions.
+
+Confirm repository tag-rule compatibility and automatic-token tag pushes
+before the first real 1.x release. Local fixtures do not verify GitHub scheduling,
+repository rules or a real token push.
