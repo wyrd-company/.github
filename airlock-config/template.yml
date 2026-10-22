@@ -1,0 +1,69 @@
+# relationships:
+#   implements: release-process
+name: airlock-config
+description: Repository Airlock accepted generation and optional declarations
+interview:
+  # required rejects empty answers; regex guards validate nonempty answers.
+  - id: accepted_generation
+    type: text
+    prompt: Accepted Airlock rule generation (at least the organization generation)
+    default: 0.6.0
+    required: true
+    validate:
+      regex: >-
+        (?x) ^$|^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)
+        (-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?
+        (\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
+  - id: declare_repository
+    type: confirm
+    prompt: Declare repository description, topics, merge settings and features?
+    default: false
+  - id: description
+    type: text
+    prompt: Repository description
+    when: declare_repository
+    required: true
+    validate:
+      regex: ^$|\S
+  - id: topics
+    type: text
+    prompt: Repository topics (space separated)
+    when: declare_repository
+    required: true
+    validate:
+      regex: ^([a-z0-9][a-z0-9-]*( [a-z0-9][a-z0-9-]*)*)?$
+  - id: squash
+    type: confirm
+    prompt: Allow squash merge?
+    when: declare_repository
+    default: true
+  - id: rebase
+    type: confirm
+    prompt: Allow rebase merge?
+    when: declare_repository
+    default: true
+  - id: merge_commit
+    type: confirm
+    prompt: Allow merge commits?
+    when: declare_repository
+    default: false
+  - id: delete_branch_on_merge
+    type: confirm
+    prompt: Delete branches after merge?
+    when: declare_repository
+    default: true
+  - id: wiki
+    type: confirm
+    prompt: Enable wiki?
+    when: declare_repository
+    default: false
+  - id: projects
+    type: confirm
+    prompt: Enable projects?
+    when: declare_repository
+    default: false
+  - id: discussions
+    type: confirm
+    prompt: Enable discussions?
+    when: declare_repository
+    default: false

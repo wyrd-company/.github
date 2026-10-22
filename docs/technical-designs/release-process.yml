@@ -1,0 +1,736 @@
+$schema: https://refinery.systems/ontology/technical-design
+relationships:
+  related-to:
+    - template-composition
+    - release-model
+    - release-process-conformance
+objective: >-
+  Define contract `release-process` version 1: the Toha release template in this
+  repository that renders a repository's release workflow from its committed
+  Intentional Release Model, the internal part interfaces through which publication
+  targets add jobs and credentials, and the rules every rendered workflow
+  follows for triggers, escaping, action pins, credential preflight, and
+  release records, so that the templates lane can implement the templates and
+  Airlock can check what they render.
+background:
+  current-design: >-
+    Each Wyrd tool repository keeps a hand-written release workflow. The
+    Intentional repository's `.github/workflows/cd.yml` is the reference
+    workflow: it triggers on a pushed SemVer tag, checks a fixed list of three secrets,
+    builds binaries, creates a GitHub Release for every tag, and publishes to
+    crates.io, npm, and a Homebrew tap from jobs written for that repository.
+    Other repositories copy and change it by hand. This repository holds the
+    organization's Airlock policy (`airlock/`), the organization Renovate preset
+    (`renovate-config.json`), and the pull request template. Intentional writes
+    `.intentional/release-model.json`, a committed projection of the Release
+    Workspace with the Release Model schema identity
+    `https://intentional.foo/schemas/release-model/1`. Toha renders templates,
+    accepts that document through a `type: document` question, renders selected
+    publication parts inside the parent template, and records each application
+    in the committed `.toha.json` applied record.
+  problems:
+    - >-
+      A change to the release process is a hand edit in every repository, and
+      no tool can tell which process a repository runs.
+    - >-
+      The reference workflow trigger fires on every SemVer tag, including the
+      baseline tag that `intentional tag --baseline` creates for a repository that has
+      not released.
+    - >-
+      The reference workflow creates a release record for every tag. Release
+      Units with `release_record: none` must have none.
+    - >-
+      The live organization policy requires the release workflow to be
+      dispatched on a pinned source commit (`REPO-REL-04`, `REPO-REL-05`,
+      `REPO-REL-06`) and every action to be pinned to a full commit SHA with a
+      version comment (`REPO-CI-04`). The reference workflow meets neither.
+    - >-
+      GitHub expressions `${{ }}` and Jinja `{{ }}` use the same delimiters,
+      and no convention says how a template writes a GitHub expression.
+design-challenges:
+  one-writer-per-file: >-
+    Publication targets differ between repositories, but the workflow is one
+    file. Only the parent template writes it. Targets add jobs and credentials
+    as data, and the parent places them.
+  parent-owns-the-gate: >-
+    A publication job must never run on a baseline tag record, for a Release
+    Unit the run does not release, or after a failed preflight. A target
+    cannot be trusted to write that gate correctly, so the parent writes every
+    `needs` list and every job-level condition, and a part job can only
+    narrow the condition.
+  action-version-comments: >-
+    `REPO-CI-04` and Renovate read the version comment after a pinned action
+    reference. Part job partials write the reference and its version comment
+    as YAML text. Repository tests check the pinned reference together with
+    its comment before validating the parsed job against the internal schema.
+  two-template-languages: >-
+    Every workflow body and every part job string is rendered by Jinja
+    before GitHub reads it. A GitHub expression must survive the Jinja render
+    unchanged, and a rendered value must never be rendered a second time.
+  evidence-without-network-in-render: >-
+    Workflow body rendering reads the answered model, not live Git state, so the
+    workflow decides at run time what a run releases. It reads that decision
+    from the tag records Intentional writes, not from tag names.
+proposed-design:
+  high-level-overview: >-
+    The parent template `release` accepts the Release Model through a document
+    question whose input is `.intentional/release-model.json`, and renders
+    `.github/workflows/release.yml`. Publication targets are optional parts
+    inside this parent, selected with `--with <PART>` and `--without <PART>`.
+    The workflow runs only on `workflow_dispatch` with a `source-sha` input.
+    Its `resolve` job checks the source commit, reads the Intentional tag
+    records that point at it, ignores baseline tag records, and outputs the set
+    of Release Units the run releases. Preflight jobs check that every declared
+    credential is present. Part build jobs run next, then one release record per
+    released unit whose policy is `required`, then part publish jobs, then part
+    verify jobs, then the optional parent-owned final numeric major-tag update.
+    Four internal part interfaces describe jobs and credentials,
+    validated by draft JSON Schemas in `release/schemas/`. `.toha.json` records
+    the selected parts, answers including the rendered model, and path ownership.
+    Delivery runs inside `release.yml`; no `cd.yml` is rendered. Repository
+    Renovate owns action pin updates; the template sets a pin only when it adds
+    or changes a step.
+
+  repository-layout: >-
+    Each template is a top-level directory, addressed as
+    `gh:wyrd-company/.github#<directory>`. `release/` holds
+    `release/template.yml` (the interview, schema directory, and target data),
+    `release/schemas/release-model-1.schema.yml` (vendored, see
+    release-model-acceptance), `release/schemas/publish-job.schema.json` and
+    `release/schemas/credential.schema.json` (the internal part schemas),
+    `release/partials/` (shared workflow fragments), and
+    `release/template/.github/workflows/release.yml` (the workflow body). The
+    rendered workflow path is fixed. `product-build` runs reviewed local product
+    actions from the resolved source commit in read-only, no-secret build and
+    optional assembly jobs before the release record, and an optional verification
+    recipe after publication. The template provisions
+    the artifact dependency outside product sources. Each publication target
+    has a directory
+    `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
+    `repo-wyrd-foo`, `ghcr`, or `winget`, holding `target.yml` and its job
+    partials (optional-parts-form). GHCR builds each selected unit path's
+    Dockerfile and context as deterministic OCI images, publishes by digest to
+    `ghcr.io/<repository>/<unit-id>`, then sets the bare version tag. The
+    separate template that renders `.github/airlock.yml` is named
+    `airlock-config` because `airlock/` already holds the organization policy
+    that Airlock resolves. Its content follows the Airlock release-process
+    conformance design. Contract examples live in
+    `docs/examples/release-process/`. This repository's own Renovate
+    configuration does not update action pins inside template directories
+    (action-pin-ownership).
+
+  release-model-acceptance: >-
+    The parent's interview starts with question `release_model`:
+    `type: document`, `schema: https://intentional.foo/schemas/release-model/1`,
+    and `input: .intentional/release-model.json`. `release/template.yml`
+    declares `schemas: schemas`; files in that directory are indexed by `$id`,
+    as Toha's `document-questions` and `schema-resolution` define. The vendored
+    `schemas/release-model-1.schema.yml` is a byte-for-byte copy of Intentional's
+    `docs/specifications/release-model.schema.yml`, whose `$id` equals that URI;
+    a test in this repository compares the copy with the Intentional release it
+    names. Resolution uses the vendored schema first, otherwise fetches its URI;
+    a failed fetch is a run error. Hosted URIs do not resolve until hosting
+    exists, so the template vendors every schema it accepts. Published schema
+    URIs are immutable; a change mints a new URI. Toha reads the model on every
+    apply, update, stage, and preview, and refuses invalid input without writing.
+    When no explicit document or input file supplies it, the question is
+    unanswered and asks for an input path; `intentional model` writes the default
+    file. Target partials read `release_model` directly in the parent's context.
+    Toha records the document used by the render at `answers.release_model` in
+    the applied entry, as `record-answers` and `release-model-agreement` define;
+    an update's candidate reads the current input rather than replaying it.
+    A future line `release-model/2` is accepted by naming its URI in the question,
+    vendoring its schema, and branching on `$schema`. The workflow reads these
+    members of line 1: `$schema` (routing); `release_units` keys (Release Unit
+    ids); `release_units.<id>.release_record`; `.changelog`;
+    `.tags.<tag id>.role`, `.template`, and `.require_phase`. Target defaults
+    can also read `release_units.<id>.projections`, `ecosystems`, `depends_on`,
+    and `sources`; each target's `target.yml` names the members it reads in
+    comments. The template reads no `.intentional/config.yml`, and this lane
+    renders no Intentional file.
+
+  internal-part-interfaces: >-
+    The parent's five internal part interfaces are `build_jobs`, `assemble_jobs`,
+    `publish_jobs`, `verify_jobs`, and `credentials`. `build_jobs` has key pattern
+    `^build-[a-z0-9]+(-[a-z0-9]+)*$`, `assemble_jobs` has
+    `^assemble-[a-z0-9]+(-[a-z0-9]+)*$`, `publish_jobs` has
+    `^publish-[a-z0-9]+(-[a-z0-9]+)*$`, and `verify_jobs` has
+    `^verify-[a-z0-9]+(-[a-z0-9]+)*$`; all four use
+    `release/schemas/publish-job.schema.json`. `credentials` has key pattern
+    `^[a-z0-9]+(-[a-z0-9]+)*$` and uses
+    `release/schemas/credential.schema.json`. A job key is its GitHub job id.
+    The prefixes separate the stages and the parent's own jobs (`resolve`,
+    `preflight`, `preflight-<environment>`, `release-record`). Repository tests
+    refuse repeated keys within an interface, so every workflow job id is unique.
+    A credential key is a label that conventionally starts with the target name,
+    for example `npm-token`. The interface determines the stage; there is no
+    stage member to disagree with it. These interfaces are data inside the
+    parent, validated by its tests. The product-build part contributes
+    `verify-product` to `verify_jobs` only when `product_verification` is true;
+    the parent writes it with the same part-job macro and interface schema.
+
+  publish-job-schema: >-
+    `release/schemas/publish-job.schema.json` (draft) validates one job
+    value in an internal job interface. Required members are `units`, a string
+    of Release Unit ids separated by one space, and `job`, a GitHub job object.
+    Tests validate the job the parent renders from a target partial, with
+    `units` added from the target's units answer (optional-parts-form). The
+    optional member `if` is an extra GitHub expression, written without
+    `${{ }}`, that cannot call `always`, `success`, `failure`,
+    or `cancelled`. `job` admits `name`, `runs-on`, `permissions` (required),
+    `environment`, `env`, `defaults`, `timeout-minutes`, `strategy`,
+    `container`, `services`, `outputs`, and `steps` (required). It refuses
+    `needs`, `if`, `uses`, `secrets`, `continue-on-error`, and `concurrency`:
+    the parent owns ordering and gating, and v1 has no reusable-workflow call.
+    `permissions` is an object that admits only `contents: read`,
+    `actions: read`, `id-token: write`, `attestations: write`, and
+    `packages: read` or `write`; `contents: write` is not grantable to parts.
+    The parent's release-record and optional final major-tag jobs own that permission. `env` names cannot start with `RELEASE_` or `GITHUB_`.
+    A step has exactly one of `uses` and `run`. `uses` is either a local
+    action path starting with `./` or `owner/repo[/path]@<40-hex commit> #
+    <version>`, the form `REPO-CI-04` requires. `run` and step `if` cannot
+    contain `${{`. The valid example
+    `docs/examples/release-process/publish-job.valid.json` is an npm publish
+    job for unit `sample-tool` that requests `contents: read` and
+    `id-token: write`, pins two actions with version comments, and reads the
+    version from `RELEASE_JSON`. The invalid example
+    `docs/examples/release-process/publish-job.invalid.json` fails five rules
+    at once: `if: always()` calls a status function, `job.needs` is not
+    admitted, `contents: write` is not grantable, `actions/checkout@v7` is not
+    a commit pin, and its `run` interpolates `${{
+    github.event.inputs.dist-tag }}`. Both examples are checked with
+    `check-jsonschema` against the draft schema.
+
+  job-graph: >-
+    The parent renders the jobs in eight stages, in this order: `resolve`; the
+    preflight jobs (`preflight` and each `preflight-<environment>`); build
+    jobs; assembly jobs; `release-record`, when the parent renders it; publish jobs; verify
+    jobs; the optional final `update-major-tag` job. Every job needs every job of every earlier stage, not only the jobs
+    of the stage before it. The order therefore holds when a stage is empty:
+    with no part publish jobs, each verify job still needs every build and
+    assembly job and `release-record`, so it starts after them and a failure in either is
+    its ancestor. The parent writes every job condition. The preflight jobs
+    have none, so GitHub's implicit `success()` runs them only after `resolve`
+    succeeds. Every later job starts from the stage gate `!cancelled() &&
+    !failure() && needs.resolve.result == 'success' &&
+    needs.<preflight job>.result == 'success'`, with one `result` test for
+    each preflight job. `!failure()` is false when any ancestor job failed,
+    because GitHub evaluates it over every ancestor in a chain of dependent
+    jobs; the `result` tests stop the job when `resolve` or a preflight job
+    did not succeed for any other reason. A skipped build, assembly, or publish job, or a verify job that serves only
+    other units, does not stop a later job: a part job is skipped when it serves
+    no unit that the run releases, and GitHub's implicit `success()` would
+    otherwise skip every job that needs it. `release-record` has the condition
+    `<stage gate> && needs.resolve.outputs.record == 'true'`. Every
+    part job has the condition `<stage gate> && (<unit test>)` and,
+    when the part job has `if`, `&& (<if>)`. The unit test joins one
+    clause per id in `units` with `||`. For a build or assembly job, and for a unit whose
+    Release Model policy is `none`, the clause is
+    `contains(fromJSON(needs.resolve.outputs.units), '<id>')`. For a publish
+    or verify job and a unit whose policy is `required`, the clause is
+    `(contains(fromJSON(needs.resolve.outputs.units), '<id>') &&
+    needs.release-record.result == 'success')`, so a required unit's
+    publication and verification never run without its release record,
+    whatever skipped `release-record`. The product verification recipe step
+    also tests the matrix unit against the released and record-required unit
+    outputs, so a released unit with policy `none` cannot admit another matrix
+    unit whose required record did not succeed. The final major-tag job additionally requires every verify job that serves its
+    selected unit to succeed, including a matrix job as a whole. A failed job stops every later job of
+    the run, for every unit. The retry is a re-run of the failed jobs or a new
+    dispatch on the same source commit: `release-record` accepts or completes
+    its own earlier work (release-records), and a publish job succeeds when
+    its version is already published, as the valid example does. Every
+    part job gets these environment values, which the parent sets and a
+    part job cannot override: `RELEASE_SOURCE_SHA`, the source commit;
+    `RELEASE_UNITS`, the released Release Unit ids separated by one space; and
+    `RELEASE_JSON`, an object that maps each released unit id to `tag`,
+    `version`, and `prerelease`. `resolve` exposes the same facts as outputs
+    `release`, `source_sha`, `units` (a JSON array), `releases` (the
+    `RELEASE_JSON` object), `record_units` (a JSON array of released units
+    whose policy is `required`), and `record` (`'true'` when `record_units`
+    is not empty, otherwise `'false'`). The output and environment names are
+    part of the internal interfaces. The workflow sets `permissions: {}` at the top level,
+    and every job declares its own. A job that serves several units reads
+    `RELEASE_UNITS` and acts only for units in both lists. The parent writes a
+    part job through a target partial that writes its members as YAML text,
+    preserving the action version comments (optional-parts-form). The default
+    checkout of every job is the source commit, because `resolve` requires
+    `github.sha` to equal `source-sha`.
+
+  major-tag-update: >-
+    The parent asks `major_tag_update`, an optional confirm with default false.
+    When true, `major_tag_unit` selects a Release Model unit with
+    `release_record: required`. No part is required. An absent or false answer
+    emits no job and preserves workflow and generated SDK bytes. The final
+    stage holds only `update-major-tag`, which needs every job of every earlier
+    stage, including every verify job. Its condition requires the stage gate,
+    the selected unit among released units, `release-record` success, and
+    success of each verify job that serves that unit. A skipped or cancelled
+    verifier of that unit refuses the update; unrelated verifiers may be
+    skipped. A verifier with several units must succeed as a whole. An empty
+    verify stage for the named unit adds no verification conjunct. The select
+    answer is a validated model ID, escaped as a string literal in the fixed
+    implicit condition and serialized separately as a YAML environment scalar;
+    scripts and explicit GitHub expressions are fixed.
+    Only this new job receives job-local `contents: write`, through the
+    automatic per-run `GITHUB_TOKEN`. It declares no user credential, stored
+    secret or environment. The checkout ref and tag target are
+    `needs.resolve.outputs.source_sha`. The script reads the selected unit's
+    `version` and `tag` from `RELEASE_JSON`, never the dispatch ref or another
+    unit. A version matching `^[0-9]+\.[0-9]+\.[0-9]+$` with major at least 1
+    force-creates or force-updates the annotated numeric tag without `v`, as
+    `github-actions[bot]`, with message `Update <major> to <tag>`, then
+    force-pushes only that tag. Major zero, prereleases and build metadata log
+    a skip and succeed. The operation preserves force-update behavior: an older
+    run repeated after a newer run moves the major tag backward. It adds no
+    monotonicity rule or release-eligibility restriction. Primary and record
+    tags retain their phased-tags flow. The product only opts in and names the
+    unit; no write recipe or hook is exposed. Before the first real 1.x update,
+    repository tag rules and automatic-token compatibility need live evidence.
+
+  product-recipes: >-
+    Selecting `product-build` asks for Release Unit ids, a document whose
+    `targets` entries pair a product target identifier with a runner label or
+    label array, a local build action path, and whether assembly is enabled.
+    When product-build is selected and assembly is enabled, the interview asks
+    `product_assembly_recipe` (default `./.github/actions/release-assemble`) and
+    `product_assembly_runner` (default `ubuntu-latest`).
+    The default input is `.github/release-builds.json`; the document is validated
+    against `release/schemas/product-build-matrix.schema.json`. Recipe paths are
+    validated local action paths and no answer is interpolated into a script.
+    Each released unit and target calls the build action with `unit`, `target`,
+    and `output-directory`. The optional assembly action receives `unit`,
+    `input-directory`, and its own `output-directory`. Both inherit
+    `RELEASE_SOURCE_SHA`, `RELEASE_UNITS`, and `RELEASE_JSON`. Matrix entries for
+    unreleased units skip recipes and transport. Recipes write regular files
+    directly in the output directory, with distinct asset names across targets
+    and assembly. Empty output fails with `if-no-files-found: error` semantics.
+    The parent provisions the official `@actions/artifact` package in runner
+    temporary storage with `npm ci` and lifecycle scripts disabled. The parent
+    owns `release/targets/product-build/artifact-client/package.json` and its
+    full `package-lock.json`. Toha emits these exact inputs under
+    `.github/release-artifact-client` when product-build is selected. Setup copies
+    them to runner temporary storage and fails with a named diagnostic if the
+    inputs are missing or locked installation fails. Repository Renovate owns
+    the source manifest and lock through the Wyrd preset, with automerge disabled
+    and weekly lock maintenance. Adopters add
+    `.github/release-artifact-client/**` to Renovate's full effective `ignorePaths`
+    list so automatic updates of that generated copy stay parent-owned. Because
+    this array replaces inherited values, adopters resolve and retain all existing
+    inherited exclusions, or append to an existing explicit array. The product
+    recipe guide gives the complete Wyrd-preset entry for repositories without an
+    explicit array or additional inherited exclusions. Preset updates include
+    review of that effective list. Other updater configuration is preserved. Other
+    npm inputs and external-action pins retain their adopter owners. Operator edits retain
+    the existing Toha three-way update merge and conflict-resolution behavior.
+    Toha adoption carries reviewed updates into product repositories. The pinned
+    Node action calls the SDK's
+    JavaScript upload API once per file. Each artifact is named
+    `release-asset+<unit>+<file>`. Existing names fail rather than overwrite.
+    Assembly downloads only the current run's matching build artifacts, without
+    a token or run-id input, into per-artifact subdirectories. Products own
+    compilation, tool pins, archive/package layouts, formula and manifest
+    writers, and product checks; the template owns stages, dependencies,
+    conditions, artifact names, dependency setup, upload and download. Both
+    recipe jobs request only `contents: read`, declare no credentials and
+    receive no user secrets. The checkout selects the resolved source SHA and
+    does not persist credentials. Reviewed build and assembly code runs before
+    the release record; a broken recipe can fail the run or produce incorrect
+    assets. Publication parts retain their checksum and format checks.
+    The product-build interview also asks `product_verification`, default false.
+    When enabled, `product_verification_recipe` defaults to
+    `./.github/actions/release-verify` and `product_verification_matrix` reads
+    `.github/release-verification.json`, validated by the draft schema
+    `release/schemas/product-verification-matrix.schema.json`. Its `runners`
+    array contains runner label strings or arrays of self-hosted labels, using
+    the build matrix's label rules. Products own these runner choices; assembly
+    and publication parts need not be selected. Each selected product-build unit
+    and runner entry contributes a `verify-product` matrix entry. The local
+    action receives `unit`, `matrix-entry` (the complete entry as JSON), `tag`,
+    `version`, and `prerelease` (JSON true or false). The last three inputs come
+    from that unit's resolved `RELEASE_JSON` entry, never the dispatch ref. It
+    inherits the parent release environment. Only released units run the recipe;
+    required units additionally require a successful release record. The job
+    needs resolve, every preflight, build, assembly, release-record and publish
+    job, preserving the parent stage gate when stages are empty or unrelated
+    work skips. Failure of the recipe fails the verification job and workflow.
+    It requests `contents: read` only, declares no credentials or protected
+    environment, and receives no user secrets. No answer enters a script or
+    GitHub expression. Default-off and deselected output adds no job; existing
+    npm verification retains its content and graph. Product verification is a
+    local-action recipe, not a Toha hook or a custom parent release gate.
+
+  optional-parts-form: >-
+    After `release_model` the parent asks `targets`, a top-level `multiselect`
+    with `parts: true`, no `when`, and literal target-name options matching
+    `^[a-z0-9][a-z0-9_-]*$`, placed before every flow node. This is the one part
+    question, as Toha's `part-declaration` defines. `--with <PART>` and
+    `--without <PART>` select it on `apply` and `stage`, including `--update`,
+    under `part-selection`; on update recorded parts replay with the requested
+    additions and removals. Removing a part follows `part-removal`: its jobs
+    disappear from the candidate, and the ordinary three-way merge preserves
+    operator edits or reports conflicts. The applied entry records the settled
+    list in `parts`, not in `answers.targets`. Each target's own
+    questions are written in the parent's interview with a `when` condition
+    on `targets`, and include `<target>_units`, the Release Units the target
+    serves. Each target is a directory `release/targets/<target>/` that holds
+    `target.yml` and job partials. `target.yml` is loaded into the parent's
+    `data` with Toha's YAML `!include` tag as `release_targets.<target>`. It
+    lists the target's job ids by stage (`build`, optional `assemble`, `publish`, `verify`, with
+    the prefixes and key patterns of internal-part-interfaces), the answer id
+    that holds its units, and its credentials, each a value of the credential schema
+    with an optional `unless` naming a boolean answer, for example
+    `trusted_publishing`. Each job body is a partial
+    `release/targets/<target>/<job id>.yml` (or `.jinja` for product recipes) that writes the job's YAML below
+    the line the parent writes for its id: `name`, `runs-on`, `permissions`,
+    `steps`, and the other members the publish-job schema admits except
+    `env`. The parent writes each job's id, `needs`, and condition from
+    `target.yml` and the units answer, and its `env` mapping with the
+    `RELEASE_` values followed by the entries of an optional second partial
+    `release/targets/<target>/<job id>.env.yml`, so the job has one `env`
+    key. A Jinja include name must be a string literal, so the parent writes
+    each include inside `{% if '<target>' in targets %}`. The
+    partial writes `uses` lines as YAML text, so the version comment is kept
+    as a YAML comment. A test in this repository
+    renders the parent once per target, parses each part job from the
+    rendered workflow with a comment-preserving parser, rejoins each external
+    `uses` reference and its version comment as the schema's one string,
+    removes the parent-owned members, adds `units` from the answer, and
+    validates the result against `publish-job.schema.json`; it
+    validates every credential against `credential.schema.json`, after removing
+    the internal `unless` selector. The repository also checks interface keys
+    and uniqueness. These are repository tests of the parent's own data.
+    Evidence: measured with a Toha build of `main`
+    at `bdc8ed9` on a one-target sample. `!include` loaded `target.yml` into
+    `data`; questions with `when: "'npm' in targets"` were asked only when
+    `npm` was selected; the included partial read the units answer and kept
+    the `# v7.0.0` comment on its `uses` line; and an `unless` member left the
+    credential out when `trusted_publishing` was true. The measured sample
+    predates the part mechanism; selection flags, record writes and updates
+    under the edited Toha contract are inferred until implementation validation.
+
+  release-trigger: >-
+    `.github/workflows/release.yml` has one trigger, `workflow_dispatch`, with
+    one required input `source-sha`, and no `push`, `release`, or schedule
+    trigger, as `REPO-REL-04` requires. A pushed tag, baseline or not, starts
+    nothing. `concurrency` is the group `release` with `cancel-in-progress:
+    false`, so release runs in one repository are serial. The `resolve` job
+    has `contents: read` and `actions: read`. It requires `source-sha` to be 40
+    lowercase hexadecimal characters, `github.ref` to be the default branch,
+    `github.sha` to equal `source-sha`, and the default branch head read from
+    the remote to equal `source-sha` (`REPO-REL-05`). It requires a successful
+    `push` run of the CI workflow named by the parent's `ci_workflow` answer
+    for exactly that commit, read from the GitHub Actions runs API filtered by
+    `head_sha`, `event=push`, and `status=success` (`REPO-REL-06`). It then
+    fetches every tag with its tag object (`git fetch --force origin
+    'refs/tags/*:refs/tags/*'`), so that the tag records are present whatever
+    the checkout step fetched, and lists the annotated tags that point at the
+    source commit. The operator flow after `intentional tag` is to push the
+    commit and the tags, then dispatch the workflow with the pushed commit,
+    for example `gh workflow run release.yml -f source-sha="$(git rev-parse
+    HEAD)"`, once CI on that commit has succeeded.
+
+  baseline-exclusion: >-
+    `resolve` decides from the tag record, never from the tag name or version,
+    because a baseline can have any version. For each annotated tag at the
+    source commit it reads the message. A message whose first line is not
+    exactly `intentional release record` is not an Intentional record and is
+    ignored. In a record it reads the fields `tag-id`, `version`, and
+    `baseline`. A `tag-id` of the form `release-unit/<unit>/<tag key>` where
+    the Release Model gives `<tag key>` the role `primary` for `<unit>`
+    identifies that unit; projection and workspace records are ignored. A
+    primary record with `baseline: true` is skipped and reported in the job
+    summary. A primary record with `baseline: false` releases its unit, after
+    `resolve` checks that the tag name equals the unit's primary template with
+    `{id}` and `{version}` replaced. A primary record without a `baseline`
+    field, with another value, or with a tag name that does not match fails
+    the run. A run that finds no primary record with `baseline: false` fails
+    with a message that names the baseline records it skipped, so a dispatch
+    on a baseline commit is an error and never a release. Evidence status:
+    measured on records written by Intentional 0.1.6 in local clones: Toha
+    `0.0.0` and Airlock `0.0.0` carry `baseline: true`, Toha `0.3.0` carries
+    `baseline: false`, and all three carry `tag-id:
+    release-unit/<unit>/primary` and `version`. These records carry no
+    `tag-role` field, so `resolve` takes the role from the Release Model. The
+    field set also agrees with the Intentional tag record specification. That
+    `actions/checkout` can leave a tag without its tag object is inferred from
+    reports, not measured; the explicit fetch above makes the design
+    independent of it. When Intentional ships `intentional verify`, `resolve`
+    can call it in place of the message parse; the decision rule stays the
+    same.
+
+  phased-tags: >-
+    A run identifies a release by its primary tag, so the primary tag must
+    exist before dispatch. A primary tag stream whose `require_phase` is
+    `before-publication`, or that has none, works: the operator creates it
+    before dispatch. When the Release Model gives a primary tag stream
+    `require_phase: after-publication`, the parent renders a first step in
+    `resolve` that fails and names that unit and stream, because v1 cannot
+    identify such a release before publication. The workflow creates no tag.
+    Tags of other roles that require `after-publication` are created by the
+    operator with `intentional tag --phase after-publication` after the run
+    succeeds. Custom release gates require a parent-template revision.
+
+  escaping-convention: >-
+    Toha renders with MiniJinja built without the `custom_syntax` feature, so
+    Jinja delimiters cannot be changed. Three rules apply to workflow bodies
+    and partials. First, a GitHub expression with no template value inside it is
+    written inside a raw block covering the smallest span:
+    `{% raw %}${{ github.token }}{% endraw %}`. Second, an expression with a
+    template value is written as one Jinja string expression,
+    `{{ "${{ secrets." ~ credential.name ~ " }}" }}`, only for a value that a
+    schema or question pattern restricts to an identifier. Free text never goes
+    inside a GitHub expression. Third, a script never contains `${{ }}`: values
+    reach `run` through `env`, a job condition is a bare expression without
+    `${{ }}`, and a step reads `RELEASE_` variables. In `template.yml`, a string
+    leaf starting with `{%` or `{{` is quoted so YAML does not read it as a flow
+    mapping. A target partial renders once as part of the parent's workflow
+    body. Evidence: raw blocks, string expressions, and `toyaml` output were
+    measured with Toha `main` at `bdc8ed9`; they render `${{ github.token }}`,
+    `${{ secrets.NPM_TOKEN }}`, and an unquoted `TOKEN: ${{ secrets.X }}`.
+    The optional-parts-form sample measured an included job partial retaining
+    its action version comment.
+
+  action-pin-ownership: >-
+    Repository Renovate owns action pin updates in the rendered workflow. The
+    template owns the pin of a step only when it adds that step or changes the
+    step's `uses` line. Every external action reference is
+    `owner/repo[/path]@<commit> # <version>`; local `./` actions follow the
+    publish-job schema. Renovate updating a commit pin and its version comment
+    together is inferred from its documentation, not measured. This repository's
+    own Renovate configuration excludes `release/` except the parent-owned
+    `targets/product-build/artifact-client` dependency inputs. External action
+    references in the template remain excluded. A template author who adds or
+    changes a step uses the current pin; adopting repositories get Renovate
+    updates for unchanged steps.
+    An update uses `toha apply gh:wyrd-company/.github#release . --update`.
+    Its merge base is rendered from the committed applied entry's template
+    commit, `answers`, `parts`, frozen `generated` instant, and `context`, as
+    Toha's `update-merge-base` defines. For a whole-file path the rendered bytes
+    are a base only when their Git object id equals its recorded `blob`;
+    otherwise the recorded object is used when the repository holds it. If
+    neither is available, differing candidate bytes conflict instead of using an
+    unverified base. A hook-written path uses only its recorded object, never
+    pre-hook rendered bytes. The release template declares no hooks. An
+    unfetchable recorded commit refuses the update and names explicit
+    `--baseline` adoption, as `update-resolution` and `baseline` define; Toha
+    never silently chooses an empty base. With a verified base, an unchanged
+    template pin is expected to preserve Renovate's line, equal edits are
+    expected to merge cleanly, and different edits to the same line are expected
+    to conflict; the operator resolves the conflict. These merge outcomes are
+    inferred under the re-rendered-base rule, not measured. Implementation
+    validation must exercise them and an unavailable or mismatched base without
+    silently replacing operator edits. An application without a usable applied
+    record uses explicit `--baseline` adoption under Toha's `baseline` rule.
+
+  credential-preflight: >-
+    A target declares each credential it needs in the internal `credentials`
+    interface: `name` (the secret or variable name, uppercase, not
+    starting with `GITHUB_`), `kind` (`secret`, the default, or `variable`),
+    `purpose` (one line), and optional `environment`. The parent groups the
+    declarations by environment and renders `preflight` for those without an
+    environment and `preflight-<environment>` for each environment, with
+    `environment: <environment>` so that environment values are visible. Each
+    preflight job has `permissions: {}`, maps each declared name into `env`
+    with `{{ "${{ secrets." ~ name ~ " }}" }}` or the `vars.` form, and fails
+    when any is empty, printing each missing name with its purpose and never a
+    value. It checks presence only. A name that two targets declare is checked
+    once. Preflight checks every credential the selected parts declare on every
+    run, not only those of the released units, so a missing credential is
+    found on the first release that would need it or earlier. Every build,
+    release-record, publish, and verify job needs every preflight job, so no
+    job that changes state outside the run starts after a failed preflight.
+    Trusted publishing removes a credential: the target asks whether to use
+    it, puts `unless: trusted_publishing` on the credential in its
+    `target.yml`,
+    and requests `id-token: write` in its publish job, so the credential is
+    not declared and not checked. A job that uses an environment declares its
+    credentials with the same environment; a mismatch shows as a missing value
+    in the publish job. Answers and `.toha.json` hold credential names, never
+    credential values; values are supplied by GitHub at workflow run time.
+    An environment with required reviewers asks for
+    approval of its preflight job as well as of the publish job.
+
+  release-records: >-
+    The release record is the GitHub Release of one release of one Release
+    Unit, on that unit's primary tag; the tag record is the annotated tag
+    message. The parent renders `release-record` only when some unit in the
+    Release Model has `release_record: required`. It runs as a matrix over
+    `record_units` with `permissions: contents: write`, under the condition in
+    job-graph, which skips it when `record` is `'false'` and does not skip it
+    when a build or assembly job for another unit was skipped. For each unit the outcome
+    is exactly one published GitHub Release, never left as a draft, on the
+    primary tag: its `tag_name` is the rendered primary tag name and its title
+    is the tag name. A version with a prerelease part is published as a
+    prerelease and not latest. Of the other releases, only the unit named by
+    the parent's `latest_unit` answer is marked latest; the question is asked
+    only when more than one unit is `required`. The release notes
+    source is the section of the unit's changelog, the
+    `release_units.<id>.changelog` file at the source commit, whose heading
+    line is exactly `## <version>`, up to the next `## ` heading; a missing or
+    empty section fails the job. Build and assembly jobs that produce release assets upload
+    workflow artifacts named `release-asset+<unit>+<name>`; the record job for
+    a unit downloads the artifacts that match `release-asset+<unit>+*`,
+    attaches their files, and adds `SHA256SUMS` when it attaches any file. The
+    `+` separator cannot occur in a Release Unit id, so one unit's pattern
+    never matches another unit's artifacts. The expected asset names are the
+    files of the matching artifacts, plus `SHA256SUMS` when there is at least
+    one; a unit with no build assets expects none. The job creates a record
+    through the REST API in a fixed sequence, so that a retry can continue
+    it: create the release as a draft with the tag, title, and notes; upload
+    each expected asset; publish it by setting `draft` to false with the
+    prerelease and latest settings. Before it creates anything, it lists the
+    repository's releases, drafts included, and keeps those whose `tag_name`
+    is the primary tag; GitHub's get-by-tag endpoint returns published
+    releases only, so it cannot see a draft. With no release on the tag, the
+    job runs the whole sequence. With one draft whose asset names are all
+    expected names, the job completes it: it sets the title and notes,
+    deletes the draft's assets, uploads every expected asset from this run's
+    artifacts, and publishes it. A draft with any other asset name fails the
+    job and names the draft. With one published release, the job succeeds without
+    change only when its prerelease flag equals the version's and its asset
+    names equal the expected names exactly; any difference fails the job and
+    names it. More than one release on the tag fails the job. After it
+    creates or completes a record, the job reads it back through the
+    get-by-tag endpoint and succeeds only when that returns a release that is
+    not a draft, with the expected prerelease flag and asset names. A unit
+    with no assets therefore cannot succeed on an empty draft. A unit with
+    `release_record: none` gets no release record; its tag record is its full
+    record, and its build, assembly, publish, and verify jobs still run. A baseline tag
+    record never gets a release record, because `resolve` never releases it.
+
+  implementation-validation: >-
+    Local render tests validate the assembly interface and every earlier-stage
+    dependency, empty stages, build without assembly, assembly without build,
+    and selection/deselection. A condition table checks success, skips, failure,
+    cancellation, empty released units, and each assembly gate conjunct in
+    isolation. A lightweight two-target product fixture executes emitted upload
+    and download steps and the emitted release-record entry point against fake
+    transport and REST boundaries. It proves build and aggregate attachments,
+    checksum agreement, and no record after build failure. Named controls
+    remove assembly build dependencies, resolve/preflight result guards, and
+    the generic part's permission and credential checks. These local tests do
+    not establish GitHub scheduling. `ProductVerification` validates the optional
+    interview and runner schema, contents-read-only job interface, every earlier
+    dependency, required-record condition, empty stages, and deselection. Its
+    condition table covers success, skipped, failed, cancelled and empty states.
+    The local emitted-job runner executes the example verification action for
+    resolved identities that differ from the dispatch ref, recipe failure,
+    unreleased units, and a mixed-unit skipped-record case. Named controls remove
+    publish dependencies and required-record clauses, admit extra permission,
+    declared credentials or user secrets, and substitute dispatch-ref identities.
+    Disabled-output comparisons cover each existing part alone, each paired with
+    product-build, and all parts together, with assembly enabled and disabled.
+    `MajorTag` checks all earlier-stage edges, strict selected-unit verifier
+    success and skip-tolerant unrelated verifiers, empty verification, and
+    every condition conjunct. It executes the emitted writer in disposable
+    local repositories with a local bare remote and file-only Git transport,
+    proving creation, annotated movement, tagger/message, major-zero and
+    non-plain skips, resolved identity, identical rerun and older-run rollback.
+    Named controls independently remove the verify edge, accept a skipped
+    selected-unit verifier, broaden workflow or another job's write permission,
+    accept credentials, secrets or an environment, substitute a dispatch version,
+    remove major-zero skip and remove plain-version validation. Disabled-output
+    comparisons add product verification enabled and disabled to each part,
+    product-build pair, all-parts and assembly case.
+    These cases compare actual base and candidate workflow and SDK bytes; they
+    do not enumerate arbitrary input documents. Real verification after
+    publication on selected runners, recipe failure failing a hosted workflow,
+    and skipped unreleased-unit verification require separate live evidence.
+    The templates lane proves these cases on
+    real GitHub Actions runs of a
+    rendered workflow in a test repository, because the job conditions rely
+    on GitHub's `needs` and status-function semantics. Assembly starts after
+    every build. A failed build skips assembly and the record, and a failed
+    assembly skips every later stage. A skipped unrelated build or assembly
+    does not stop the released unit's record. Skipped build: two
+    units with one build job each, one unit released; the other build job is
+    skipped, `release-record` runs, and the released unit's publish job runs
+    after it. Empty stage: a selection with build and verify jobs and no
+    publish jobs; each verify job starts after every build job and
+    `release-record`, and a failed build job skips it. Record gate: a failed
+    `release-record` skips every publish and verify job of a `required` unit.
+    Release record retry, each on a unit with no build assets and on one with
+    assets: no release; one draft with no assets; one draft with an expected
+    asset; one draft with an unexpected asset (fails); one published release
+    with the expected state (succeeds unchanged); one published release with
+    the wrong prerelease flag or asset names (fails); two releases on the tag
+    (fails). Each case that succeeds ends with a published release read back
+    by tag. Baseline: a dispatch on a commit with only baseline records fails.
+    Preflight: a missing declared credential fails `preflight` and no build
+    job starts. The repository test of optional-parts-form runs for every
+    target and checks the internal interface key patterns and uniqueness.
+    Update cases in action-pin-ownership cover the verified merge base and
+    conflicts when it is unavailable or differs from the recorded blob.
+
+  contract-versioning: >-
+    `release-process` version 1 names the parent's internal interface ids, key
+    patterns, both draft schemas, `resolve` outputs, `RELEASE_` environment
+    names, and job order and conditions in job-graph. Each part ships with the
+    parent and changes with it; a change to an internal interface updates every
+    affected part and repository test in the same parent revision. The optional
+    product verification recipe and final major-tag job are part of that parent contract revision; the recipe's
+    runner document schema retains its draft identity. Adding a
+    target is a parent-template revision, and an outside target uses a fork of
+    the parent. Airlock accepts parent revisions by organization-configured
+    refs and reads selected parts from the applied entry; there is no separately
+    negotiated interface version. The draft job and credential schema identities
+    retain their draft paths; once a schema URI is published it is immutable,
+    and a change mints a new URI.
+
+  security-surface: >-
+    The approved surface is the grantable part job permissions (`contents:
+    read`, `actions: read`, `id-token: write`, `attestations: write`, `packages:
+    read` or `write`) with `contents: write` owned by the parent's
+    release-record and optional final major-tag jobs; `actions: read` in `resolve` for the CI-run check;
+    preflight checking presence only, of every declared credential, on every
+    run; preflight jobs entering each declared environment; the dispatch-only
+    trigger and source-commit checks; the parent-owned gate and refusal of
+    status functions in part job conditions; schema rules that keep
+    `${{ }}` out of scripts and require commit pins; no hooks in release-process
+    v1 templates; repository Renovate as the owner of pin updates; and reviewed
+    repository recipes in build, assembly and optional verification jobs with
+    read-only contents, no declared credentials, protected environment or user
+    secrets. Verification inputs convey only the resolved release identity and
+    the product-owned unit/runner matrix entry. Artifact transport uses the runner's
+    existing artifact credentials and introduces no user credential, permission
+    grant, timer, timeout, or runtime version-check policy.
+    Answers and the applied record contain credential names, never values.
+
+  agreements: >-
+    This design agrees with Intentional's release model design on the document
+    input `.intentional/release-model.json`, schema identity
+    `https://intentional.foo/schemas/release-model/1`, vendored
+    `docs/specifications/release-model.schema.yml`, `release_record` values
+    `required` and `none`, Intentional creating no release record, and bare
+    SemVer tags with `tags.primary.template` read verbatim. It follows Toha's
+    `part-declaration`, `part-selection`, and `part-removal` for the parent's
+    `targets` question. Toha's `applied-record`, `application-entry`,
+    `record-answers`, `record-context`, and `record-paths` own the record shape;
+    `record-schema` owns its schema identity
+    `https://wyrd.foo/toha/schemas/applied-record/1`. The record defaults to
+    `.toha.json` at the repository root; `TOHA_RECORD` overrides it on the Toha
+    side, and Airlock configures its expected path, defaulting to that root file.
+    Airlock reads that record and `.intentional/release-model.json` at the audited
+    revision as plain JSON validated against vendored copies of their published
+    schemas. There are no shared crates. The release application's `parts`
+    lists selected targets; `answers.ci_workflow` and, when asked,
+    `answers.latest_unit` are process answers Airlock can read.
+    `answers.release_model` is the document the process was rendered from,
+    under Toha's `release-model-agreement`; comparison with the committed model
+    shows a process that needs an update. The part question is absent from
+    `answers`. Toha never pushes; templates declare no hooks. Airlock ships
+    checks; templates select and configure them. A template revision is a
+    commit of this repository; Airlock accepts it by reachability from an
+    organization-configured ref. The release-process conformance design governs
+    those checks: fixed `.github/workflows/release.yml`, `workflow_dispatch` on
+    a source commit, delivery inside that workflow, the `baseline` field as the
+    baseline signal, and one published release record per release of a
+    `required` unit on its primary tag, prereleases included.
+
+  out-of-scope: >-
+    Template files and workflow bodies, which the templates lane implements
+    from this design; the content of each publication target; the
+    `airlock-config` template's content; custom release gates and evidence
+    contributions; signing; cross-repository propagation of template updates;
+    and `.intentional/config.yml`, which Intentional owns through `init`.

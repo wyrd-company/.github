@@ -1,0 +1,18 @@
+{# relationships: implements: release-process #}
+name: Publish GHCR images
+runs-on: ubuntu-latest
+permissions:
+  contents: read
+  packages: write
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - name: Install OCI transport
+    run: sudo apt-get update && sudo apt-get install --yes skopeo
+  - name: Build, compare and publish image digests
+    env:
+      GHCR_TOKEN: {% raw %}${{ secrets.GITHUB_TOKEN }}{% endraw %}
+    shell: bash
+    run: |
+      python3 <<'PY'
+{% set script %}{% include 'targets/ghcr/publish.py' %}{% endset %}{{ script | indent(6, true) }}
+      PY

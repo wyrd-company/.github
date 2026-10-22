@@ -1,0 +1,12 @@
+# relationships: implements: release-process
+units: repo_wyrd_foo_units
+build: []
+publish: [publish-repo-wyrd-foo]
+verify: []
+credentials:
+  repo-wyrd-foo-app-id:
+    name: REPO_WYRD_FOO_PUBLISHER_APP_ID
+    purpose: Create the package inbox installation token
+  repo-wyrd-foo-private-key:
+    name: REPO_WYRD_FOO_PUBLISHER_PRIVATE_KEY
+    purpose: Authenticate the package inbox App

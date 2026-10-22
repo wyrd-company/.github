@@ -1,0 +1,11 @@
+# relationships: implements: release-process
+# Reads release_units.<id>.release_record; the release asset <id>.rb supplies
+# the formula, including one explicit version stanza and matching download tag.
+units: homebrew_tap_units
+build: []
+publish: [publish-homebrew-tap]
+verify: []
+credentials:
+  homebrew-tap-token:
+    name: HOMEBREW_TAP_TOKEN
+    purpose: Commit formulas to the selected tap repository with contents write

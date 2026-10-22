@@ -1,0 +1,3 @@
+# relationships: supports: release-process
+.venv/
+__pycache__/
