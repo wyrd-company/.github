@@ -524,9 +524,14 @@ for old, test in [
     ("assert body.get('permissions', {}).get('contents') != 'write', 'Major tag adds no other contents writer'", 'test_rejects_other_job_write'),
     ("assert set(job['env']) == {'RELEASE_SOURCE_SHA', 'RELEASE_JSON', 'MAJOR_TAG_UNIT'}, 'Major tag declares no credential'", 'test_rejects_credential'),
     ("assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'", 'test_rejects_secret'),
-    ("assert 'environment' not in job, 'Major tag declares no environment'", 'test_rejects_environment'),
 ]:
     mutation('tests/release/harness.py', old, 'pass', 'test_major_tag.MajorTag.' + test, 'python')
+# The environment boundary has both an explicit refusal and a fixed-key check.
+# Admit that one property through both layers for a realistic semantic revert.
+mutation('tests/release/harness.py',
+         "assert 'environment' not in job, 'Major tag declares no environment'\n    assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'",
+         "assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps', 'environment'}, 'Major tag has a fixed parent job surface'",
+         'test_major_tag.MajorTag.test_rejects_environment', 'python')
 mutation('release/partials/major-tag.js', 'const {version, tag} = release;',
          'const {tag} = release; const version = process.env.GITHUB_REF_NAME;',
          'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
