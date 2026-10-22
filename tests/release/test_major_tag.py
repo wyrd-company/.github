@@ -137,7 +137,7 @@ class MajorTag(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'Major tag declares no credential'): check_major_tag(parsed)
 
     def test_rejects_secret(self):
-        _, _, _, parsed = self.workflow(); parsed['jobs']['update-major-tag']['steps'][1]['with']['script'] += '\n// $' + '{{ secrets.EXAMPLE_TOKEN }}'
+        _, _, _, parsed = self.workflow(); parsed['jobs']['update-major-tag']['env']['MAJOR_TAG_UNIT'] = '${{ secrets.EXAMPLE_TOKEN }}'
         with self.assertRaisesRegex(AssertionError, 'Major tag receives no user secret'): check_major_tag(parsed)
 
     def test_rejects_environment(self):
