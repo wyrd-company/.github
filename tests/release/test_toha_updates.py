@@ -4,12 +4,13 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from harness import check_parts, load, prepare, render
+from harness import ROOT, check_parts, load, prepare, render
 from model import model
 
 WORKFLOW = '.github/workflows/release.yml'
@@ -93,6 +94,44 @@ class TohaUpdates(unittest.TestCase):
         self.assertEqual(record['$schema'], 'https://wyrd.foo/toha/schemas/applied-record/1')
         self.assertEqual(len(record['applications']), 1)
         return record['applications'][0]
+
+    def test_nested_template_roots_load_from_git_fragments(self):
+        repository = self.root / 'catalog'
+        for name in ('release', 'airlock-config'):
+            shutil.copytree(ROOT / 'templates' / name, repository / 'templates' / name)
+        self.git(repository, 'init', '-q', '-b', 'main')
+        revision = self.commit(repository)
+        for name, output in [('release', WORKFLOW), ('airlock-config', '.github/airlock.yml')]:
+            with self.subTest(template=name):
+                source = repository / 'templates' / name
+                address = repository.as_uri() + '#templates/' + name
+                supplied = {'ci_workflow': 'ci.yml'} if name == 'release' else {}
+                generated = []
+                for route, template in [('directory', str(source)), ('git', address)]:
+                    target = self.root / (name + '-' + route)
+                    (target / '.intentional').mkdir(parents=True)
+                    (target / '.intentional/release-model.json').write_text(json.dumps(model()))
+                    self.git(target, 'init', '-q', '-b', 'main')
+                    self.commit(target)
+                    envelope = self.root / (name + '-' + route + '-answers.json')
+                    envelope.write_text(json.dumps({'template': template, 'answers': supplied}))
+                    result = subprocess.run([os.environ['TOHA_BIN'], 'apply', template, str(target),
+                                             '--answers', str(envelope)], env=self.env,
+                                            text=True, capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(json.loads(result.stdout)['status'], 'applied')
+                    self.assertTrue((target / output).is_file())
+                    generated.append({str(path.relative_to(target)): path.read_bytes()
+                                      for path in (target / '.github').rglob('*') if path.is_file()})
+                    if route == 'git':
+                        record = json.loads((target / '.toha.json').read_text())
+                        self.assertEqual(len(record['applications']), 1)
+                        entry = record['applications'][0]
+                        self.assertEqual(entry['source'], address)
+                        self.assertEqual(entry['template'], address)
+                        self.assertEqual(entry['commit'], revision)
+                        self.assertEqual(entry['parts'], [])
+                self.assertEqual(generated[0], generated[1])
 
     def assert_output(self, selected, value=None):
         entry = self.record()

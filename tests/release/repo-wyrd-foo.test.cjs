@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const os = require('node:os');
 const vm = require('node:vm');
-const source = fs.readFileSync('release/targets/repo-wyrd-foo/prepare.js', 'utf8');
+const source = fs.readFileSync('templates/release/targets/repo-wyrd-foo/prepare.js', 'utf8');
 const digest = bytes => 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
 function fixture() {
   const manifest = {tag: '1.2.3', version: '1.2.3', source: {commit: 'a'.repeat(40), repository: 'example-org/sample-tool'},

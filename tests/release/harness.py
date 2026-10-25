@@ -27,7 +27,7 @@ def dump(path, value):
 
 
 def prepare(template, samples=1, omit_publish=False, assembly_samples=0, omit_build=False):
-    shutil.copytree(ROOT / 'release', template)
+    shutil.copytree(ROOT / 'templates/release', template)
     config = load(template / 'template.yml')
     part_question = next(q for q in config['interview'] if q.get('id') == 'targets')
     existing_switches = next(q['computed'] for q in config['interview'] if q.get('id') == 'credential_answers')

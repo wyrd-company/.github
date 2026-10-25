@@ -4,9 +4,9 @@
     "github>wyrd-company/.github:renovate-config"
   ],
   "ignorePaths": [
-    "release/!(targets){,/**}",
-    "release/targets/!(product-build){,/**}",
-    "release/targets/product-build/!(artifact-client){,/**}",
+    "templates/release/!(targets){,/**}",
+    "templates/release/targets/!(product-build){,/**}",
+    "templates/release/targets/product-build/!(artifact-client){,/**}",
     "tests/release/sample-target/**"
   ],
   "packageRules": [
@@ -18,7 +18,7 @@
         "npm"
       ],
       "matchFileNames": [
-        "release/targets/product-build/artifact-client/package.json"
+        "templates/release/targets/product-build/artifact-client/package.json"
       ],
       "groupName": "release artifact client",
       "automerge": false

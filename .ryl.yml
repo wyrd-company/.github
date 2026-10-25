@@ -1,17 +1,17 @@
 # relationships: validates: release-process
 extends: default
 ignore:
-  - airlock-config/template/**/*.yml
-  - release/partials/*.yml
-  - release/targets/npm/*npm.yml
-  - release/targets/npm/*clients.yml
-  - release/targets/npm/*.env.yml
-  - release/targets/ghcr/publish-ghcr.yml
-  - release/targets/ghcr/*.env.yml
-  - release/targets/crates-io/publish-crates-io.yml
-  - release/targets/homebrew-tap/publish-*.yml
-  - release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml
-  - release/template/**/*.yml
+  - templates/airlock-config/template/**/*.yml
+  - templates/release/partials/*.yml
+  - templates/release/targets/npm/*npm.yml
+  - templates/release/targets/npm/*clients.yml
+  - templates/release/targets/npm/*.env.yml
+  - templates/release/targets/ghcr/publish-ghcr.yml
+  - templates/release/targets/ghcr/*.env.yml
+  - templates/release/targets/crates-io/publish-crates-io.yml
+  - templates/release/targets/homebrew-tap/publish-*.yml
+  - templates/release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml
+  - templates/release/template/**/*.yml
 rules:
   brackets: disable
   line-length:

@@ -55,7 +55,7 @@ class PackagePart(unittest.TestCase):
         self.assertNotIn('submit-release@', text)
 
     def test_pin_answers_required_without_defaults_and_validated(self):
-        config = load(ROOT / 'release/template.yml')
+        config = load(ROOT / 'templates/release/template.yml')
         for field in ['repo_wyrd_foo_action_sha', 'repo_wyrd_foo_action_tag']:
             question = next(q for q in config['interview'] if q.get('id') == field)
             self.assertTrue(question['required'])

@@ -48,7 +48,7 @@ JavaScript client. The template installs that dependency under `runner.temp`
 with `npm ci` and lifecycle scripts disabled; runners need npm for this setup.
 Toha generates `.github/release-artifact-client/package.json` and
 `package-lock.json` from the parent-owned inputs in
-`release/targets/product-build/artifact-client`. Setup copies both files into
+`templates/release/targets/product-build/artifact-client`. Setup copies both files into
 runner temporary storage. Missing inputs report `Artifact client dependency
 inputs are missing`; an inconsistent lock or failed installation reports
 `Artifact client locked dependency setup failed`. Setup uses the locked graph.
@@ -93,7 +93,7 @@ actual official extraction after this documented configuration addition.
 Review and adopt dependency updates with:
 
 ```sh
-toha apply gh:wyrd-company/.github#release . --update
+toha apply gh:wyrd-company/.github#templates/release . --update
 ```
 
 `ArtifactDependencies.test_source_emitted_installed_graph_agreement` checks the
@@ -125,7 +125,7 @@ owns the verification content and runner selection.
 `product_verification_recipe` defaults to `./.github/actions/release-verify` and
 must be a repository-local action path. Supply `.github/release-verification.json`
 or answer the `product_verification_matrix` document question. Its schema is
-`release/schemas/product-verification-matrix.schema.json`. Runner values use the
+`templates/release/schemas/product-verification-matrix.schema.json`. Runner values use the
 same label-string or self-hosted-label-array forms as the build matrix:
 
 ```json

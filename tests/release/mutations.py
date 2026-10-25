@@ -30,7 +30,7 @@ def mutation(file, old, new, test, suite='node', site_tests=None):
     CASES.append(Mutation(file, old, new, tuple(site_tests or [test]), suite))
 
 
-r = 'release/targets/repo-wyrd-foo/prepare.js'
+r = 'templates/release/targets/repo-wyrd-foo/prepare.js'
 for old, new, test in [
     ("model.release_units[unit]?.release_record !== 'required'", 'false', 'none in the whole selection refuses before submission'),
     ("!['true', 'false'].includes(env.PACKAGE_DRY_RUN)", 'false', 'dry-run choice is required'),
@@ -53,24 +53,24 @@ for old, new, test in [
 ]: mutation(r, old, new, 'test_repo_wyrd_foo.PackageRuntime.test_' + test.replace(' ', '_').replace('-', '_'), 'python')
 mutation(r, 'fs.writeFileSync(file, bytes);', 'fs.writeFileSync(file, JSON.stringify(manifest));',
     'test_repo_wyrd_foo.PackagePart.test_emitted_action_manifest_preserves_original_download_bytes', 'python')
-mutation('release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
+mutation('templates/release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
     "steps.package.outputs.submit == 'true'", "'true'",
     'test_repo_wyrd_foo.PackagePart.test_selected_and_removed', 'python')
-mutation('release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
+mutation('templates/release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml',
     "      PACKAGE_MODEL: {{ release_model | tojson | replace('$', '\\\\u0024') | toyaml }}", "      PACKAGE_MODEL: {{ release_model | tojson | replace('unmatched-dollar', '\\\\u0024') | toyaml }}",
     'test_repo_wyrd_foo.PackagePart.test_model_and_answers_are_literal_data', 'python')
 
-mutation('release/template.yml', "      regex: '^[0-9a-f]{40}$'", "      regex: '.*'",
+mutation('templates/release/template.yml', "      regex: '^[0-9a-f]{40}$'", "      regex: '.*'",
     'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
-mutation('release/template.yml', "      regex: '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$'", "      regex: '.*'",
-    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
-
-mutation('release/template.yml', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$\'', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'.*\'',
-    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
-mutation('release/template.yml', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'^[A-Za-z0-9][A-Za-z0-9._+-]*$\'', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'.*\'',
+mutation('templates/release/template.yml', "      regex: '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$'", "      regex: '.*'",
     'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
 
-r = 'release/partials/resolve.js'
+mutation('templates/release/template.yml', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$\'', '  - id: repo_wyrd_foo_units\n    type: text\n    prompt: Release Units submitted to repo.wyrd.foo (space separated)\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    validate:\n      regex: \'.*\'',
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+mutation('templates/release/template.yml', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'^[A-Za-z0-9][A-Za-z0-9._+-]*$\'', '  - id: repo_wyrd_foo_manifest_asset\n    type: text\n    prompt: Package selection manifest release asset name\n    when: "\'repo-wyrd-foo\' in targets"\n    required: true\n    default: release-manifest.json\n    validate:\n      regex: \'.*\'',
+    'test_repo_wyrd_foo.PackagePart.test_pin_answers_required_without_defaults_and_validated', 'python')
+
+r = 'templates/release/partials/resolve.js'
 for old, test in [
     ("!/^[0-9a-f]{40}$/.test(source)", 'resolve guard: source-sha spelling'),
     ("env.DISPATCH_REF !== `refs/heads/${env.DEFAULT_BRANCH}`", 'resolve guard: default branch dispatch'),
@@ -97,7 +97,7 @@ for old, new, test in [
 ]: mutation(r, old, new, test)
 mutation(r, 'event: \'push\', status: \'success\'', "event: 'pull_request', status: 'success'", 'resolve real annotated primary, baseline, record-none, prerelease and unrelated tags')
 
-r = 'release/partials/release-record.js'
+r = 'templates/release/partials/release-record.js'
 for old, test in [
     ('start < 0', 'release notes exact heading, nonempty content and next section boundary'),
     ('!notes', 'release notes exact heading, nonempty content and next section boundary'),
@@ -121,9 +121,9 @@ mutation(r, 'draft: false,\n      prerelease:', 'draft: true,\n      prerelease:
 mutation(r, '!release.prerelease && ', '', 'latest-unit prerelease stays non-latest')
 mutation(r, "env.RELEASE_UNIT === env.LATEST_UNIT", 'true', 'prereleases and non-latest units never become latest')
 mutation(r, "if (record && !record.draft)", 'if (false)', 'record retry: published expected, no assets')
-mutation('release/partials/preflight.js', 'if (missing.length)', 'if (false)', 'preflight reports missing names and purposes without credential values')
+mutation('templates/release/partials/preflight.js', 'if (missing.length)', 'if (false)', 'preflight reports missing names and purposes without credential values')
 
-r = 'release/partials/jobs.yml'
+r = 'templates/release/partials/jobs.yml'
 for old, new, test in [
     ('!cancelled() && ', '', 'test_part_graph_all_stages_and_units'),
     ('!failure() && ', '', 'test_part_graph_all_stages_and_units'),
@@ -134,7 +134,7 @@ for old, new, test in [
     (" && needs.release-record.result == 'success'", '', 'test_part_graph_all_stages_and_units'),
     ('RELEASE_SOURCE_SHA:', 'SOURCE_SHA:', 'test_part_graph_all_stages_and_units'),
 ]: mutation(r, old, new, 'test_template.ReleaseTemplate.' + test, 'python')
-r = 'release/template/.github/workflows/release.yml'
+r = 'templates/release/template/.github/workflows/release.yml'
 for old, new, test in [
     (" && needs.resolve.outputs.record == 'true'", '', 'test_part_graph_all_stages_and_units'),
     ("not credential.unless or not credential_answers[credential.unless]", 'true', 'test_trusted_publishing_omits_only_selected_credential'),
@@ -154,21 +154,21 @@ mutation('tests/release/harness.py', 'assert job not in jobs_seen,', 'assert Tru
 mutation('tests/release/harness.py', 'assert key not in credentials_seen,', 'assert True,', 'test_template.ReleaseTemplate.test_duplicate_credential_keys_across_parts_fail', 'python')
 # Remove the vendored root. The proxy observation, rather than an eventual render
 # failure, must be the assertion that kills the attempted hosted fallback.
-mutation('release/template.yml', 'schemas: schemas', 'schemas: missing-schemas', 'test_template.VendoredResolution.test_vendored_schema_makes_zero_network_attempts', 'python-network')
+mutation('templates/release/template.yml', 'schemas: schemas', 'schemas: missing-schemas', 'test_template.VendoredResolution.test_vendored_schema_makes_zero_network_attempts', 'python-network')
 
 
 # The vendored ecosystem rule must independently cover every known adapter.
 for adapter in ('npm', 'cargo', 'pub', 'python', 'msbuild', 'go'):
-    mutation('release/schemas/release-model-1.schema.yml',
+    mutation('templates/release/schemas/release-model-1.schema.yml',
              '- const: ' + adapter + '\n', '- const: unknown-ecosystem\n',
              'test_release_model_schema.ReleaseModelSchema.test_known_ecosystem_adapters_require_generic_false', 'python')
-mutation('release/schemas/release-model-1.schema.yml',
+mutation('templates/release/schemas/release-model-1.schema.yml',
          'generic:\n              const: false', 'generic:\n              const: true',
          'test_release_model_schema.ReleaseModelSchema.test_known_ecosystem_adapters_require_generic_false', 'python')
 
 
 # Final internal-schema guards are part of the interface boundary.
-r = 'release/schemas/publish-job.schema.json'
+r = 'templates/release/schemas/publish-job.schema.json'
 schema = json.loads((ROOT / r).read_text())
 for old, new in [
     (json.dumps(schema['properties']['if']['allOf'][1]['not']['pattern']), '"never-status"'),
@@ -186,10 +186,10 @@ for old, new in [
 
 for old in ['needs.resolve.outputs.source_sha', 'needs.resolve.outputs.releases',
             "join(fromJSON(needs.resolve.outputs.units), ' ')"]:
-    mutation('release/partials/jobs.yml', old, 'needs.resolve.outputs.wrong',
+    mutation('templates/release/partials/jobs.yml', old, 'needs.resolve.outputs.wrong',
              'test_template.ReleaseTemplate.test_part_graph_all_stages_and_units', 'python')
 for old in ['inputs.source-sha', 'github.ref', 'github.sha', 'github.event.repository.default_branch']:
-    mutation('release/template/.github/workflows/release.yml', old, 'github.wrong',
+    mutation('templates/release/template/.github/workflows/release.yml', old, 'github.wrong',
              'test_template.ReleaseTemplate.test_base_dispatch_outputs_and_pins', 'python')
 
 
@@ -219,7 +219,7 @@ for old, new, test in [
 
 
 # crates.io publication guards; each site has its own named behavioral kill.
-r = 'release/targets/crates-io/publish.py'
+r = 'templates/release/targets/crates-io/publish.py'
 mutation(r, 'if unit not in releases:', 'if False:', 'test_crates_io.CratesPublisher.test_only_selected_released_units', 'python')
 mutation(r, "value['release_record'] != 'required'", 'False', 'test_crates_io.CratesPublisher.test_record_none_refused_before_writes', 'python')
 mutation(r, 'if not manifests:', 'if False:', 'test_crates_io.CratesPublisher.test_missing_projection_refused', 'python')
@@ -251,7 +251,7 @@ mutation(r, " or len(result) != 64", '', 'test_crates_io.CratesPublisher.test_ap
 mutation(r, "Path(p['manifest_path']).resolve() == Path(manifest).resolve()", 'True', 'test_crates_io.CratesPublisher.test_manifest_path_filter', 'python')
 mutation(r, "package.get('publish') is not None and ", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
 mutation(r, " and 'crates-io' not in package['publish']", '', 'test_crates_io.CratesPublisher.test_registry_allow_list', 'python')
-mutation('release/targets/crates-io/publish-crates-io.yml', r" | replace('$', '\\u0024')", '', 'test_crates_io.CratesPart.test_model_dollar_data_stays_literal', 'python')
+mutation('templates/release/targets/crates-io/publish-crates-io.yml', r" | replace('$', '\\u0024')", '', 'test_crates_io.CratesPart.test_model_dollar_data_stays_literal', 'python')
 
 # Diagnostics and fresh-checkout retry agreements.
 mutation(r, 'if result.returncode:\n        sys.stdout', 'if False:\n        sys.stdout',
@@ -276,7 +276,7 @@ mutation('tests/release/test_crates_io.py',
          'test_crates_io.CratesPublisher.test_real_cargo_fresh_checkouts_reproduce_package_checksum', 'python')
 
 # npm publication guards execute through named tests with real npm pack.
-r = 'release/targets/npm/npm.js'
+r = 'templates/release/targets/npm/npm.js'
 for old, new, test in [
     ("platform !== 'win32'", 'false', 'windows'),
     ("file => fs.existsSync(file)", 'file => true', 'windows'),
@@ -317,13 +317,13 @@ for old, new, test in [
                  'test_npm.NpmRuntime.test_retry', 'test_npm.NpmRuntime.test_race']
                  if old == 'if (await lookup()) continue;' else None))
 for name, test in [('publish-npm', 'publish'), ('verify-npm-clients', 'verify')]:
-    mutation('release/targets/npm/' + name + '.env.yml',
+    mutation('templates/release/targets/npm/' + name + '.env.yml',
              " | replace('$', '\\\\u0024')", '',
              'test_npm.NpmPart.test_' + test + '_model_data_stays_literal', 'python')
 
 
 # GHCR publication: each guard is killed by a named transport-boundary test.
-r = 'release/targets/ghcr/publish.py'
+r = 'templates/release/targets/ghcr/publish.py'
 for old, new, test in [
     ("env.get('GHCR_DRY_RUN') not in ('true', 'false')", 'False', 'missing_dry_choice_before_any_tool'),
     ("env['GHCR_DRY_RUN'] == 'true'", 'False', 'dry_run_no_login_or_registry'),
@@ -362,14 +362,14 @@ for old, new, test in [
                          ['test_ghcr.GhcrPublisher.test_' + test] * (2 if old in (
                  "                if lookup(tag, missing=True):\n                    continue\n",
                  "if not lookup(tag, missing=True):", "'--all', '--preserve-digests'") else 1)))
-mutation('release/targets/ghcr/publish-ghcr.env.yml',
+mutation('templates/release/targets/ghcr/publish-ghcr.env.yml',
          " | replace('$', '\\\\u0024')", '',
          'test_ghcr.GhcrPart.test_model_data_stays_literal', 'python')
 
 
 
 # Homebrew: one named assertion boundary for each independently mutable guard.
-h = 'release/targets/homebrew-tap/homebrew.js'
+h = 'templates/release/targets/homebrew-tap/homebrew.js'
 for old, new, test in [
     ("if (a[i] !== b[i])", "if (false)", 'ordering'),
     ("if (leftPre === undefined || rightPre === undefined)", "if (false)", 'ordering'),
@@ -421,7 +421,7 @@ for old, new, test in [
     ("if (!observed?.bytes.equals(bytes))", "if (false)", 'readback'),
 ]:
     mutation(h, old, new, 'test_homebrew_tap.HomebrewRuntime.test_' + test, 'python')
-mutation('release/targets/homebrew-tap/publish-homebrew-tap.env.yml',
+mutation('templates/release/targets/homebrew-tap/publish-homebrew-tap.env.yml',
          " | replace('$', '\\\\u0024')", '',
          'test_homebrew_tap.HomebrewPart.test_model_data_stays_literal', 'python')
 
@@ -435,29 +435,29 @@ for old, tests in [
     ("run(['skopeo', 'inspect', '--authfile'", ['remote_inspect_failure_diagnostics']),
     ("run(['skopeo', 'copy'", ['copy_failure_diagnostics', 'tag_copy_failure_diagnostics']),
 ]:
-    mutation('release/targets/ghcr/publish.py', old, old.replace('run(', 'tool(', 1),
+    mutation('templates/release/targets/ghcr/publish.py', old, old.replace('run(', 'tool(', 1),
              '', 'python', site_tests=['test_ghcr.GhcrPublisher.test_' + test for test in tests])
 
 # GHCR robustness: captured output, credential redaction and real-build agreements.
-mutation('release/targets/ghcr/publish.py',
+mutation('templates/release/targets/ghcr/publish.py',
          "(error.stdout, sys.stdout)", "(b'', sys.stdout)",
          'test_ghcr.GhcrPublisher.test_build_failure_diagnostics', 'python')
-mutation('release/targets/ghcr/publish.py',
+mutation('templates/release/targets/ghcr/publish.py',
          "(error.stderr, sys.stderr)", "(b'', sys.stderr)",
          'test_ghcr.GhcrPublisher.test_remote_inspect_failure_diagnostics', 'python')
-mutation('release/targets/ghcr/publish.py',
+mutation('templates/release/targets/ghcr/publish.py',
          "text = text.replace(token, '[REDACTED]')", 'pass',
          'test_ghcr.GhcrPublisher.test_login_failure_diagnostics', 'python')
-mutation('release/targets/ghcr/publish.py',
+mutation('templates/release/targets/ghcr/publish.py',
          "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
          'test_ghcr.GhcrPublisher.test_ghcr_unmeasured_denials_fail_closed', 'python')
 # The real wrapped diagnostic must be accepted, while same-shape denials fail closed.
-mutation('release/targets/ghcr/publish.py',
+mutation('templates/release/targets/ghcr/publish.py',
          "missing and b'manifest unknown' in (error.stderr or b'').lower()",
          "missing and (error.stderr or b'').lower() == b'manifest unknown'",
          'test_ghcr.GhcrPublisher.test_captured_authenticated_ghcr_first_lookup', 'python')
 for test in ('unauthorized', 'denied'):
-    mutation('release/targets/ghcr/publish.py',
+    mutation('templates/release/targets/ghcr/publish.py',
              "missing and b'manifest unknown' in (error.stderr or b'').lower()", 'missing',
              'test_ghcr.GhcrPublisher.test_captured_authenticated_ghcr_' + test + '_near_miss', 'python')
 for old, new in [
@@ -465,7 +465,7 @@ for old, new in [
     ('without GHCR lookup, login or push', 'without GHCR push'),
     ('BuildKit and base-image registry pulls may', 'BuildKit and base-image registry pulls never'),
 ]:
-    mutation('release/targets/README.md', old, new,
+    mutation('templates/release/targets/README.md', old, new,
              'test_ghcr.GhcrCompilationProof.test_documented_build_and_dry_run_contract', 'python')
 for old, new, test in [
     ('FROM --platform=$BUILDPLATFORM ', 'FROM ', 'native_build_stage_contract'),
@@ -487,13 +487,13 @@ mutation('tests/release/ghcr_oci_proof.py',
 
 
 # Optional product verification: named, independently falsifiable boundaries.
-mutation('release/partials/jobs.yml',
+mutation('templates/release/partials/jobs.yml',
          "(ns.publish if stage == 'verify' else [])", '[]',
          'test_product_verification.ProductVerification.test_all_publish_dependencies', 'python')
-mutation('release/partials/jobs.yml',
+mutation('templates/release/partials/jobs.yml',
          " && needs.release-record.result == 'success')", ")",
          'test_product_verification.ProductVerification.test_stage_truth_table_and_required_record', 'python')
-mutation('release/targets/product-build/verify-product.jinja',
+mutation('templates/release/targets/product-build/verify-product.jinja',
          " && (!contains(fromJSON(needs.resolve.outputs.record_units), matrix.unit) || needs.release-record.result == 'success')", '',
          'test_product_verification.ProductVerification.test_mixed_units_required_record_step_gate', 'python')
 mutation('tests/release/harness.py',
@@ -509,15 +509,15 @@ mutation('tests/release/harness.py',
          "assert 'environment' not in body, 'Product verification declares no protected environment'", 'pass',
          'test_product_verification.ProductVerification.test_rejects_user_secret_and_protected_environment', 'python')
 for member in ('tag', 'version'):
-    mutation('release/targets/product-build/verify-product.jinja',
+    mutation('templates/release/targets/product-build/verify-product.jinja',
              'fromJSON(env.RELEASE_JSON)[matrix.unit].' + member, 'github.ref_name',
              'test_product_verification.ProductVerification.test_recipe_receives_resolved_identity', 'python')
 
 # Optional parent-owned final major tag: seven obligations, split at independent assertions.
 MAJOR_TAG_CASE_START = len(CASES)
-mutation('release/partials/major-tag.yml', ' + ns.verify) | tojson', ') | tojson',
+mutation('templates/release/partials/major-tag.yml', ' + ns.verify) | tojson', ') | tojson',
          'test_major_tag.MajorTag.test_needs_every_earlier_job', 'python')
-mutation('release/partials/major-tag.yml', " && needs.{{ verify }}.result == 'success'", '',
+mutation('templates/release/partials/major-tag.yml', " && needs.{{ verify }}.result == 'success'", '',
          'test_major_tag.MajorTag.test_named_unit_verification_truth_table', 'python')
 for old, test in [
     ("assert parsed['permissions'] == {}, 'Major tag keeps workflow permissions empty'", 'test_rejects_workflow_write'),
@@ -532,12 +532,12 @@ mutation('tests/release/harness.py',
          "assert 'environment' not in job, 'Major tag declares no environment'\n    assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'",
          "assert 'secrets.' not in json.dumps(job), 'Major tag receives no user secret'\n    assert set(job) - {'environment'} == {'needs', 'if', 'runs-on', 'permissions', 'env', 'steps'}, 'Major tag has a fixed parent job surface'",
          'test_major_tag.MajorTag.test_rejects_environment', 'python')
-mutation('release/partials/major-tag.js', 'const {version, tag} = release;',
+mutation('templates/release/partials/major-tag.js', 'const {version, tag} = release;',
          'const {tag} = release; const version = process.env.GITHUB_REF_NAME;',
          'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
-mutation('release/partials/major-tag.js', 'if (BigInt(major) === 0n)', 'if (false)',
+mutation('templates/release/partials/major-tag.js', 'if (BigInt(major) === 0n)', 'if (false)',
          'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
-mutation('release/partials/major-tag.js', 'if (!/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(version))', 'if (false)',
+mutation('templates/release/partials/major-tag.js', 'if (!/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(version))', 'if (false)',
          'test_major_tag.MajorTag.test_local_tag_semantics', 'python')
 MAJOR_TAG_CASE_END = len(CASES)
 
@@ -591,7 +591,7 @@ def run(report, root=ROOT, cases=None):
         env = dict(os.environ, PYTHONPATH=str(root / 'tests/release'))
         try:
             if suite == 'python-network':
-                empty = root / 'release/missing-schemas'
+                empty = root / 'templates/release/missing-schemas'
                 empty.mkdir(exist_ok=False)
             target.write_text(mutated)
             # Verify the exact single splice, including the untouched prefix and

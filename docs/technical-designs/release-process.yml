@@ -85,34 +85,34 @@ proposed-design:
     released unit whose policy is `required`, then part publish jobs, then part
     verify jobs, then the optional parent-owned final numeric major-tag update.
     Four internal part interfaces describe jobs and credentials,
-    validated by draft JSON Schemas in `release/schemas/`. `.toha.json` records
+    validated by draft JSON Schemas in `templates/release/schemas/`. `.toha.json` records
     the selected parts, answers including the rendered model, and path ownership.
     Delivery runs inside `release.yml`; no `cd.yml` is rendered. Repository
     Renovate owns action pin updates; the template sets a pin only when it adds
     or changes a step.
 
   repository-layout: >-
-    Each template is a top-level directory, addressed as
-    `gh:wyrd-company/.github#<directory>`. `release/` holds
-    `release/template.yml` (the interview, schema directory, and target data),
-    `release/schemas/release-model-1.schema.yml` (vendored, see
-    release-model-acceptance), `release/schemas/publish-job.schema.json` and
-    `release/schemas/credential.schema.json` (the internal part schemas),
-    `release/partials/` (shared workflow fragments), and
-    `release/template/.github/workflows/release.yml` (the workflow body). The
+    Each template has a directory under `templates/`, addressed as
+    `gh:wyrd-company/.github#templates/<name>`. `templates/release/` holds
+    `templates/release/template.yml` (the interview, schema directory, and target data),
+    `templates/release/schemas/release-model-1.schema.yml` (vendored, see
+    release-model-acceptance), `templates/release/schemas/publish-job.schema.json` and
+    `templates/release/schemas/credential.schema.json` (the internal part schemas),
+    `templates/release/partials/` (shared workflow fragments), and
+    `templates/release/template/.github/workflows/release.yml` (the workflow body). The
     rendered workflow path is fixed. `product-build` runs reviewed local product
     actions from the resolved source commit in read-only, no-secret build and
     optional assembly jobs before the release record, and an optional verification
     recipe after publication. The template provisions
     the artifact dependency outside product sources. Each publication target
     has a directory
-    `release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
+    `templates/release/targets/<target>/`, for example `crates-io`, `npm`, `homebrew`,
     `repo-wyrd-foo`, `ghcr`, or `winget`, holding `target.yml` and its job
     partials (optional-parts-form). GHCR builds each selected unit path's
     Dockerfile and context as deterministic OCI images, publishes by digest to
     `ghcr.io/<repository>/<unit-id>`, then sets the bare version tag. The
     separate template that renders `.github/airlock.yml` is named
-    `airlock-config` because `airlock/` already holds the organization policy
+    `airlock-config` at `templates/airlock-config/`; `airlock/` holds the organization policy
     that Airlock resolves. Its content follows the Airlock release-process
     conformance design. Contract examples live in
     `docs/examples/release-process/`. This repository's own Renovate
@@ -122,7 +122,7 @@ proposed-design:
   release-model-acceptance: >-
     The parent's interview starts with question `release_model`:
     `type: document`, `schema: https://intentional.foo/schemas/release-model/1`,
-    and `input: .intentional/release-model.json`. `release/template.yml`
+    and `input: .intentional/release-model.json`. `templates/release/template.yml`
     declares `schemas: schemas`; files in that directory are indexed by `$id`,
     as Toha's `document-questions` and `schema-resolution` define. The vendored
     `schemas/release-model-1.schema.yml` is a byte-for-byte copy of Intentional's
@@ -156,9 +156,9 @@ proposed-design:
     `^assemble-[a-z0-9]+(-[a-z0-9]+)*$`, `publish_jobs` has
     `^publish-[a-z0-9]+(-[a-z0-9]+)*$`, and `verify_jobs` has
     `^verify-[a-z0-9]+(-[a-z0-9]+)*$`; all four use
-    `release/schemas/publish-job.schema.json`. `credentials` has key pattern
+    `templates/release/schemas/publish-job.schema.json`. `credentials` has key pattern
     `^[a-z0-9]+(-[a-z0-9]+)*$` and uses
-    `release/schemas/credential.schema.json`. A job key is its GitHub job id.
+    `templates/release/schemas/credential.schema.json`. A job key is its GitHub job id.
     The prefixes separate the stages and the parent's own jobs (`resolve`,
     `preflight`, `preflight-<environment>`, `release-record`). Repository tests
     refuse repeated keys within an interface, so every workflow job id is unique.
@@ -170,7 +170,7 @@ proposed-design:
     the parent writes it with the same part-job macro and interface schema.
 
   publish-job-schema: >-
-    `release/schemas/publish-job.schema.json` (draft) validates one job
+    `templates/release/schemas/publish-job.schema.json` (draft) validates one job
     value in an internal job interface. Required members are `units`, a string
     of Release Unit ids separated by one space, and `job`, a GitHub job object.
     Tests validate the job the parent renders from a target partial, with
@@ -296,7 +296,7 @@ proposed-design:
     `product_assembly_recipe` (default `./.github/actions/release-assemble`) and
     `product_assembly_runner` (default `ubuntu-latest`).
     The default input is `.github/release-builds.json`; the document is validated
-    against `release/schemas/product-build-matrix.schema.json`. Recipe paths are
+    against `templates/release/schemas/product-build-matrix.schema.json`. Recipe paths are
     validated local action paths and no answer is interpolated into a script.
     Each released unit and target calls the build action with `unit`, `target`,
     and `output-directory`. The optional assembly action receives `unit`,
@@ -307,7 +307,7 @@ proposed-design:
     and assembly. Empty output fails with `if-no-files-found: error` semantics.
     The parent provisions the official `@actions/artifact` package in runner
     temporary storage with `npm ci` and lifecycle scripts disabled. The parent
-    owns `release/targets/product-build/artifact-client/package.json` and its
+    owns `templates/release/targets/product-build/artifact-client/package.json` and its
     full `package-lock.json`. Toha emits these exact inputs under
     `.github/release-artifact-client` when product-build is selected. Setup copies
     them to runner temporary storage and fails with a named diagnostic if the
@@ -341,7 +341,7 @@ proposed-design:
     When enabled, `product_verification_recipe` defaults to
     `./.github/actions/release-verify` and `product_verification_matrix` reads
     `.github/release-verification.json`, validated by the draft schema
-    `release/schemas/product-verification-matrix.schema.json`. Its `runners`
+    `templates/release/schemas/product-verification-matrix.schema.json`. Its `runners`
     array contains runner label strings or arrays of self-hosted labels, using
     the build matrix's label rules. Products own these runner choices; assembly
     and publication parts need not be selected. Each selected product-build unit
@@ -373,7 +373,7 @@ proposed-design:
     list in `parts`, not in `answers.targets`. Each target's own
     questions are written in the parent's interview with a `when` condition
     on `targets`, and include `<target>_units`, the Release Units the target
-    serves. Each target is a directory `release/targets/<target>/` that holds
+    serves. Each target is a directory `templates/release/targets/<target>/` that holds
     `target.yml` and job partials. `target.yml` is loaded into the parent's
     `data` with Toha's YAML `!include` tag as `release_targets.<target>`. It
     lists the target's job ids by stage (`build`, optional `assemble`, `publish`, `verify`, with
@@ -381,13 +381,13 @@ proposed-design:
     that holds its units, and its credentials, each a value of the credential schema
     with an optional `unless` naming a boolean answer, for example
     `trusted_publishing`. Each job body is a partial
-    `release/targets/<target>/<job id>.yml` (or `.jinja` for product recipes) that writes the job's YAML below
+    `templates/release/targets/<target>/<job id>.yml` (or `.jinja` for product recipes) that writes the job's YAML below
     the line the parent writes for its id: `name`, `runs-on`, `permissions`,
     `steps`, and the other members the publish-job schema admits except
     `env`. The parent writes each job's id, `needs`, and condition from
     `target.yml` and the units answer, and its `env` mapping with the
     `RELEASE_` values followed by the entries of an optional second partial
-    `release/targets/<target>/<job id>.env.yml`, so the job has one `env`
+    `templates/release/targets/<target>/<job id>.env.yml`, so the job has one `env`
     key. A Jinja include name must be a string literal, so the parent writes
     each include inside `{% if '<target>' in targets %}`. The
     partial writes `uses` lines as YAML text, so the version comment is kept
@@ -498,12 +498,12 @@ proposed-design:
     `owner/repo[/path]@<commit> # <version>`; local `./` actions follow the
     publish-job schema. Renovate updating a commit pin and its version comment
     together is inferred from its documentation, not measured. This repository's
-    own Renovate configuration excludes `release/` except the parent-owned
+    own Renovate configuration excludes `templates/release/` except the parent-owned
     `targets/product-build/artifact-client` dependency inputs. External action
     references in the template remain excluded. A template author who adds or
     changes a step uses the current pin; adopting repositories get Renovate
     updates for unchanged steps.
-    An update uses `toha apply gh:wyrd-company/.github#release . --update`.
+    An update uses `toha apply gh:wyrd-company/.github#templates/release . --update`.
     Its merge base is rendered from the committed applied entry's template
     commit, `answers`, `parts`, frozen `generated` instant, and `context`, as
     Toha's `update-merge-base` defines. For a whole-file path the rendered bytes

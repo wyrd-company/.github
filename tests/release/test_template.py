@@ -32,7 +32,7 @@ class ReleaseTemplate(unittest.TestCase):
         return template, workflow, answers, check_parts(template, workflow, selected, answers)
 
     def test_document_contract_and_no_hooks(self):
-        config = load(ROOT / 'release/template.yml')
+        config = load(ROOT / 'templates/release/template.yml')
         self.assertEqual(config['schemas'], 'schemas')
         self.assertEqual(config['interview'][0], dict(id='release_model', type='document', prompt='Intentional Release Model',
             schema='https://intentional.foo/schemas/release-model/1', input='.intentional/release-model.json'))
@@ -43,11 +43,11 @@ class ReleaseTemplate(unittest.TestCase):
 
     def test_vendored_schema_exact_source(self):
         source = os.environ['INTENTIONAL_DIR']
-        provenance = json.loads((ROOT / 'release/schema-provenance.json').read_text())['release-model-1.schema.yml']
+        provenance = json.loads((ROOT / 'templates/release/schema-provenance.json').read_text())['release-model-1.schema.yml']
         self.assertEqual(provenance['path'], 'docs/specifications/release-model.schema.yml')
         expected = subprocess.check_output(['git', '-C', source, 'show', provenance['commit'] + ':' + provenance['path']])
-        self.assertEqual((ROOT / 'release/schemas/release-model-1.schema.yml').read_bytes(), expected)
-        jsonschema.validate(model(), load(ROOT / 'release/schemas/release-model-1.schema.yml'))
+        self.assertEqual((ROOT / 'templates/release/schemas/release-model-1.schema.yml').read_bytes(), expected)
+        jsonschema.validate(model(), load(ROOT / 'templates/release/schemas/release-model-1.schema.yml'))
 
     def test_generic_projection_survives_document_admission_and_render(self):
         value = model()
@@ -192,9 +192,9 @@ class ReleaseTemplate(unittest.TestCase):
 
     def test_each_repository_part_and_all_parts(self):
         # Real parts are registered by their parent interview, never discovered at runtime.
-        config = load(ROOT / 'release/template.yml')
+        config = load(ROOT / 'templates/release/template.yml')
         registered = set(config['data']['release_targets'])
-        available = {p.parent.name for p in (ROOT / 'release/targets').glob('*/target.yml')}
+        available = {p.parent.name for p in (ROOT / 'templates/release/targets').glob('*/target.yml')}
         self.assertEqual(registered, available)
         options = next(q['options'] for q in config['interview'] if q.get('id') == 'targets')
         self.assertEqual(set(options), registered)
@@ -335,17 +335,17 @@ class ReleaseTemplate(unittest.TestCase):
 
 class InternalSchemas(unittest.TestCase):
     def test_examples(self):
-        schema = json.loads((ROOT / 'release/schemas/publish-job.schema.json').read_text())
+        schema = json.loads((ROOT / 'templates/release/schemas/publish-job.schema.json').read_text())
         examples = ROOT / 'docs/examples/release-process'
         jsonschema.validate(json.loads((examples / 'publish-job.valid.json').read_text()), schema)
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.validate(json.loads((examples / 'publish-job.invalid.json').read_text()), schema)
         jsonschema.validate(json.loads((examples / 'credential.valid.json').read_text()),
-                            json.loads((ROOT / 'release/schemas/credential.schema.json').read_text()))
+                            json.loads((ROOT / 'templates/release/schemas/credential.schema.json').read_text()))
 
     def assert_expression_guard(self, field):
         valid = json.loads((ROOT / 'docs/examples/release-process/publish-job.valid.json').read_text())
-        schema = json.loads((ROOT / 'release/schemas/publish-job.schema.json').read_text())
+        schema = json.loads((ROOT / 'templates/release/schemas/publish-job.schema.json').read_text())
         valid['job']['steps'][-1][field] = '${{ secrets.SAMPLE_TOKEN }}'
         self.assertTrue(list(jsonschema.Draft202012Validator(schema).iter_errors(valid)), field + ' must reject expressions')
 
@@ -357,7 +357,7 @@ class InternalSchemas(unittest.TestCase):
 
     def test_schema_guards(self):
         valid = json.loads((ROOT / 'docs/examples/release-process/publish-job.valid.json').read_text())
-        schema = json.loads((ROOT / 'release/schemas/publish-job.schema.json').read_text())
+        schema = json.loads((ROOT / 'templates/release/schemas/publish-job.schema.json').read_text())
         variants = []
         for expression in ['always()', 'AlWaYs ()', 'SUCCESS()', 'failure()', 'Cancelled()', '${{ true }}']:
             v = copy.deepcopy(valid); v['if'] = expression; variants.append(v)

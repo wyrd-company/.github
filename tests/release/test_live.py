@@ -27,7 +27,7 @@ class LiveProof(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             report = Path(tmp) / 'mutations.json'
             report.write_text('{"status":"PASS"}')
-            case = mutations.Mutation('release/template.yml', 'absent-mutation-source', '', ('unused',), 'node')
+            case = mutations.Mutation('templates/release/template.yml', 'absent-mutation-source', '', ('unused',), 'node')
             with patch('mutations.CASES', [case]):
                 with self.assertRaisesRegex(AssertionError, 'expected 1 matches, observed 0'):
                     mutations.run(report)
@@ -40,7 +40,7 @@ class LiveProof(unittest.TestCase):
         import subprocess
         import jsonschema
         from harness import ROOT, YAML_RT
-        provenance = json.loads((ROOT / 'release/schema-provenance.json').read_text())['release-model-1.schema.yml']
+        provenance = json.loads((ROOT / 'templates/release/schema-provenance.json').read_text())['release-model-1.schema.yml']
         schema = YAML_RT.load(subprocess.check_output(['git', '-C', os.environ['INTENTIONAL_DIR'], 'show',
             provenance['commit'] + ':docs/specifications/release-workspace.schema.yml'], text=True))
         for scenario in ('baseline', 'missing-credential', 'no-release'):
@@ -86,5 +86,5 @@ class LiveProof(unittest.TestCase):
             self.assertIn('`' + scenario + '`', text)
         self.assertEqual(len(live.SCENARIOS) * 2, 28)
         self.assertIn('22 required live cases', text)
-        self.assertEqual(json.loads((ROOT / 'release/schema-provenance.json').read_text())['release-model-1.schema.yml']['commit'],
+        self.assertEqual(json.loads((ROOT / 'templates/release/schema-provenance.json').read_text())['release-model-1.schema.yml']['commit'],
                          'acbb793427b8de35ca84c9a2e9f371b71738b230')

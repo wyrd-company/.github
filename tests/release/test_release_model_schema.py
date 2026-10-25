@@ -23,7 +23,7 @@ class ReleaseModelSchema(unittest.TestCase):
 
     def test_known_ecosystem_adapters_require_generic_false(self):
         validator = jsonschema.Draft202012Validator(
-            load(ROOT / 'release/schemas/release-model-1.schema.yml'))
+            load(ROOT / 'templates/release/schemas/release-model-1.schema.yml'))
         for adapter in ('npm', 'cargo', 'pub', 'python', 'msbuild', 'go'):
             with self.subTest(adapter=adapter):
                 value = self.projection_model(adapter, True)
@@ -37,7 +37,7 @@ class ReleaseModelSchema(unittest.TestCase):
                 self.assertEqual(list(validator.iter_errors(value)), [])
 
     def test_generic_format_projections_remain_valid(self):
-        schema = load(ROOT / 'release/schemas/release-model-1.schema.yml')
+        schema = load(ROOT / 'templates/release/schemas/release-model-1.schema.yml')
         for adapter in ('json', 'toml', 'yaml'):
             with self.subTest(adapter=adapter):
                 jsonschema.validate(self.projection_model(adapter, True), schema)

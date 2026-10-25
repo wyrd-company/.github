@@ -29,6 +29,10 @@ its own Git source repository before resolving a `file://` address.
 
 `test_toha_updates.py` proves the real CLI, record and output boundaries:
 
+- `test_nested_template_roots_load_from_git_fragments`: load both
+  `templates/release` and `templates/airlock-config` from a committed local Git
+  repository, check their recorded source paths and revision, and compare their
+  generated files with direct-directory loading.
 - `test_apply_selection_and_revision_update`: apply flags, a new committed
   revision, additions/removals, option order, separate recorded parts/answers,
   emitted jobs/credentials, and an already-current repeat.
@@ -87,11 +91,11 @@ directory:
 
 ```sh
 mkdir -p /path/to/sdk-inputs
-cp release/targets/product-build/artifact-client/package*.json /path/to/sdk-inputs/
+cp templates/release/targets/product-build/artifact-client/package*.json /path/to/sdk-inputs/
 npm ci --prefix /path/to/sdk-inputs \
   --cache /path/to/prefetched/npm-cache --ignore-scripts --no-audit --no-fund
 artifact_sdk=$(node -p '
-  const p = require("./release/targets/product-build/artifact-client/package.json");
+  const p = require("./templates/release/targets/product-build/artifact-client/package.json");
   "@actions/artifact@" + p.dependencies["@actions/artifact"]')
 npm cache add "$artifact_sdk" \
   --cache /path/to/prefetched/npm-cache --ignore-scripts \
@@ -218,7 +222,7 @@ parent-owned expressions remain. The schema row uses separate
 ## Add a publication part
 
 Use `sample-target/` as a fixture for the interface. Add the target directory to
-`release/targets/`, load `target.yml` under `data.release_targets` with `!include`,
+`templates/release/targets/`, load `target.yml` under `data.release_targets` with `!include`,
 and add its literal name to `targets.options`. Add its units answer and other
 questions after `targets`, each with a `when` condition on that selection.
 Target metadata contains `units` (the units answer id), stage lists `build`,

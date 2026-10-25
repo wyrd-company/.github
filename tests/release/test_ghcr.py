@@ -21,7 +21,7 @@ proof_spec = importlib.util.spec_from_file_location('ghcr_oci_proof', ROOT / 'te
 ghcr_oci_proof = importlib.util.module_from_spec(proof_spec)
 exec(compile(Path(proof_spec.origin).read_text(), proof_spec.origin, 'exec'), ghcr_oci_proof.__dict__)
 
-spec = importlib.util.spec_from_file_location('ghcr', ROOT / 'release/targets/ghcr/publish.py')
+spec = importlib.util.spec_from_file_location('ghcr', ROOT / 'templates/release/targets/ghcr/publish.py')
 ghcr = importlib.util.module_from_spec(spec)
 exec(compile(Path(spec.origin).read_text(), spec.origin, 'exec'), ghcr.__dict__)
 RAW = b'{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json"}'
@@ -360,7 +360,7 @@ class GhcrCompilationProof(unittest.TestCase):
         self.assertIn('COPY --from=build /out/sample-tool /sample-tool', final)
 
     def test_documented_build_and_dry_run_contract(self):
-        documentation = ' '.join((ROOT / 'release/targets/README.md').read_text().split('## GHCR', 1)[1].split())
+        documentation = ' '.join((ROOT / 'templates/release/targets/README.md').read_text().split('## GHCR', 1)[1].split())
         self.assertIn('`FROM --platform=$BUILDPLATFORM` stages', documentation)
         self.assertIn('using `TARGETOS` and `TARGETARCH` for the compiler target', documentation)
         self.assertIn('final stage copies the target binary and has no `RUN` instructions', documentation)

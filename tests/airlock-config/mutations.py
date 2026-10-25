@@ -11,8 +11,8 @@ import sys
 from ruamel.yaml import YAML
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / 'airlock-config/template.yml'
-TEMPLATE = ROOT / 'airlock-config/template/.github/airlock.yml'
+CONFIG = ROOT / 'templates/airlock-config/template.yml'
+TEMPLATE = ROOT / 'templates/airlock-config/template/.github/airlock.yml'
 
 
 def run(report):

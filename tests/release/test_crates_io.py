@@ -22,7 +22,7 @@ from model import model
 
 def publisher():
     module = types.ModuleType('crates_publisher')
-    source = ROOT / 'release/targets/crates-io/publish.py'
+    source = ROOT / 'templates/release/targets/crates-io/publish.py'
     # Always execute current bytes: mutation sites can have equal size/mtime.
     exec(compile(source.read_text(), str(source), 'exec'), module.__dict__)
     return module
@@ -57,7 +57,7 @@ class CratesPart(unittest.TestCase):
                     self.assertEqual(json.loads(step['env']['CRATES_MODEL']), cargo_model())
                     self.assertEqual(step['env']['CRATES_UNITS'], 'sample-tool')
                     self.assertNotIn('${{', step['run'])
-                    self.assertIn((ROOT / 'release/targets/crates-io/publish.py').read_text().strip(), step['run'])
+                    self.assertIn((ROOT / 'templates/release/targets/crates-io/publish.py').read_text().strip(), step['run'])
                     # Run the exact emitted entry point with no admitted units.
                     env = dict(os.environ, **step['env'], RELEASE_JSON='{}', RELEASE_UNITS='')
                     result = subprocess.run(['bash', '-e', '-c', step['run']], env=env, text=True, capture_output=True)

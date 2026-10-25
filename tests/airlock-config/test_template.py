@@ -47,8 +47,8 @@ class AirlockTemplate(unittest.TestCase):
 
     def apply(self, answers=None):
         envelope = self.root / 'answers.json'
-        envelope.write_text(json.dumps({'template': str(ROOT / 'airlock-config'), 'answers': answers or {}}))
-        return subprocess.run([os.environ['TOHA_BIN'], 'apply', str(ROOT / 'airlock-config'),
+        envelope.write_text(json.dumps({'template': str(ROOT / 'templates/airlock-config'), 'answers': answers or {}}))
+        return subprocess.run([os.environ['TOHA_BIN'], 'apply', str(ROOT / 'templates/airlock-config'),
                                str(self.target), '--answers', str(envelope)], text=True, capture_output=True)
 
     def render(self, answers=None):
@@ -158,7 +158,7 @@ class AirlockTemplate(unittest.TestCase):
                 self.target.mkdir()
 
     def test_contract(self):
-        config = YAML(typ='safe').load((ROOT / 'airlock-config/template.yml').read_text())
+        config = YAML(typ='safe').load((ROOT / 'templates/airlock-config/template.yml').read_text())
         self.assertEqual(config['name'], 'airlock-config')
         self.assertNotIn('hooks', config)
         self.assertNotIn('schemas', config)

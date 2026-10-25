@@ -34,7 +34,7 @@ class ProductVerification(unittest.TestCase):
         return template, workflow, settled, parsed
 
     def test_optional_interview_and_schema(self):
-        questions = {q['id']: q for q in load(ROOT / 'release/template.yml')['interview']}
+        questions = {q['id']: q for q in load(ROOT / 'templates/release/template.yml')['interview']}
         enable = questions['product_verification']
         self.assertEqual(enable['type'], 'confirm')
         self.assertFalse(enable['default'])
@@ -45,9 +45,9 @@ class ProductVerification(unittest.TestCase):
         matrix = questions['product_verification_matrix']
         self.assertEqual(matrix['when'], recipe['when'])
         self.assertEqual(matrix['input'], '.github/release-verification.json')
-        schema = json.loads((ROOT / 'release/schemas/product-verification-matrix.schema.json').read_text())
+        schema = json.loads((ROOT / 'templates/release/schemas/product-verification-matrix.schema.json').read_text())
         self.assertEqual(matrix['schema'], schema['$id'])
-        build = json.loads((ROOT / 'release/schemas/product-build-matrix.schema.json').read_text())
+        build = json.loads((ROOT / 'templates/release/schemas/product-build-matrix.schema.json').read_text())
         self.assertEqual(schema['$defs'], build['$defs'])
         self.assertEqual(schema['properties']['runners']['items'],
                          build['properties']['targets']['items']['properties']['runner'])
@@ -276,10 +276,10 @@ class ProductVerification(unittest.TestCase):
         paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', base, '--', 'release'],
                                         cwd=ROOT, text=True).splitlines()
         for name in paths:
-            destination = baseline / name
+            destination = baseline / 'templates' / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(subprocess.check_output(['git', 'show', base + ':' + name], cwd=ROOT))
-        parts = sorted(load(ROOT / 'release/template.yml')['data']['release_targets'])
+        parts = sorted(load(ROOT / 'templates/release/template.yml')['data']['release_targets'])
         selections = [[part] for part in parts] + [
             [part, 'product-build'] for part in parts if part != 'product-build'] + [parts]
         receipts = []

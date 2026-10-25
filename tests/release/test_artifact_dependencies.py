@@ -14,7 +14,7 @@ from harness import ROOT, load, render
 from model import model
 from test_product_build import product_answers
 
-SOURCE = Path('release/targets/product-build/artifact-client')
+SOURCE = Path('templates/release/targets/product-build/artifact-client')
 GENERATED = Path('.github/release-artifact-client')
 TOOL = Path('tests/release/tools/renovate')
 
@@ -176,7 +176,7 @@ class ArtifactDependencies(unittest.TestCase):
         self.assertEqual(tool['dependencies'][0]['depName'], 'renovate')
         self.assertIn(':maintainLockFilesWeekly', result['owner']['extends'])
         self.assertEqual(result['repository']['extends'], ['github>wyrd-company/.github:renovate-config'])
-        self.assertEqual(sorted(f for f in result['filtered'] if f.startswith('release/')),
+        self.assertEqual(sorted(f for f in result['filtered'] if f.startswith('templates/release/')),
                          sorted([(SOURCE / name).as_posix() for name in ('package.json', 'package-lock.json')]),
                          'Other release inputs retain their updater exclusions')
 
@@ -200,7 +200,7 @@ class ArtifactDependencies(unittest.TestCase):
     def test_misdirected_official_extraction_fails_named_assertion(self):
         self.assert_extraction(self.extraction())
         config = json.loads((ROOT / 'renovate.json').read_text())
-        config['ignorePaths'] = ['release/**', 'tests/release/sample-target/**']
+        config['ignorePaths'] = ['templates/release/**', 'tests/release/sample-target/**']
         result = self.extraction(config)
         with self.assertRaisesRegex(AssertionError, 'Official updater extracts the parent SDK source'):
             self.assert_extraction(result)
@@ -223,7 +223,7 @@ class ArtifactDependencies(unittest.TestCase):
         shutil.copyfile(ROOT / 'renovate-config.json', project / 'renovate-config.json')
         files = sorted(p.relative_to(project).as_posix() for p in project.rglob('*') if p.is_file())
         (project / 'files.json').write_text(json.dumps(files))
-        guide = (ROOT / 'release/targets/README.md').read_text().split('## Product build and assembly\n', 1)[1].split('\n## ', 1)[0]
+        guide = (ROOT / 'templates/release/targets/README.md').read_text().split('## Product build and assembly\n', 1)[1].split('\n## ', 1)[0]
         fragments = [json.loads(block) for block in re.findall(r'```json\n(.*?)\n```', guide, re.S)]
         addition, = [fragment for fragment in fragments if 'ignorePaths' in fragment]
         configured = dict(existing, ignorePaths=(existing['ignorePaths'] + [addition['ignorePaths'][-1]]

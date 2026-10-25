@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 function functions(file, stop, names) {
-  const source = fs.readFileSync(path.join(root, 'release/partials', file), 'utf8').split(stop)[0];
+  const source = fs.readFileSync(path.join(root, 'templates/release/partials', file), 'utf8').split(stop)[0];
   return new Function(source + '\nreturn {' + names + '};')();
 }
 const {resolveRelease} = functions('resolve.js', '\nawait resolveRelease', 'resolveRelease');

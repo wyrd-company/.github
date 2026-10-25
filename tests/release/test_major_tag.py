@@ -39,7 +39,7 @@ class MajorTag(unittest.TestCase):
             (where / (name + '.json')).write_text(json.dumps(value, indent=2) + '\n')
 
     def test_optional_interview_and_required_record_selection(self):
-        questions = {q['id']: q for q in load(ROOT / 'release/template.yml')['interview']}
+        questions = {q['id']: q for q in load(ROOT / 'templates/release/template.yml')['interview']}
         enable = questions['major_tag_update']; unit = questions['major_tag_unit']
         self.assertEqual(enable['type'], 'confirm'); self.assertFalse(enable['default'])
         self.assertNotIn('when', enable, 'major-tag enable requires no part')
@@ -68,7 +68,7 @@ class MajorTag(unittest.TestCase):
         self.assertEqual(job['permissions'], {'contents': 'write'})
         self.assertEqual(job['needs'], ['resolve', 'preflight', 'release-record'])
         self.assertEqual(job['steps'][0]['with'], {'ref': '${{ needs.resolve.outputs.source_sha }}', 'fetch-depth': 0})
-        self.assertEqual(job['steps'][1]['with']['script'], (ROOT / 'release/partials/major-tag.js').read_text())
+        self.assertEqual(job['steps'][1]['with']['script'], (ROOT / 'templates/release/partials/major-tag.js').read_text())
         self.assertNotIn('sample-tool', job['steps'][1]['with']['script'])
         result = subprocess.run(['actionlint', str(workflow)], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -107,7 +107,7 @@ class MajorTag(unittest.TestCase):
         self.truth_table(parsed, [], 'empty-named-verification')
 
     def test_only_new_job_adds_write_permission(self):
-        parts = sorted(load(ROOT / 'release/template.yml')['data']['release_targets'])
+        parts = sorted(load(ROOT / 'templates/release/template.yml')['data']['release_targets'])
         answers = verification_answers(True)
         for part in parts:
             answers.update(json.loads((ROOT / 'tests/release/part-answers' / (part + '.json')).read_text()))
@@ -162,9 +162,9 @@ class MajorTag(unittest.TestCase):
         paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', BASE, '--', 'release'],
                                         cwd=ROOT, text=True).splitlines()
         for name in paths:
-            dest = baseline / name; dest.parent.mkdir(parents=True, exist_ok=True)
+            dest = baseline / 'templates' / name; dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(subprocess.check_output(['git', 'show', BASE + ':' + name], cwd=ROOT))
-        parts = sorted(load(ROOT / 'release/template.yml')['data']['release_targets'])
+        parts = sorted(load(ROOT / 'templates/release/template.yml')['data']['release_targets'])
         selections = [[part] for part in parts] + [[part, 'product-build'] for part in parts if part != 'product-build'] + [parts]
         receipts = []
         for selection in selections:

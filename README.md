@@ -17,19 +17,19 @@ merge updates automatically. Lock files are maintained weekly.
 
 ## Release workflow template
 
-`gh:wyrd-company/.github#release` renders `.github/workflows/release.yml` from
+`gh:wyrd-company/.github#templates/release` renders `.github/workflows/release.yml` from
 `.intentional/release-model.json`. Use a Toha build with document questions and
 part selection. Create and commit the model with `intentional model`, then run:
 
 ```sh
-toha apply gh:wyrd-company/.github#release .
+toha apply gh:wyrd-company/.github#templates/release .
 ```
 
 Choose the CI workflow file and, when more than one unit requires a GitHub
 Release, the unit marked latest. Optional publication targets add build,
 publish, verify, and credential declarations to the parent workflow. Available
 parts are `crates-io`, `npm`, `ghcr`, `homebrew-tap`, and `repo-wyrd-foo`;
-see the [part guide](release/targets/README.md) for answers, credentials and
+see the [part guide](templates/release/targets/README.md) for answers, credentials and
 qualification requirements.
 
 Push the source commit and Intentional tags, wait for successful push CI on that
@@ -41,7 +41,7 @@ one GitHub Release per required unit, then publishes and verifies.
 Update the workflow with:
 
 ```sh
-toha apply gh:wyrd-company/.github#release . --update
+toha apply gh:wyrd-company/.github#templates/release . --update
 ```
 
 The applied record and normal Toha update merge preserve operator changes,
@@ -53,10 +53,10 @@ validation, and live workflow proof cases.
 
 ## Airlock repository configuration template
 
-Apply `gh:wyrd-company/.github#airlock-config` beside the `release` template:
+Apply `gh:wyrd-company/.github#templates/airlock-config` beside the `release` template:
 
 ```sh
-toha apply gh:wyrd-company/.github#airlock-config .
+toha apply gh:wyrd-company/.github#templates/airlock-config .
 ```
 
 The default file declares accepted generation `0.6.0`. Enter a generation at
