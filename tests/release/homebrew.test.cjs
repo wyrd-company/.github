@@ -1,7 +1,7 @@
 // relationships: validates: release-process
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {homebrewRelease,formulaVersion,formulaDiff,compareVersions} = require('../../release/targets/homebrew-tap/homebrew.js');
+const {homebrewRelease,formulaVersion,formulaDiff,compareVersions} = require('../../templates/release/targets/homebrew-tap/homebrew.js');
 const {fixture,formula} = require('./homebrew-fixture.cjs');
 
 test('homebrew fresh update and identical retry',async()=>{

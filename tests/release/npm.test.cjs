@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {npmRelease, npmCommand} = require('../../release/targets/npm/npm.js');
+const {npmRelease, npmCommand} = require('../../templates/release/targets/npm/npm.js');
 
 function fixture(t, {mode = 'committed', version = '1.2.3', privatePackage = false} = {}) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-part-test-'));
