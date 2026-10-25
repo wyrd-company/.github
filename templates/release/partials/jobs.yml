@@ -1,0 +1,18 @@
+{# relationships: implements: release-process #}
+{% macro gate() -%}
+!cancelled() && !failure() && needs.resolve.result == 'success'{% for preflight in ns.preflight %} && needs.{{ preflight }}.result == 'success'{% endfor %}
+{%- endmacro %}
+{% macro part_job(id, units, stage, body, extra_env='', extra_if='') %}{% if major_tag_update | default(false) and stage == 'verify' and major_tag_unit in units | split(' ') %}{% set ns.major_verify = ns.major_verify + [id] %}{% endif %}
+  {{ id }}:
+    needs: {{ (['resolve'] + ns.preflight + (ns.build if stage != 'build' else []) + (ns.assemble if stage in ['publish', 'verify'] else []) + (['release-record'] if ns.record_units and stage in ['publish', 'verify'] else []) + (ns.publish if stage == 'verify' else [])) | tojson }}
+    if: >-
+      {{ gate() }} && ({% for unit in units | split(' ') %}{% if not loop.first %} || {% endif %}{% if stage in ['publish', 'verify'] and release_model.release_units[unit].release_record == 'required' %}({% endif %}contains(fromJSON(needs.resolve.outputs.units), '{{ unit }}'){% if stage in ['publish', 'verify'] and release_model.release_units[unit].release_record == 'required' %} && needs.release-record.result == 'success'){% endif %}{% endfor %}){% if extra_if %} && ({{ extra_if }}){% endif %}
+    env:
+      RELEASE_SOURCE_SHA: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      RELEASE_UNITS: {% raw %}${{ join(fromJSON(needs.resolve.outputs.units), ' ') }}{% endraw %}
+      RELEASE_JSON: {% raw %}${{ needs.resolve.outputs.releases }}{% endraw %}
+{% if extra_env %}{{ extra_env | indent(6, true) }}
+{% endif %}{{ body | indent(4, true) }}
+{% endmacro %}
+{% set ns.gate = gate %}
+{% set ns.part_job = part_job %}

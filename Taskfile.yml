@@ -1,0 +1,21 @@
+# relationships: validates: release-process
+version: '3'
+tasks:
+  test:
+    desc: Test the release template with a Toha composition build
+    cmds:
+      - python3 -m unittest discover -s tests/release -p 'test_*.py' -v
+      - node --test tests/release/*.test.cjs
+      - python3 -m unittest discover -s tests/airlock-config -p 'test_*.py' -v
+  lint:
+    cmds:
+      - ryl check -c .ryl.yml .
+  ci:
+    cmds:
+      - task lint
+      - task test
+  mutations:
+    requires:
+      vars: [ REPORT ]
+    cmds:
+      - python3 tests/release/mutations.py --report "{{.REPORT}}"

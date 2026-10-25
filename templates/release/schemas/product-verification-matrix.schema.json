@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wyrd-company/.github/blob/main/release/schemas/product-verification-matrix.schema.json",
+  "title": "Product verification runners",
+  "description": "Product-owned runner labels or arrays of self-hosted labels; one entry per selected unit and runner.",
+  "$defs": {
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "\\$\\{\\{"
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runners"
+  ],
+  "properties": {
+    "runners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/label"
+          },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/label"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$comment": "relationships: implements: release-process"
+}

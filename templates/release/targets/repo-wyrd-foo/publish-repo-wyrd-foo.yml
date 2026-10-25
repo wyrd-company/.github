@@ -1,0 +1,32 @@
+{# relationships: implements: release-process #}
+name: Submit Linux packages to repo.wyrd.foo
+runs-on: ubuntu-24.04
+permissions:
+  contents: read
+strategy:
+  fail-fast: false
+  matrix:
+    unit: {{ repo_wyrd_foo_units | split(' ') | tojson }}
+steps:
+  - name: Prepare release-record-bound package manifest
+    id: package
+    uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+    env:
+      PACKAGE_UNIT: {% raw %}${{ matrix.unit }}{% endraw %}
+      PACKAGE_MODEL: {{ release_model | tojson | replace('$', '\\u0024') | toyaml }}
+      PACKAGE_UNITS: {{ repo_wyrd_foo_units | toyaml }}
+      PACKAGE_MANIFEST_ASSET: {{ repo_wyrd_foo_manifest_asset | toyaml }}
+      PACKAGE_DRY_RUN: {{ repo_wyrd_foo_dry_run | tojson | toyaml }}
+    with:
+      script: |
+{% set script %}{% include 'targets/repo-wyrd-foo/prepare.js' %}{% endset %}{{ script | indent(8, true) }}
+  - name: Submit package selection
+    if: {% raw %}steps.package.outputs.submit == 'true'{% endraw %}
+    uses: wyrd-company/repo.wyrd.foo/.github/actions/submit-release@{{ repo_wyrd_foo_action_sha }} # {{ repo_wyrd_foo_action_tag }}
+    with:
+      manifest: {% raw %}${{ steps.package.outputs.manifest }}{% endraw %}
+      tag: {% raw %}${{ steps.package.outputs.tag }}{% endraw %}
+      version: {% raw %}${{ steps.package.outputs.version }}{% endraw %}
+      release-assets: {% raw %}${{ steps.package.outputs.assets }}{% endraw %}
+      app-client-id: {% raw %}${{ secrets.REPO_WYRD_FOO_PUBLISHER_APP_ID }}{% endraw %}
+      app-private-key: {% raw %}${{ secrets.REPO_WYRD_FOO_PUBLISHER_PRIVATE_KEY }}{% endraw %}

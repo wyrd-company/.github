@@ -1,0 +1,17 @@
+{# relationships: implements: release-process #}
+name: Publish crates.io packages
+runs-on: ubuntu-latest
+permissions:
+  contents: read
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - name: Publish or verify identical crates
+    env:
+      CARGO_REGISTRY_TOKEN: {% raw %}${{ secrets.CARGO_REGISTRY_TOKEN }}{% endraw %}
+      CRATES_MODEL: {{ release_model | tojson | replace('$', '\\u0024') | toyaml }}
+      CRATES_UNITS: {{ crates_io_units | toyaml }}
+    shell: bash
+    run: |
+      python3 <<'PY'
+{% set script %}{% include 'targets/crates-io/publish.py' %}{% endset %}{{ script | indent(6, true) }}
+      PY

@@ -1,0 +1,8 @@
+# relationships: implements: release-process
+# Reads release_units.<id>.path and release_record; versions come from resolve.
+units: ghcr_units
+build: []
+publish: [publish-ghcr]
+verify: []
+# GITHUB_TOKEN is automatic, not an operator-configured secret.
+credentials: {}
