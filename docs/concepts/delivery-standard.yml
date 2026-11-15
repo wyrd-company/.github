@@ -27,34 +27,75 @@ properties:
     and merges each template update into them. Toha pushes nothing and holds
     no secret.
   tier: >-
-    The sensitivity of a repository, declared once as an organization-owned
-    property of the repository. The test is what a bad release can reach. A
-    Custodial repository holds other people's secrets or data, or can change
-    other repositories. A Trusted repository runs inside other people's builds
-    and releases with their credentials. A Standard repository affects only
-    whoever runs it. The tier selects which controls its workflows carry,
-    which protection rules its environments have, and whether its secrets
-    rotate unattended. A repository cannot lower its own tier.
-  control: >-
-    One safeguard a workflow or the organization applies to a release or a
-    deploy. The controls are: creation of the release commit and tag by the
-    workflow; separate GitHub Apps for separate write operations; a key that
-    exists only in one protected environment; organization rulesets that make
-    tags immutable and refuse unclassified tags; a smoke workflow that proves
-    an authority without changing anything; a release rehearsal in continuous
-    integration for every commit with unreleased intents; a digest-sealed
-    release plan committed with the release; independent revalidation before
-    publication; provenance verified on read-back; clean-consumer installs
-    before and after publication; a durable evidence file on the release
-    record; recovery from the immutable tag that performs only missing work;
-    and a separate first-publication path for registries that need the
-    package to exist before federation.
+    What a bad release of the repository can reach. A Custodial repository
+    holds other people's secrets or data, or can change other repositories. A
+    Trusted repository runs inside other people's builds and releases with
+    their credentials. A Standard repository affects only whoever runs it.
+    The tier is an interview answer held in the applied record. It sets the
+    default for every assurance control and every ceremony control. The
+    organization's Airlock configuration can name a minimum tier for a
+    repository.
+  tier-questions: >-
+    The yes-or-no interview questions whose answers suggest a tier, which the
+    person answering then confirms or changes. Any yes among these suggests
+    Custodial: it stores or handles secrets, credentials, or personal data
+    that belong to someone other than the person running it; people sign in
+    to it or through it; it holds credentials that can change other
+    repositories, cloud accounts, or organization settings; it is a running
+    service that other people's data passes through. Otherwise any yes among
+    these suggests Trusted: it runs inside other repositories' build or
+    release workflows; it produces or changes what other projects ship, such
+    as versions, generated files, or base images; handling credentials or
+    tokens is its purpose. All no suggests Standard.
+  maturity: >-
+    The repository's lifecycle rung, as Airlock observes it from Intentional
+    tag records: Seeded before the baseline tag, Building from the baseline
+    tag, Released from the first release below 1.0.0, and Stable from the
+    first release at or above 1.0.0. Maturity is observed and never declared.
+    A release at or above 1.0.0 states that other people rely on the
+    repository.
+  floor: >-
+    The controls every repository carries at every tier and every rung from
+    Building: the workflow creates the release commit and tag through the
+    release authority; organization rulesets make tags immutable and refuse
+    unclassified tags; a job reaches a credential only through an environment
+    and Key Vault; and recovery runs from the immutable tag and performs only
+    missing work. No answer lowers the floor.
+  assurance: >-
+    The controls automation performs without a person. A release rehearsal in
+    continuous integration for every commit with unreleased intents, a
+    digest-sealed release plan committed with the release, independent
+    revalidation before publication, provenance verified on read-back, and a
+    durable evidence file on the release record are defaults at Trusted and
+    Custodial. A clean-consumer install runs after publication at Trusted and
+    before and after publication at Custodial. A smoke workflow that proves
+    the release authority without changing anything is a default at
+    Custodial. Assurance applies from the Released rung and does not vary
+    with maturity above it.
+  ceremony: >-
+    The controls that need a person. At Standard a release or deploy may
+    start automatically on merge, secrets rotate unattended, and a template
+    update may merge without review. At Trusted a person starts each release
+    or deploy and reviews each template update. At Custodial a person starts
+    it, a person approves it, and Elegua waits for a person before it
+    promotes a rotated secret. A tier's ceremony applies at the Stable rung.
+    Below Stable, every tier carries Standard's ceremony. Maturity relaxes
+    ceremony and never assurance.
+  deviation: >-
+    A control set below its tier's default, recorded in the applied record
+    with a reason. Airlock reports every deviation. Setting a control above
+    its default needs no reason.
   release-authority: >-
     A GitHub App that is the only actor allowed to create a release commit on
     the default branch and its tag. The release workflow uses it inside a
     protected environment after validation finishes in a job that holds no
-    key. Every tier releases this way; no person's workstation writes a
-    release commit or a release tag.
+    key, and the token it mints is limited to the one repository. Every tier
+    releases this way; no person's workstation writes a release commit or a
+    release tag. A repository whose packages receive their own tags after
+    publication uses a second App that can create only those tags. The
+    templates name the Intentional Apps by default. An adopter outside the
+    organization installs those Apps or creates its own from the published
+    instructions.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
     job to a credential, and it carries the protection rules the tier
@@ -96,31 +137,32 @@ features:
     only the Key Vault secrets its part declares.
   audit-conformance: >-
     Airlock reads the applied record, the release model, the repository
-    settings, and the tier, and reports whether the repository runs the
-    standard its tier requires.
+    settings, the tier, and the observed maturity, and reports whether the
+    repository carries the controls its tier and rung require, with every
+    deviation.
 open-questions:
   Q01: >-
-    Which controls does each tier carry?
-  Q02: >-
     Does a deployed product carry an Intentional version and a release record,
-    or does a deploy identify itself by an accepted commit? Proposed: a deploy
-    ships an Intentional release at the upper two tiers.
-  Q03: >-
+    or does a deploy identify itself by an accepted commit? Maturity is
+    observed from Intentional tag records, so a product without them has no
+    observed rung. Proposed: every deployed product carries an Intentional
+    version.
+  Q02: >-
     Which part opens the template update pull request in each adopting
     repository?
-  Q04: >-
+  Q03: >-
     How are products and environments separated across cloud accounts?
     Proposed: one cloud account per product, with a separate account per
     environment available at the highest tier.
-  Q05: >-
+  Q04: >-
     How does a deploy sign in to an AWS account type that refuses federation?
     Proposed: one limited access key held in Key Vault.
-  Q06: >-
+  Q05: >-
     Can a workflow have Key Vault sign for a GitHub App so that the App's
     private key never reaches a runner?
-  Q07: >-
+  Q06: >-
     Where does an operator see every domain and its state?
-  Q08: >-
+  Q07: >-
     Which workflows other than release and deploy does the standard render:
     continuous integration, documentation publishing, audit?
 exclusions:
