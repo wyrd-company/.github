@@ -1,0 +1,48 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Build the Worker once and deploy the bundle
+relationships:
+  contextualizes:
+    - deploy-process
+description: >-
+  A Cloudflare Worker deploy needs an API token, and its build runs the
+  repository's code and its dependencies' code. A job that can request an
+  OpenID Connect token can reach every credential its environment federates
+  to, from any step, so code that runs in that job runs with the credential's
+  reach.
+considered-options:
+  1: >-
+    Build and deploy in the deploy job, with `wrangler deploy` bundling the
+    source. The adopter deploys this way by hand today, but the build and
+    every dependency it loads run inside the environment.
+  2: >-
+    Build the bundle without credentials with
+    `wrangler deploy --dry-run --outdir`, carry it to the deploy job as an
+    artifact, and deploy it unchanged with `wrangler deploy --no-bundle`. No
+    repository or dependency code runs beside the credential, and the
+    deployed bytes are the built bytes.
+  3: >-
+    Upload a version from the build with `wrangler versions upload` and
+    deploy it with `wrangler versions deploy`. The upload needs the token, the
+    first upload of a Worker must be a `wrangler deploy`, and a Durable Object
+    migration cannot be applied by a version upload.
+decision-outcome:
+  chosen-option: 2
+  justification: >-
+    It matches the release workflow, where everything that ships is built in
+    jobs that hold no credential and the credentialed job only delivers, and
+    it keeps `wrangler deploy`, which applies Durable Object migrations and
+    queue consumers.
+expected-outcomes:
+  positive:
+    - >-
+      The deploy job runs Wrangler and nothing else from the repository.
+    - >-
+      The bundle's digests tie what was deployed to what was built.
+  negative:
+    - >-
+      The flow rests on `wrangler deploy --no-bundle` accepting the dry run's
+      output, which the assumption `wrangler-deploys-a-prebuilt-bundle` holds
+      until a spike proves it.
+    - >-
+      The build runs once per environment, because environments can bundle
+      differently.
