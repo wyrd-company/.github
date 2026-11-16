@@ -52,5 +52,5 @@ expected-outcomes:
       the approval job; the rendered workflow, its review and Airlock's audit
       do.
     - >-
-      Each repository that can require approval carries one or two extra
-      environments.
+      A repository that can require approval carries one more environment for
+      its releases and one more for each deploy environment.
