@@ -105,19 +105,20 @@ proposed-design:
     mode; a mode of `none` ends the run with a job summary and success. Check
     credentials is one `preflight-<environment>` job per credential
     environment the run enters. Build holds the jobs that turn the source into
-    what ships: release part jobs prefixed `build-`, `assemble-` and
-    `consume-`, and the deploy part's job prefixed `build-`. Record holds the
-    release workflow's `approve-release`, `record`, `release-record` and, at
-    `revalidation` on, `revalidate`; the deploy workflow's record is the
-    GitHub deployment that each deploy job creates by entering its
-    environment, together with the version annotations the Worker part writes.
-    Deliver holds release part jobs prefixed `publish-` and the deploy
-    workflow's `approve-<environment>` and `deploy-<environment>`. Verify
-    holds release part jobs prefixed `verify-`, the parent's
-    `verify-provenance`, `prepare-after-publication-tags`,
-    `tag-after-publication` and `evidence`, and deploy jobs
-    `verify-<environment>`. A job id is unique in its workflow, and a part
-    cannot declare a job id that the parent uses.
+    what ships, all without credentials: release part jobs prefixed `build-`,
+    `assemble-` and `consume-`, the release parent's `attest`, and the deploy
+    part's job prefixed `build-`. Record holds the release workflow's
+    `approve-release`, `record`, `release-record` and, at `revalidation` on,
+    `revalidate`; the deploy workflow's record is the GitHub deployment that
+    each deploy job creates by entering its environment, together with the
+    version annotations the Worker part writes. Deliver holds release part
+    jobs prefixed `publish-` and the deploy workflow's `approve-<environment>`
+    and `deploy-<environment>`. Verify holds release part jobs prefixed
+    `verify-`, the parent's `verify-provenance`,
+    `prepare-after-publication-tags`, `tag-after-publication`, `evidence` and
+    `request-deploy`, and deploy jobs `verify-<environment>`. A job id is
+    unique in its workflow, and a part cannot declare a job id that the parent
+    uses.
 
   job-graph: >-
     Every job needs every job of every earlier stage, so the order holds when
@@ -222,9 +223,11 @@ proposed-design:
     missing variable, a refused sign-in, an absent or disabled secret, a JSON
     secret without a declared member, and a refused signature each fail the
     job with a line naming the environment, the variable, secret or App, and
-    its declared purpose, never a value. Every credential the selected parts
-    declare is checked on every run, so a missing credential is found before
-    any build.
+    its declared purpose, never a value. An environment that carries only
+    trusted publishing has nothing to read; its preflight proves that the
+    environment admits the run. Every credential the selected parts declare
+    is checked on every run, so a missing credential is found before any
+    build.
 
   ceremony-at-run-time: >-
     `resolve` reads `.github/delivery/release.json` from the commit the
@@ -255,25 +258,28 @@ proposed-design:
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
     and a `workflow_run` trigger on the workflow named by `ci_workflow_name`
-    with `types: [completed]`, and `concurrency` group `release` without
-    cancelling. The deploy workflow has `name: Deploy`, a `workflow_dispatch`
-    trigger and a `workflow_run` trigger on `Release` with
-    `types: [completed]`, and `concurrency` group `deploy` without
-    cancelling. For a `workflow_run` event, `resolve` requires
-    `github.event.workflow_run.head_repository.full_name` to be the
-    repository and `head_branch` to be the default branch, and otherwise ends
-    with mode `none`; the release workflow also requires the triggering run's
-    `event` to be `push`, and each workflow decides what a triggering run that
-    did not succeed means: the release workflow fails on a conclusion of
-    `failure`, `timed_out`, `startup_failure` or `action_required` and ends
-    with mode `none` on `cancelled`, `skipped`, `neutral` or `stale`, and the
-    deploy workflow ends with mode `none` on any conclusion but `success`. A deploy that follows an automatic release is two
-    `workflow_run` links after continuous integration, within the chain that
-    GitHub runs. GitHub keeps one
-    running and one pending run per concurrency group and cancels an older
-    pending run when a newer one queues, so a dispatch that waits behind a
-    running release can be replaced by a later run; a run waiting for an
-    approval holds its group. Both workflows are fixed paths,
+    with `types: [completed]`. The deploy workflow has `name: Deploy` and
+    only a `workflow_dispatch` trigger, with the inputs `release-tag`,
+    `from` and `automatic`; a person dispatches it, and the release
+    workflow's `request-deploy` job dispatches it with `automatic: true` only
+    after a run that released the deployed unit. For a `workflow_run` event,
+    `resolve` requires `github.event.workflow_run.head_repository.full_name`
+    to be the repository, `head_branch` to be the default branch and `event`
+    to be `push`, and otherwise ends with mode `none`; it fails on a
+    triggering conclusion of `failure`, `timed_out`, `startup_failure` or
+    `action_required` and ends with mode `none` on `cancelled`, `skipped`,
+    `neutral` or `stale`. Each workflow has workflow-level `concurrency`
+    group `release` or `deploy` without cancelling. GitHub keeps one running
+    and one pending run per group and cancels the older pending run when a
+    newer one queues, so the design makes every run that can queue cover the
+    work of any run it replaces: an automatic release run releases the
+    default branch head at the moment it resolves, which holds every pending
+    intent of an earlier source commit; a deploy run exists only for a
+    release that was made or a person's request, and a newer one deploys a
+    newer release; no run that ends with mode `none` can follow a delivery
+    and replace it. A person's dispatch replaced while pending shows as
+    cancelled, and the person dispatches again. A run waiting for an approval
+    holds its group. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.
 
   rehearsal-workflows: >-
@@ -313,7 +319,9 @@ proposed-design:
     update. The organization Renovate preset excludes the files the templates
     render, `.github/workflows/release.yml`, `release-rehearsal.yml`,
     `release-authority-smoke.yml`, `intentional.yml`, `deploy.yml`,
-    `deploy-rehearsal.yml` and `.github/release-artifact-client/**`, through
+    `deploy-rehearsal.yml`, `airlock-audit.yml`,
+    `.github/release-artifact-client/**` and `.github/deploy-wrangler/**`,
+    through
     `ignorePaths`, and a repository with its own `ignorePaths` keeps them in
     its list.
 

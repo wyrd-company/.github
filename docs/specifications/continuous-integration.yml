@@ -17,9 +17,10 @@ description: >-
   Triggers. It runs on `push` to the default branch and on `pull_request`. A
   push run that concludes `success` is the statement that the commit passed
   continuous integration. The release workflow starts automatically from the
-  `workflow_run` event of a completed push run on the default branch, and
-  every release, automatic or dispatched, requires a push run of this workflow
-  for exactly its source commit with `conclusion: success`, found through
+  `workflow_run` event of a completed push run on the default branch and
+  releases the default branch head, and every release, automatic or
+  dispatched, requires a push run of this workflow for exactly its source
+  commit with `conclusion: success`, found through
   `GET /repos/<owner>/<repository>/actions/workflows/<ci_workflow>/runs` with
   `head_sha`, `event=push` and `status=success`. A release whose source
   commit has no such run fails in `resolve`, whether a dispatch or a

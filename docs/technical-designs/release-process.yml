@@ -95,16 +95,18 @@ proposed-design:
     `gh:wyrd-company/.github#templates/<name>`. `templates/release/` holds
     `template.yml` (the interview, the schema directory and the part data),
     `schemas/release-model-1.schema.yml` (vendored, see
-    release-model-acceptance),
-    `partials/` (the release workflow's own fragments), `skeleton/` (the copy
-    of `templates/skeleton/` that `delivery-skeleton` defines), `targets/<part>/`
-    (each part's `target.yml` and job partials) and `template/`, the source
-    directory whose files are rendered: `.github/workflows/release.yml`,
-    `release-rehearsal.yml`, `release-authority-smoke.yml`, `intentional.yml`
-    and `.github/delivery/release.json`. The parts are `product-build`,
+    release-model-acceptance), `partials/` (the release workflow's own
+    fragments), `skeleton/` (the copy of `templates/skeleton/` that
+    `delivery-skeleton` defines), `targets/<part>/` (each part's `target.yml`
+    and job partials) and `template/`, the source directory whose files are
+    rendered: `.github/workflows/release.yml`, `release-rehearsal.yml`,
+    `release-authority-smoke.yml`, `intentional.yml` and
+    `.github/delivery/release.json`. The parts are `product-build`,
     `crates-io`, `npm`, `ghcr`, `homebrew-tap` and `repo-wyrd-foo`.
-    `templates/airlock-config/` renders `.github/airlock.yml`, and `airlock/`
-    holds the organization policy that Airlock resolves.
+    `templates/airlock-config/` renders `.github/airlock.yml`,
+    `.github/workflows/airlock-audit.yml` and
+    `.github/delivery/airlock-config.json`, as `delivery-controls` states, and
+    `airlock/` holds the organization policy that Airlock resolves.
 
   release-model-acceptance: >-
     The interview starts with question `release_model`: `type: document`,
@@ -143,33 +145,38 @@ proposed-design:
     `resolve` sets the run's `mode`. With `workflow_dispatch`, the input
     `source-sha` is required and must be 40 lowercase hexadecimal characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
-    (default false) chooses the baseline mode. With `workflow_run`, the source
-    commit is `github.event.workflow_run.head_sha`; the run is mode `none`
-    when the triggering run was not a `push` on the default branch or was
-    cancelled or skipped, and `resolve` fails, naming the triggering run, when
-    that push run failed, as `delivery-skeleton` lists. `resolve` checks out the source commit with
-    `fetch-depth: 0`, which brings every tag with its tag object, and
-    `persist-credentials: false`, reads the default branch head from `GET /repos/<owner>/<repository>/git/ref/heads/<default>`,
-    and refuses to continue when the repository's effective rulesets do not
-    refuse updates and deletions of tags. Mode `baseline` requires a dispatch
-    whose source commit is the default branch head and creates the baseline
-    tags that `intentional tag --baseline` computes. Otherwise `resolve` runs
-    `intentional plan`. An empty plan is mode `none` for an automatic run and
-    fails a dispatch. A plan whose released unit has a primary tag with
-    `require_phase: after-publication` fails and names the unit and the tag.
+    (default false) chooses the baseline mode. With `workflow_run`, the run is
+    mode `none` when the triggering run was not a `push` on the default branch
+    or was cancelled or skipped, and `resolve` fails, naming the triggering
+    run, when it failed, as `delivery-skeleton` lists; otherwise the source
+    commit is the default branch head at the moment `resolve` reads it, so an
+    automatic run always releases everything pending, whichever completion of
+    continuous integration started it. `resolve` checks out the source commit
+    with `fetch-depth: 0`, which brings every tag with its tag object, and
+    `persist-credentials: false`, reads the default branch head from
+    `GET /repos/<owner>/<repository>/git/ref/heads/<default>`, and refuses to
+    continue when the rulesets check of `delivery-controls` fails. Mode
+    `baseline` requires a dispatch whose source commit is the default branch
+    head and creates the baseline tags that `intentional tag --baseline`
+    computes. Otherwise `resolve` runs `intentional plan`. An empty plan is
+    mode `none` for an automatic run and fails a dispatch. A plan whose
+    released unit has a primary tag with `require_phase: after-publication`
+    fails and names the unit and the tag, and a plan with a tag whose name
+    matches a ruleset pattern of the other phase fails and names the tag.
     When no tag of the plan that the release commit carries exists, the mode
-    is `release`, and the source commit must be the default branch head: an
-    automatic run whose source is no longer the head is mode `none` with the
-    summary that a later commit superseded it, and a dispatch fails. When
-    every such tag exists, the mode is `recover`: each must be annotated,
-    pass `intentional verify <tag> --json`, and point at one commit whose
-    only parent is the source commit and which the default branch head
-    contains. Any other combination fails and names the tags. Modes `release`
-    and `recover` require continuous integration evidence for the source
-    commit as `continuous-integration` defines. Finally `resolve` computes
-    the effective ceremony at the rung the repository holds once the plan's
-    versions exist, and an automatic run whose effective `release-start` is
-    `person` is mode `none`.
+    is `release`: the source commit must be the default branch head and the
+    run's `github.sha`, and an automatic run whose source is no longer the
+    head, or whose `github.sha` differs from it, is mode `none` with the
+    summary that the next completion of continuous integration releases it;
+    a dispatch fails. When every such tag exists, the mode is `recover`: each
+    must be annotated, pass `intentional verify <tag> --json`, and point at
+    one commit whose only parent is the source commit and which the default
+    branch head contains. Any other combination fails and names the tags.
+    Modes `release` and `recover` require continuous integration evidence for
+    the source commit as `continuous-integration` defines. Finally `resolve`
+    computes the effective ceremony at the rung the repository holds once the
+    plan's versions exist, and an automatic run whose effective
+    `release-start` is `person` is mode `none`.
 
   release-commit: >-
     In mode `release`, `resolve` runs `intentional apply`, then the
@@ -180,7 +187,9 @@ proposed-design:
     dates one second after the source commit's committer date with its UTC
     offset, and the message `chore(release): ` followed by the plan's tag
     names in `tag_order`, separated by a comma and a space. The release
-    commit's only parent is the source commit. `resolve` then runs
+    commit's only parent is the source commit. `resolve` builds the release
+    commit twice, in two fresh checkouts of the source commit, and fails
+    unless both have the same commit id. It then runs
     `intentional tag --plan <plan>` and
     `intentional tag --plan <plan> --phase before-publication`, whose tag
     objects Intentional writes with a fixed tagger and the release commit's
@@ -189,34 +198,53 @@ proposed-design:
     and uploads it with the plan as the artifact `release-candidate`. It
     uploads `release-outcome.json`, holding `mode`, `source_sha`,
     `release_sha` and `releases`, as the artifact `release-outcome` in every
-    mode, for the deploy workflow.
+    mode, which the run's final `request-deploy` job reads.
+
+  prepare-recipe: >-
+    The prepare recipe is a local action that receives the working tree
+    after `intentional apply` and the parent's `RELEASE_` values, and changes
+    only files under the repository that are derived from the versions, such
+    as lock files and generated version constants. Its output is a function
+    of the tree it receives and the toolchain the repository pins: it reads no
+    clock, no random source, no environment value other than `RELEASE_`
+    values, and no network resource other than registry content pinned by a
+    lock file's integrity hashes. `resolve` enforces what it can observe by
+    the double construction above, which fails the run before anything is
+    pushed. When `revalidate`, after the push, builds a different release
+    commit, it fails, the deliver stage does not run, and the release stays
+    recorded and undelivered; a recovery dispatch repeats the same check and
+    fails the same way, and the repository releases a new version once the
+    recipe is fixed.
 
   record: >-
     `approve-release` runs after the build stage in modes `release` and
-    `baseline` when the effective `release-approval` is `person`; it enters
-    `release-approval` with no permission and does nothing else, so GitHub holds it until a person
-    approves. `record` then enters `release-authority` with `contents: read`,
-    `actions: read` and `id-token: write`, and runs only Git, the token
-    action and the skeleton's checks. When the effective `release-approval` is `person`, it
-    runs the approval check first. In mode `release` it checks out the source
-    commit, downloads `release-candidate`, runs `git bundle verify`, fetches
-    the bundle, and checks with Git alone that the release commit's only
-    parent is the source commit, that the bundled tags are exactly the plan's
-    tags with no `require_phase` or with `before-publication`, by name, that
-    every bundled tag is annotated, points
-    at the release commit and carries a tag record whose first line is
-    `intentional release record` and whose `plan-digest` is the plan's
-    `digest`, and, at `sealed-plan` on, that the committed plan's `digest` is
-    that same value. It reads the default branch head again and
-    requires it to be the source commit. It then runs the token action for the
-    calling repository with `permission-contents: write`, and pushes with
-    `git push --atomic` the release commit to `refs/heads/<default>` and every
-    bundled tag to its name, passing the token in an `http.extraheader` set
-    for that one command. It reads the remote branch and every tag back and
-    requires the pushed object ids. In mode `recover` it requires every tag
+    `baseline`, the modes in which `record` pushes, when the effective
+    `release-approval` is `person`; it enters `release-approval` with no
+    permission and does nothing else, so GitHub holds it until a person other
+    than the run's starter approves. `record` then enters `release-authority`
+    with `contents: read`, `actions: read` and `id-token: write`, and runs
+    only Git, the token action and the skeleton's checks. In the modes that
+    push, when the effective `release-approval` is `person`, it runs the
+    approval check first. In mode `release` it checks out the source commit,
+    downloads `release-candidate`, runs `git bundle verify`, fetches the
+    bundle, and checks with Git alone that the release commit's only parent is
+    the source commit, that the bundled tags are exactly the plan's tags with
+    no `require_phase` or with `before-publication`, by name, that every
+    bundled tag is annotated, points at the release commit and carries a tag
+    record whose first line is `intentional release record` and whose
+    `plan-digest` is the plan's `digest`, and, at `sealed-plan` on, that the
+    committed plan's `digest` is that same value. It reads the default branch
+    head again and requires it to be the source commit. It then runs the
+    token action for the calling repository with `permission-contents: write`,
+    and pushes with `git push --atomic` the release commit to
+    `refs/heads/<default>` and every bundled tag to its name, passing the
+    token in an `http.extraheader` set for that one command. It reads the
+    remote branch and every tag back and requires the pushed object ids. In
+    mode `recover` it mints no token, needs no approval, requires every tag
     the release commit carries to exist on the remote and point at the
-    release commit, and pushes nothing. In mode `baseline` it pushes the
-    baseline tags atomically and updates no branch.
+    release commit, and pushes nothing: a recovery delivers only what the
+    approved release recorded. In mode `baseline` it pushes the baseline tags
+    atomically and updates no branch.
 
   release-records: >-
     The release record is the GitHub Release of one release of one Release
@@ -262,31 +290,54 @@ proposed-design:
     primary tag to peel to the release commit and pass `intentional verify`,
     and the release commit's only parent to be the source commit. It builds
     the release commit again from the source commit, exactly as `resolve`
-    does, and requires the same commit id. It proves the continuous
-    integration evidence for the source commit again. For each release
-    record it downloads the published assets and requires each asset's
-    SHA-256 to equal the matching build artifact's and the published
-    `SHA256SUMS` to list exactly those digests.
+    does, and requires the same commit id, with the outcome `prepare-recipe`
+    states when it differs. It proves the continuous integration evidence for
+    the source commit again. For each release record it downloads the
+    published assets and requires each asset's SHA-256 to equal the matching
+    build artifact's and the published `SHA256SUMS` to list exactly those
+    digests.
 
   deliver: >-
     Each part's `publish-` jobs check out the release commit. A part that
-    declares a secret or an App runs in the environment `publish-<part>`, and
-    the parent writes the credential steps of `delivery-skeleton` as the
-    job's first steps. Each publish job reads the registry or target first
-    and does only what is missing: a version already published with the same
-    bytes succeeds, and different bytes fail before any write. A publish job
-    of a unit that requires a release record runs only when that unit's
-    `release-record` succeeded. The `repo-wyrd-foo` part mints its publisher
-    token with the token action, for the package inbox repository, and hands
-    the submit action that token rather than a key.
+    declares a secret, an App or trusted publishing runs its deliver jobs in
+    the environment `publish-<part>`, and the parent writes the credential
+    steps of `delivery-skeleton` as the job's first steps; a part that
+    publishes through a registry's trusted publishing, such as `npm` with
+    `npm_trusted_publishing`, always runs in `publish-<part>`, and the
+    registry's trust names that environment. A credentialed job publishes
+    bytes that a credential-free build job made, and runs the registry client
+    with its own build, verification and lifecycle scripts off: `crates-io`
+    packages and verifies each crate with `cargo package` in the build job
+    `build-crates-io`, uploads the `.crate` files, and publishes each with
+    `cargo publish --no-verify` after requiring that `cargo package
+    --no-verify` reproduces the uploaded file's SHA-256; `npm` packs each
+    package with `npm pack` in `build-npm` and publishes the uploaded tarball
+    with `npm publish <tarball> --ignore-scripts`; `ghcr` builds each image as
+    an OCI layout in `build-ghcr` and pushes that layout by digest. Each
+    publish job reads the registry or target first and does only what is
+    missing: a version already published with the same bytes succeeds, and
+    different bytes fail before any write. A publish job of a unit that
+    requires a release record runs only when that unit's `release-record`
+    succeeded. The `repo-wyrd-foo` part mints its publisher token with the
+    token action, for the package inbox repository, and hands the submit
+    action that token rather than a key.
 
   verify: >-
     Each part's `verify-` jobs read back what was published. At
     `provenance` on, `verify-provenance` downloads every asset of every
     release record, other than `SHA256SUMS` and `release-evidence.json`, and
     runs `gh attestation verify <file> --repo <owner>/<repository>
-    --signer-workflow <owner>/<repository>/.github/workflows/release.yml`,
-    with `contents: read` and `attestations: read`. When the release model
+    --signer-workflow <owner>/<repository>/.github/workflows/release.yml
+    --source-ref refs/heads/<default branch> --source-digest <source commit>
+    --signer-digest <source commit> --cert-oidc-issuer
+    https://token.actions.githubusercontent.com --deny-self-hosted-runners`,
+    with `contents: read` and `attestations: read`. An attestation's source
+    identity is the run's, not the commit a job checked out: the `attest` job
+    of the mode `release` run attests with that run's `github.ref`, the
+    default branch, and its `github.sha` and `github.workflow_sha`, which
+    `resolve` requires to be the source commit, so the expected digests are
+    the source commit's, in mode `recover` as well. An attestation from the
+    same workflow path at another ref or commit fails. When the release model
     gives any tag `require_phase: after-publication`,
     `prepare-after-publication-tags` runs after every verify job of the run
     has succeeded, with `contents: read` and no environment: it checks out the
@@ -297,32 +348,45 @@ proposed-design:
     `after-publication-tags`. `tag-after-publication` then enters
     `package-tags`, checks with Git alone that the bundled tags are exactly
     the plan's tags with `after-publication`, by name, and that each is
-    annotated and points at the release commit,
-    skips tags already on the remote that point at the same tag object, and
-    pushes the rest atomically with a token the token action mints from the
-    package tags App with `permission-contents: write`. At `evidence` on,
-    `evidence` runs last with `contents: write` through `GITHUB_TOKEN`: it
-    writes `release-evidence.json` and attaches it to each release record,
-    and when the asset already exists it succeeds only if the bytes are
-    identical. Airlock keeps GitHub's immutable releases off for the
-    repository, so the evidence file can join a published record.
+    annotated and points at the release commit, skips tags already on the
+    remote that point at the same tag object, and pushes the rest atomically
+    with a token the token action mints from the package tags App with
+    `permission-contents: write`. At `evidence` on, `evidence` runs with
+    `contents: write` through `GITHUB_TOKEN`: for each release record it
+    writes `release-evidence.json` and attaches it when the record has none,
+    succeeds without change when the attached file has the same bytes, and
+    fails, naming the difference, otherwise. Because the file holds only
+    facts of the release, a later dispatch or a re-run writes the same bytes,
+    so a run that attached evidence to some records and stopped is completed
+    by the next. Airlock keeps GitHub's immutable releases off only for a
+    repository whose effective `evidence` is `on`, as the decision record
+    `keep-release-assets-mutable-for-evidence` states. The run's last job,
+    `request-deploy`, runs when `.github/delivery/deploy.json` exists in the
+    release commit and the run released the unit it names: with
+    `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
+    that unit's release tag and the input `automatic` set to `true`.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
     space indent, one final newline, with `$schema`
-    `https://wyrd.foo/delivery/release-evidence/1`. It holds `repository`;
-    `run` with `id`, `attempt` and `url`; `source_commit`; `release_commit`;
-    `plan_digest`; `tier`; `ceremony`, the effective ceremony; `ci` with the
-    push run's `id`, `head_sha` and `conclusion`; and `units`, mapping each
-    released unit id to `tag`, `version`, `prerelease`, `assets` (each `name`
-    with its `sha256`), `publications` and `consumers`. Each part's publish
-    and verify jobs upload a fragment artifact `evidence+<job id>+<unit>`,
-    a JSON object with `publications`, each a `part`, a `coordinate` such as
+    `https://wyrd.foo/delivery/release-evidence/1`, and holds only facts of
+    the release, so every run that writes it for one release writes the same
+    bytes. It holds `repository`; `source_commit`; `release_commit`;
+    `plan_digest`; `tier` and `ceremony`, read from
+    `.github/delivery/release.json` at the release commit and computed at the
+    release's governing rung; `ci` with the workflow file, `head_sha` and
+    `conclusion`; and `units`, mapping each released unit id to `tag`,
+    `version`, `prerelease`, `assets` (each `name` with its `sha256`),
+    `publications` and `consumers`. Each part's publish and verify jobs upload
+    a fragment artifact `evidence+<job id>+<unit>`, a JSON object with
+    `publications`, each a `part`, a `coordinate` such as
     `npm:@scope/name@1.2.3`, the `sha256` of the bytes read back, and, when
     the part verified provenance, `provenance` with `predicate_type` and
     `signer_workflow`; and `consumers`, each a `part`, a `phase` (`before` or
-    `after`), a `runner` and a `result`. A unit without a release record has
-    its evidence in the run's artifact `release-evidence` only.
+    `after`), a `runner` and a `result`. The run's identity, its id, attempt
+    and URL, goes to the run's artifact `release-run` and its job summary,
+    never to the evidence file. A unit without a release record has its
+    evidence in the run's artifact `release-evidence` only.
 
   phased-tags: >-
     A run identifies a release by its primary tags, which the release commit
@@ -356,10 +420,23 @@ proposed-design:
     permission to `read` or `write`; and `purpose`. A part's job keys never
     equal a parent job id. The parent mints each App's token in a step with
     id `app-<key>` and gives the part's steps `steps.app-<key>.outputs.token`
-    through `env`. A part that declares a credential or an App runs its
-    deliver jobs in `publish-<part>`; its other jobs, and every job of a part
-    that declares neither, enter no environment. Repository tests refuse
-    repeated keys within an interface.
+    through `env`. A part's `target.yml` lists `trusted_publishing`, the
+    registries it publishes to through federation. A part that declares a
+    credential, an App or trusted publishing runs its deliver jobs in
+    `publish-<part>`; its other jobs, and every job of a part that declares
+    none, enter no environment. Repository tests refuse repeated keys within
+    an interface.
+
+  attest: >-
+    At `provenance` on, the parent's `attest` job runs after every build and
+    assembly job, in mode `release` only, with `contents: read`,
+    `actions: read`, `id-token: write` and `attestations: write` and no
+    environment. It downloads every `release-asset+<unit>+<name>` artifact of
+    the run, runs no repository or dependency code, and attests each file
+    with `actions/attest-build-provenance`. It is the only job without an
+    environment that holds `id-token: write`, and since every registry's
+    trusted publishing names a `publish-<part>` environment, its token
+    publishes nothing.
 
   part-job-schema: >-
     The skeleton's `schemas/part-job.schema.json`, which both templates use,
@@ -372,8 +449,10 @@ proposed-design:
     `strategy`, `container`, `services`, `outputs` and `steps` (required). It
     refuses `needs`, `if`, `uses`, `secrets`, `environment`,
     `continue-on-error` and `concurrency`. `permissions` admits only
-    `contents: read`, `actions: read`, `id-token: write`,
-    `attestations: write` and `packages: read` or `write`. `env` names cannot
+    `contents: read`, `actions: read` and `packages: read` in build,
+    assembly, clean-consumer and verify jobs, and additionally
+    `id-token: write` and `packages: write` in deliver jobs, which run in
+    `publish-<part>` whenever they request `id-token: write`. `env` names cannot
     start with `RELEASE_`, `DEPLOY_`, `AZURE_` or `GITHUB_`. A step has
     exactly one of `uses` and `run`; `uses` is a local `./` path or
     `owner/repo[/path]@<40-hex commit> # <version>`. `run` and step `if`
@@ -416,9 +495,8 @@ proposed-design:
     the build action on the release commit with `unit`, `target` and
     `output-directory`; the assembly action receives `unit`,
     `input-directory` and `output-directory`. Both inherit the parent's
-    `RELEASE_` values and request only `contents: read`, and at `provenance`
-    on also `id-token: write` and `attestations: write` for the parent's
-    attestation step. Recipes write regular files directly in their output
+    `RELEASE_` values and request only `contents: read`; the parent's
+    `attest` job attests their output. Recipes write regular files directly in their output
     directory, with distinct names across targets and assembly; empty output
     fails. The parent provisions the official `@actions/artifact` package from
     the parent-owned `targets/product-build/artifact-client/package.json` and
@@ -453,17 +531,20 @@ proposed-design:
     `contents: read` and `id-token: write`, runs the token action for the
     calling repository with `permission-contents: read`, requires
     `GET /installation/repositories` with that token to list exactly the
-    calling repository, requires the repository's effective rulesets read with
-    `GITHUB_TOKEN` to refuse tag updates and deletions, to restrict tag
-    creation, and to require a pull request on the default branch, and writes
-    the result to the job summary. It changes nothing, and its token is
-    revoked when the job ends.
+    calling repository, runs the rulesets check of `delivery-controls` with
+    `GITHUB_TOKEN`, which proves each ruleset present and `active` with its
+    conditions and rules and cannot see its bypass actors, and writes the
+    result to the job summary. It changes nothing, and its token is revoked
+    when the job ends.
 
   intentional-check: >-
-    `intentional.yml` runs on `pull_request` with one job, `intentional`,
-    holding `contents: read`. It installs the pinned Intentional, runs
+    `intentional.yml` runs on `pull_request` with two jobs holding
+    `contents: read`. `intentional` installs the pinned Intentional, runs
     `intentional check`, and fails when `intentional status --json` reports
-    `release_model_stale` as true.
+    `release_model_stale` as true. `delivery` reads
+    `.github/delivery/release.json` at the pull request's base and head, and
+    fails when the head's `tier` ranks below the base's and the head's
+    `tier_reason` is absent or equal to the base's.
 
   resolve-outputs: >-
     Beyond the skeleton's outputs, `resolve` exposes `plan_digest`,
@@ -488,31 +569,45 @@ proposed-design:
   implementation-validation: >-
     Local render tests cover every part alone and together, each tier, each
     control set on and off, and each stage empty, and validate every rendered
-    declaration against the declaration schema. A condition table checks every
-    gate for success, skip, failure, cancellation and empty released units.
-    Tests of `resolve` against local repositories with a local bare remote
-    cover modes `release`, `recover`, `baseline` and `none`, a superseded
-    source commit, a partial set of tags, a primary tag with
-    `after-publication`, a missing continuous integration run and a missing
-    rehearsal job; two independent constructions of one release commit and
-    its tags produce equal object ids. Tests of `record` push to a local bare
-    remote and cover a moved default branch, a bundle whose tag points
-    elsewhere, a plan digest mismatch and a recovery that pushes nothing. The
+    declaration against the declaration schema; they find `id-token: write`
+    in no job without an environment other than `attest`. A condition table
+    checks every gate for success, skip, failure, cancellation and empty
+    released units. Tests of `resolve` against local repositories with a
+    local bare remote cover modes `release`, `recover`, `baseline` and
+    `none`, a superseded source commit, an automatic run started by an older
+    commit's continuous integration that releases the current head, a partial
+    set of tags, a primary tag with `after-publication`, a plan tag matching
+    the other phase's pattern, a missing continuous integration run and a
+    missing rehearsal job; two independent constructions of one release
+    commit and its tags produce equal object ids, and a prepare recipe that
+    writes the time fails the double construction. Tests of `record` push to
+    a local bare remote and cover a moved default branch, a bundle whose tag
+    points elsewhere or whose tag names differ from the plan's, a plan digest
+    mismatch, and a recovery that pushes nothing and needs no approval. The
     release record cases cover each retry state, on a unit with build assets
-    and one without, and an attached evidence file. Named mutation controls
-    remove each gate conjunct, each mode check, the approval check, the plan
-    digest check and the commit identity, and each must fail a test. The
-    suite runs as `tests/release/README.md` states, with `TOHA_BIN` naming a
-    Toha 0.4.1 release build, `INTENTIONAL_DIR`, `RELEASE_ARTIFACT_NPM_CACHE`,
-    `RENOVATE_PACKAGE_DIR` and `actionlint`, and `actionlint` passes on every
-    rendered workflow. Live
-    cases run on `wyrd-company/release-process-testbed` with the test App: a
-    dispatched release creates the release commit and its tags; a second
-    dispatch for the same source commit recovers and changes nothing; a
-    publication failure followed by a dispatch completes only what was
-    missing; an automatic start follows a successful continuous integration
-    run; a baseline dispatch creates the baseline tag; and
-    `release-authority-smoke.yml` passes.
+    and one without, and an attached evidence file; the evidence cases cover
+    a second dispatch and a re-run writing the same bytes and a run that
+    attached evidence to one of two records and stopped. The provenance cases
+    refuse an attestation from the same workflow path at another ref and at
+    another commit. The `delivery` check refuses a lowered tier without a new
+    reason, including one the answers suggest. The publication parts' tests
+    show `cargo publish --no-verify`, `npm publish <tarball> --ignore-scripts`
+    and the OCI push running no build. Named mutation controls remove each
+    gate conjunct, each mode check, the approval check, the plan digest
+    check, the tag name check and the commit identity, and each must fail a
+    test. The suite runs as `tests/release/README.md` states, with `TOHA_BIN`
+    naming a Toha 0.4.1 release build, `INTENTIONAL_DIR`,
+    `RELEASE_ARTIFACT_NPM_CACHE`, `RENOVATE_PACKAGE_DIR` and `actionlint`, and
+    `actionlint` passes on every rendered workflow. Live cases run on
+    `wyrd-company/release-process-testbed` with the test App: a dispatched
+    release creates the release commit and its tags; a second dispatch for
+    the same source commit recovers and changes nothing; a publication
+    failure followed by a dispatch completes only what was missing, at an
+    approval setting of `person` as well; an automatic start follows a
+    successful continuous integration run; a baseline dispatch creates the
+    baseline tag; an npm publication attempted from a job outside
+    `publish-npm` is refused by npm; and `release-authority-smoke.yml`
+    passes.
 
   contract-versioning: >-
     `release-process` names the parent's internal interface ids, key
@@ -526,20 +621,25 @@ proposed-design:
     mints a new one.
 
   security-surface: >-
-    The release commit and its tags are pushed only by `record`, with a token
-    for the one repository, after validation in jobs that hold no credential.
-    Grantable part job permissions are `contents: read`, `actions: read`,
-    `id-token: write`, `attestations: write` and `packages: read` or `write`;
-    `contents: write` belongs to `release-record` and `evidence` through
-    `GITHUB_TOKEN`, which organization rulesets prevent from creating tags or
-    updating the default branch. Credentials are Key Vault secrets and keys
-    reached through environments, checked by preflight jobs that never print
-    a value; no job that holds one runs Intentional or a repository recipe,
-    and a secret reaches only the steps whose `env` names it. Scripts contain no `${{ }}`, part conditions cannot
-    call status functions, and every external action is pinned by commit.
-    Repository recipes run in jobs with read-only contents and no credential.
-    Answers, the applied record and the delivery declaration contain names,
-    never values.
+    The release commit and the tags created with it are pushed only by
+    `record`, with a token for the one repository, after validation in jobs
+    that hold no credential; after-publication tags only by
+    `tag-after-publication`; the rulesets of `delivery-controls` refuse every
+    other tag creation and every tag change. Part jobs hold `contents: read`,
+    `actions: read` and `packages: read`, and only deliver jobs, inside
+    `publish-<part>`, add `id-token: write` or `packages: write`; `attest` is
+    the one job without an environment that holds `id-token: write`, and it
+    runs no repository code. `contents: write` belongs to `release-record`
+    and `evidence` through `GITHUB_TOKEN`, which can change releases and their
+    assets and nothing the rulesets protect. Credentials are Key Vault
+    secrets and keys, or registry federation, reached through environments
+    and checked by preflight jobs that never print a value. No job that holds
+    one runs Intentional, a repository recipe, a build, a package step or a
+    lifecycle script: credentialed jobs publish bytes built without
+    credentials, and a secret reaches only the steps whose `env` names it.
+    Scripts contain no `${{ }}`, part conditions cannot call status
+    functions, and every external action is pinned by commit. Answers, the
+    applied record and the delivery declaration contain names, never values.
 
   agreements: >-
     This design agrees with Intentional's release model design on the input
