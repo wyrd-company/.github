@@ -1,0 +1,52 @@
+{
+  "$schema": "https://wyrd.foo/delivery/declaration/1",
+  "controls": {
+    "consumer-before": {
+      "reason": "The formula is installed from the tap by the verify stage, and no other consumer installs from the build output.",
+      "setting": "off"
+    }
+  },
+  "environments": {
+    "publish-homebrew-tap": {
+      "keys": [],
+      "purpose": "Commit formulas to the Homebrew tap",
+      "secrets": [
+        {
+          "env": "HOMEBREW_TAP_TOKEN",
+          "name": "homebrew-tap-token",
+          "purpose": "Commit formulas to the selected tap repository with contents write"
+        }
+      ],
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID"
+      ]
+    },
+    "release-authority": {
+      "approval": "release-approval",
+      "keys": [
+        {
+          "app_id_variable": "RELEASE_AUTHORITY_APP_ID",
+          "key_name_variable": "RELEASE_AUTHORITY_KEY_NAME",
+          "slug": "example-release-authority"
+        }
+      ],
+      "purpose": "Create the release commit and its tags",
+      "secrets": [],
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID",
+        "RELEASE_AUTHORITY_APP_ID",
+        "RELEASE_AUTHORITY_KEY_NAME",
+        "GITHUB_APP_ID"
+      ]
+    }
+  },
+  "release_authority": {
+    "slug": "example-release-authority"
+  },
+  "template": "release",
+  "tier": "custodial"
+}

@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wyrd.foo/delivery/declaration/1",
+  "title": "Delivery declaration",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier and every control set away from its tier's default; for the deploy template, the deployed Release Unit and the environment chain; for both, every environment the rendered workflows enter and the variables, Key Vault secrets and Key Vault keys each environment carries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "template", "environments"],
+  "properties": {
+    "$schema": { "const": "https://wyrd.foo/delivery/declaration/1" },
+    "template": { "enum": ["release", "deploy"] },
+    "tier": { "enum": ["standard", "trusted", "custodial"] },
+    "controls": { "$ref": "#/$defs/controls" },
+    "release_authority": { "$ref": "#/$defs/app" },
+    "package_tags": { "$ref": "#/$defs/app" },
+    "unit": {
+      "description": "The Release Unit whose releases the deploy workflow deploys.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "chain": {
+      "description": "The deploy environments in the order an automatic deploy enters them.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/environment-name" }
+    },
+    "environments": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/environment-name" },
+      "additionalProperties": { "$ref": "#/$defs/environment" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "template": { "const": "release" } } },
+      "then": {
+        "required": ["tier", "controls", "release_authority"],
+        "not": { "anyOf": [{ "required": ["unit"] }, { "required": ["chain"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "template": { "const": "deploy" } } },
+      "then": {
+        "required": ["unit", "chain"],
+        "not": {
+          "anyOf": [
+            { "required": ["tier"] },
+            { "required": ["controls"] },
+            { "required": ["release_authority"] },
+            { "required": ["package_tags"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "controls": {
+      "description": "Every control whose answer differs from its tier's default. An absent control takes its tier's default at the repository's rung.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rehearsal": { "$ref": "#/$defs/assurance" },
+        "sealed-plan": { "$ref": "#/$defs/assurance" },
+        "revalidation": { "$ref": "#/$defs/assurance" },
+        "provenance": { "$ref": "#/$defs/assurance" },
+        "evidence": { "$ref": "#/$defs/assurance" },
+        "consumer-before": { "$ref": "#/$defs/assurance" },
+        "consumer-after": { "$ref": "#/$defs/assurance" },
+        "authority-smoke": { "$ref": "#/$defs/assurance" },
+        "release-start": { "$ref": "#/$defs/start" },
+        "release-approval": { "$ref": "#/$defs/approval" },
+        "deploy-start": { "$ref": "#/$defs/start" },
+        "deploy-approval": { "$ref": "#/$defs/approval" },
+        "update-review": { "$ref": "#/$defs/approval" },
+        "rotation-approval": { "$ref": "#/$defs/approval" }
+      }
+    },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setting"],
+      "properties": {
+        "setting": { "enum": ["on", "off"] },
+        "reason": { "$ref": "#/$defs/reason" }
+      }
+    },
+    "start": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setting"],
+      "properties": {
+        "setting": { "enum": ["automatic", "person"] },
+        "reason": { "$ref": "#/$defs/reason" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setting"],
+      "properties": {
+        "setting": { "enum": ["none", "person"] },
+        "reason": { "$ref": "#/$defs/reason" }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug"],
+      "properties": {
+        "slug": { "type": "string", "maxLength": 34, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+      }
+    },
+    "environment-name": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "variable-name": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "not": { "pattern": "^GITHUB_" }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose", "variables", "secrets", "keys"],
+      "properties": {
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\r\\n]*$" },
+        "variables": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/variable-name" }
+        },
+        "secrets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/secret" }
+        },
+        "keys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/key" }
+        },
+        "approval": {
+          "description": "The ceremony control whose effective setting decides whether a person approves each job that enters this environment.",
+          "enum": ["release-approval", "deploy-approval"]
+        }
+      }
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "env", "purpose"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 119,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "not": { "pattern": "-pending$" }
+        },
+        "env": { "$ref": "#/$defs/variable-name" },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\r\\n]*$" }
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "app_id_variable", "key_name_variable"],
+      "properties": {
+        "slug": { "type": "string", "maxLength": 34, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "app_id_variable": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*_APP_ID$" },
+        "key_name_variable": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*_KEY_NAME$" }
+      }
+    }
+  }
+}

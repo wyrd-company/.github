@@ -7,6 +7,7 @@ tasks:
       - python3 -m unittest discover -s tests/release -p 'test_*.py' -v
       - node --test tests/release/*.test.cjs
       - python3 -m unittest discover -s tests/airlock-config -p 'test_*.py' -v
+      - python3 -m unittest discover -s tests/docs -p 'test_*.py' -v
   lint:
     cmds:
       - ryl check -c .ryl.yml .
