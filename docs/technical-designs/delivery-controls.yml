@@ -155,7 +155,7 @@ proposed-design:
     `answers.ci_workflow`, `answers.ci_workflow_name` and
     `answers.release_model`; from the deploy application `commit`, `parts`,
     `answers.deploy_unit` and `answers.environments`; from the Airlock
-    configuration application `commit` and `answers.airlock_audit_app`; and
+    configuration application `commit`; and
     from each, `paths`, to find the files it renders. An answer absent from
     the record is a question that was skipped, and takes its default.
 
@@ -179,8 +179,9 @@ proposed-design:
 
   rulesets: >-
     Airlock applies three organization rulesets, each with enforcement
-    `active`, each targeting the repositories whose custom property `release`
-    is `true`. `delivery-tags-immutable`: target `tag`, ref condition include
+    `active`, each targeting the repositories whose organization custom
+    property `release` is `true`, which Airlock defines and sets on every
+    repository that holds a release declaration. `delivery-tags-immutable`: target `tag`, ref condition include
     `~ALL`, rules `update`, `deletion` and `non_fast_forward`, no bypass
     actor. `delivery-tags-unclassified`: target `tag`, include `~ALL`,
     exclude `[0-9]*.[0-9]*.[0-9]*` and `**@[0-9]*.[0-9]*.[0-9]*`, rule
@@ -265,42 +266,42 @@ proposed-design:
   audit: >-
     The Airlock configuration template renders
     `.github/workflows/airlock-audit.yml`, which runs on `schedule` once a
-    day, on `workflow_dispatch` and on `push` to the default branch, so that
-    `airlock-audit`'s default-branch policy admits it, with
-    `permissions: {}` and one job, `audit`, that enters `airlock-audit` with
-    `contents: read` and `id-token: write`. The job runs the token action
-    with the Airlock audit App, whose role in `delivery-apps` is
-    `airlock-audit` and whose permissions are read-only: `administration`,
-    `actions`, `contents`, `environments`, `metadata`, `secrets` and
-    `variables` on repositories and `organization_administration` on the
-    organization, which reads the organization rulesets' bypass actors; it
-    asks for a token for the calling repository and the
-    repository that holds Elegua's manifest, and passes it to the pinned
-    Airlock action, which reads no repository or organization secret. The
-    template's `airlock_audit_app` question holds the App's slug. The audit
-    reads the applied record, the three declarations, the release model, the
-    repository's settings, rulesets with their bypass actors, environments
-    with their reviewers, the repository's secrets list, the tag records, the
-    release records with their assets, `delivery-apps` and Elegua's manifest,
-    and reports the tier, the observed rung, and every deviation with its
-    reason. It fails when the tier ranks below the organization's minimum for
-    the repository; when the tier ranks below the suggestion of the recorded
-    answers, or below the tier recorded in the base of a pull request or in
-    the first parent of the commit that changed it, and that change records
-    no new `tier_reason`; when a deviation has no reason; when the
-    repository holds a repository-level secret; when a file the record lists
-    differs from what its application renders; when a control's effective
-    setting needs a job, a file, a ruleset, an environment rule or a required
-    reviewer that is absent; when an approval environment has no required
-    reviewer; when immutable releases are off and `evidence` is off; when a
-    release asset differs from its `SHA256SUMS`, its evidence file or its
-    attestation; when a registry's trusted publisher for one of the
-    repository's packages names another workflow or environment than its
-    declaration; when a declaration names an App that `delivery-apps` does
-    not allow for the repository, or an App is installed outside its
-    repositories; when a secret that a declaration lists is not a destination
-    of Elegua's manifest in the environment's vault; and when such a secret's
-    manifest `tier` is not the one its readers' effective `rotation-approval`
-    requires. It reads Elegua's manifest from the repository and path its
-    organization configuration names; the manifest holds names and policies,
-    never values.
+    day, on `workflow_dispatch` and on `push` to the default branch, with
+    `permissions: {}`, and runs the pinned Airlock action, which reads no
+    repository or organization secret. The audit needs a token that reads
+    the repository's settings, rulesets with their bypass actors,
+    environments with their reviewers and its secrets list, and, for the App
+    checks, each enrolled App's installations. Which App signs that token,
+    which repositories hold its key, and whether the privileged part of the
+    audit runs in each repository or centrally await the operator's ruling on
+    the audit's trust boundary; until then no repository's environment is
+    granted an audit key, and the rendered workflow runs the checks that the
+    run's `GITHUB_TOKEN` can make and reports the others as not run. The
+    audit reads the applied record, the three declarations, the release
+    model, the repository's settings, rulesets with their bypass actors,
+    environments with their reviewers, the repository's secrets list, the tag
+    records, the release records with their assets, `delivery-apps` and
+    Elegua's manifest, and reports the tier, the observed rung, and every
+    deviation with its reason. It fails when the tier ranks below the
+    organization's minimum for the repository; when the tier ranks below the
+    suggestion of the recorded answers, or below the tier recorded in the
+    base of a pull request or in the first parent of the commit that changed
+    it, and that change records no new `tier_reason`; when a deviation has no
+    reason; when the repository holds a repository-level secret; when a file
+    the record lists differs from what its application renders; when a
+    control's effective setting needs a job, a file, a ruleset, an
+    environment rule or a required reviewer that is absent; when an approval
+    environment has no required reviewer; when immutable releases are off and
+    `evidence` is off; when a release asset differs from its `SHA256SUMS`, its
+    evidence file or its attestation; when a declaration names an App that
+    `delivery-apps` does not allow for the repository, or an App is installed
+    outside its `installed_on`; when a secret that a declaration lists is not
+    a destination of Elegua's manifest in the environment's vault; and when
+    such a secret's manifest `tier` is not the one its readers' effective
+    `rotation-approval` requires. npm's trusted publishers are readable only
+    with the npm session of a person with write access and two-factor
+    authentication, so an attended Airlock run checks that each package's
+    trusted publisher names the declared workflow and environment, and the
+    scheduled audit reports npm trust as not verified. It reads Elegua's
+    manifest from the repository and path its organization configuration
+    names; the manifest holds names and policies, never values.
