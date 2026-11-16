@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wyrd.foo/delivery/apps/1",
+  "title": "Delivery App authorization",
+  "description": "The organization's list of GitHub Apps whose keys delivery workflows sign with, the role each plays, and the repositories each may serve. Terraform grants a key's sign role, and Airlock names a ruleset bypass actor, only for an enrolment this file allows.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "apps"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://wyrd.foo/delivery/apps/1"
+    },
+    "apps": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 34,
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/app"
+      }
+    }
+  },
+  "$defs": {
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "app_id",
+        "key_vault_url",
+        "repositories"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "release-authority",
+            "package-tags",
+            "repo-wyrd-foo-publisher",
+            "airlock-audit"
+          ]
+        },
+        "tier": {
+          "enum": [
+            "standard",
+            "trusted",
+            "custodial"
+          ]
+        },
+        "app_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "key_vault_url": {
+          "type": "string",
+          "pattern": "^https://[a-z0-9-]+\\.vault\\.azure\\.net$"
+        },
+        "repositories": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "enum": [
+                  "release-authority",
+                  "package-tags"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tier"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "tier"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "custodial"
+              }
+            },
+            "required": [
+              "tier"
+            ]
+          },
+          "then": {
+            "properties": {
+              "repositories": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

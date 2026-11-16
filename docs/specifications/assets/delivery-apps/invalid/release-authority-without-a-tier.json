@@ -1,0 +1,33 @@
+{
+  "$schema": "https://wyrd.foo/delivery/apps/1",
+  "apps": {
+    "example-airlock-audit": {
+      "app_id": 1000003,
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "repositories": [
+        "example-org/example-service",
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ],
+      "role": "airlock-audit"
+    },
+    "example-intentional-standard": {
+      "app_id": 1000001,
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "repositories": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ],
+      "role": "release-authority"
+    },
+    "example-service-release": {
+      "app_id": 1000002,
+      "key_vault_url": "https://example-service-release.vault.azure.net",
+      "repositories": [
+        "example-org/example-service"
+      ],
+      "role": "release-authority",
+      "tier": "custodial"
+    }
+  }
+}

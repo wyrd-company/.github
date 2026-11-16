@@ -1,0 +1,43 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - delivery-environments
+    - delivery-declaration
+    - delivery-controls
+format: json-schema
+description: >-
+  The App authorization file is `delivery/apps.json` in the organization's
+  `.github` repository, owned by the organization and changed only through a
+  reviewed pull request there. It is defined by
+  `assets/delivery-apps/delivery-apps-1.schema.json`, whose `$id` and the
+  file's `$schema` are `https://wyrd.foo/delivery/apps/1`. It lists, keyed by
+  slug, every GitHub App whose key a delivery workflow signs with: its `role`
+  (`release-authority`, `package-tags`, `repo-wyrd-foo-publisher` or
+  `airlock-audit`), its numeric `app_id`, the `key_vault_url` of the vault
+  that holds its key, the `repositories` it may serve as `<owner>/<name>`, and,
+  for the two tag roles, the `tier` it serves. A Custodial App serves exactly
+  one repository.
+
+
+  An enrolment is a repository's delivery declaration naming an App's slug in
+  one of its environments. It is allowed when the file lists that slug, the
+  App's role is the one the environment's job plays, the repository is in the
+  App's `repositories`, and, for a tag role, the repository's declared tier
+  equals the App's `tier`. Terraform reads this file beside the declarations
+  and grants a key's sign role to an environment's identity only for an
+  allowed enrolment; it takes the key's vault from `key_vault_url`, and
+  outputs `<APP>_APP_ID` from `app_id`, `<APP>_KEY_NAME` as the slug and
+  `AZURE_KEY_VAULT_URL` as `key_vault_url` for that environment. Airlock
+  names an App as a ruleset bypass actor only for an allowed enrolment, and
+  its audit fails when a declaration
+  names an App the file does not allow for that repository, when an App is
+  installed on a repository outside its `repositories`, and when a
+  Custodial App's installation covers any repository other than its one.
+validation-criteria: >-
+  The schema is JSON Schema 2020-12. `apps.example.json` in the same folder
+  validates against it, and each document under `invalid/` fails it for the
+  one reason its file name states, checked by `task test`. Terraform's tests
+  plan a declaration that names an App the file does not allow and assign no
+  role; Airlock's tests cover an enrolment outside the file, an installation
+  outside `repositories`, and a Custodial App installed on two repositories.

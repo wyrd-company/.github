@@ -9,8 +9,9 @@ format: json-schema
 description: >-
   A delivery declaration is the JSON file a delivery template renders to state
   what the repository's delivery workflows need and how strict they are. The
-  release template renders `.github/delivery/release.json` and the deploy
-  template renders `.github/delivery/deploy.json`. Each is a whole file that
+  release template renders `.github/delivery/release.json`, the deploy
+  template renders `.github/delivery/deploy.json`, and the Airlock
+  configuration template renders `.github/delivery/airlock-config.json`. Each is a whole file that
   Toha owns in the applied record's `paths`, rendered from the application's
   answers and parts and from nothing else, and defined by
   `assets/delivery-declaration/delivery-declaration-1.schema.json`, whose `$id`
@@ -19,6 +20,7 @@ description: >-
 
 
   The release declaration holds `tier`, the repository's tier as answered;
+  `tier_reason`, when answered;
   `controls`, every control the interview answers with a setting rather than
   `default`, each with its `setting` and, when the setting ranks below the
   tier's default at the Stable rung, its `reason`; `release_authority.slug`, the slug of the App that
@@ -26,6 +28,7 @@ description: >-
   gives any tag `require_phase: after-publication`; and `environments`. The
   deploy declaration holds `unit`, the Release Unit it deploys; `chain`, the
   deploy environments in the order an automatic deploy enters them; and
+  `environments`. The Airlock configuration declaration holds only
   `environments`.
 
 
@@ -39,8 +42,10 @@ description: >-
   name, and the `owner` and `repositories` its token is for when they are not
   the declaring repository; and, on an approval environment only,
   `approval`, the ceremony control whose effective setting decides whether a
-  job of the run enters it. An approval environment carries no variable,
-  secret or key. The names are those of `delivery-environments`.
+  job of the run enters it; and `trusted_publishing`, the registries whose
+  trusted publishing names this environment. An approval environment carries
+  no variable, secret, key or trusted publishing. An environment carries
+  secrets or keys, never both, because it names one vault. The names are those of `delivery-environments`.
 
 
   Readers. The release and deploy workflows read `tier` and `controls` from
@@ -55,7 +60,8 @@ validation-criteria: >-
   The schema is JSON Schema 2020-12. `release.example.json` and
   `deploy.example.json` in the same folder validate against it, and the
   documents under `invalid/` each fail it for the one reason their file name
-  states, checked by `task test`. Each template carries a byte-identical copy
+  states, checked by `task test`; `airlock-config.example.json` validates
+  as well. Each template carries a byte-identical copy
   of the schema in its skeleton copy, and its tests validate the declaration
   rendered for every part, every tier and every control setting against that
   copy. Airlock vendors a byte-identical copy and refuses a declaration whose

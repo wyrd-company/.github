@@ -23,6 +23,15 @@
         "AZURE_TENANT_ID"
       ]
     },
+    "publish-npm": {
+      "keys": [],
+      "purpose": "Publish npm packages through trusted publishing",
+      "secrets": [],
+      "trusted_publishing": [
+        "npm"
+      ],
+      "variables": []
+    },
     "release-approval": {
       "approval": "release-approval",
       "keys": [],

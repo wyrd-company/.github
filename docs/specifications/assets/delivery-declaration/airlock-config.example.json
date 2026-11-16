@@ -1,0 +1,24 @@
+{
+  "$schema": "https://wyrd.foo/delivery/declaration/1",
+  "environments": {
+    "airlock-audit": {
+      "keys": [
+        {
+          "app_id_variable": "AIRLOCK_AUDIT_APP_ID",
+          "key_name_variable": "AIRLOCK_AUDIT_KEY_NAME",
+          "slug": "example-airlock-audit"
+        }
+      ],
+      "purpose": "Read the repository's settings for Airlock's audit",
+      "secrets": [],
+      "variables": [
+        "AIRLOCK_AUDIT_APP_ID",
+        "AIRLOCK_AUDIT_KEY_NAME",
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID"
+      ]
+    }
+  },
+  "template": "airlock-config"
+}

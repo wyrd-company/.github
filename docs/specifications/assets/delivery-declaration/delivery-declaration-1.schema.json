@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/declaration/1",
   "title": "Delivery declaration",
-  "description": "What one applied delivery template declares for its repository: for the release template, the tier and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for both, every environment the rendered workflows enter and the variables, Key Vault secrets and Key Vault keys each environment carries.",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, its audit; for each, every environment the rendered workflows enter and what each environment carries.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,8 @@
     "template": {
       "enum": [
         "release",
-        "deploy"
+        "deploy",
+        "airlock-config"
       ]
     },
     "tier": {
@@ -58,6 +59,12 @@
       "additionalProperties": {
         "$ref": "#/$defs/environment"
       }
+    },
+    "tier_reason": {
+      "description": "The recorded reason for a tier below the one the answers suggest or below the tier recorded before the change.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
     }
   },
   "allOf": [
@@ -113,6 +120,11 @@
             },
             {
               "required": [
+                "tier_reason"
+              ]
+            },
+            {
+              "required": [
                 "controls"
               ]
             },
@@ -124,6 +136,56 @@
             {
               "required": [
                 "package_tags"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "template": {
+            "const": "airlock-config"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "tier"
+              ]
+            },
+            {
+              "required": [
+                "tier_reason"
+              ]
+            },
+            {
+              "required": [
+                "controls"
+              ]
+            },
+            {
+              "required": [
+                "release_authority"
+              ]
+            },
+            {
+              "required": [
+                "package_tags"
+              ]
+            },
+            {
+              "required": [
+                "unit"
+              ]
+            },
+            {
+              "required": [
+                "chain"
               ]
             }
           ]
@@ -307,6 +369,20 @@
             "release-approval",
             "deploy-approval"
           ]
+        },
+        "trusted_publishing": {
+          "description": "Registries whose trusted publishing names this environment, so that only a job entering it can publish through federation.",
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "npm",
+              "crates-io",
+              "pub-dev",
+              "pypi"
+            ]
+          }
         }
       },
       "allOf": [
@@ -327,7 +403,29 @@
               "keys": {
                 "maxItems": 0
               }
+            },
+            "not": {
+              "required": [
+                "trusted_publishing"
+              ]
             }
+          }
+        },
+        {
+          "description": "An environment reads secrets from its own vault or signs with App keys in the vault that holds them, never both.",
+          "not": {
+            "properties": {
+              "secrets": {
+                "minItems": 1
+              },
+              "keys": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "secrets",
+              "keys"
+            ]
           }
         }
       ]

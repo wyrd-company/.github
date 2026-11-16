@@ -20,6 +20,8 @@ INVALID = {
     'variable-name-starts-with-github': (['environments', 'release-authority', 'variables', 5], 'not'),
     'approval-environment-with-a-variable': (['environments', 'release-approval', 'variables'], 'maxItems'),
     'secret-with-env-and-fields': (['environments', 'publish-homebrew-tap', 'secrets', 0], 'oneOf'),
+    'environment-with-secrets-and-keys': (['environments', 'publish-homebrew-tap'], 'not'),
+    'airlock-config-declares-a-tier': ([], 'not'),
 }
 
 
@@ -45,7 +47,7 @@ class DeliveryDeclaration(unittest.TestCase):
         Draft202012Validator.check_schema(SCHEMA)
 
     def test_examples_validate(self):
-        for name in ('release.example.json', 'deploy.example.json'):
+        for name in ('release.example.json', 'deploy.example.json', 'airlock-config.example.json'):
             with self.subTest(name):
                 self.assertEqual(errors(json.loads((ASSETS / name).read_text())), [])
 
