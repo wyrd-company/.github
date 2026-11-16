@@ -19,9 +19,9 @@ description: >-
 
 
   The release declaration holds `tier`, the repository's tier as answered;
-  `controls`, every control whose answer differs from its tier's default, each
-  with its `setting` and, when the setting is below the tier's default at the
-  Stable rung, its `reason`; `release_authority.slug`, the slug of the App that
+  `controls`, every control the interview answers with a setting rather than
+  `default`, each with its `setting` and, when the setting ranks below the
+  tier's default at the Stable rung, its `reason`; `release_authority.slug`, the slug of the App that
   creates release commits and tags; `package_tags.slug` when the release model
   gives any tag `require_phase: after-publication`; and `environments`. The
   deploy declaration holds `unit`, the Release Unit it deploys; `chain`, the
@@ -32,12 +32,15 @@ description: >-
   `environments` maps each GitHub environment that a rendered workflow of the
   template enters to its `purpose`; `variables`, every variable name the
   environment carries; `secrets`, each Key Vault secret a job reads there, with
-  its Key Vault `name`, the `env` name the reading step receives it as, and its
+  its Key Vault `name`, either the `env` name the reading steps receive it as
+  or, for a JSON secret, `fields` mapping each member to such a name, and its
   `purpose`; `keys`, each App whose Key Vault key a job signs with there, with
-  its `slug` and the names of the variables that hold its App id and its key
-  name; and `approval`, the ceremony control that decides whether a person
-  approves each job that enters it. The names are those of
-  `delivery-environments`.
+  its `slug`, the names of the variables that hold its App id and its key
+  name, and the `owner` and `repositories` its token is for when they are not
+  the declaring repository; and, on an approval environment only,
+  `approval`, the ceremony control whose effective setting decides whether a
+  job of the run enters it. An approval environment carries no variable,
+  secret or key. The names are those of `delivery-environments`.
 
 
   Readers. The release and deploy workflows read `tier` and `controls` from

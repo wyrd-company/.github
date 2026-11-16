@@ -17,10 +17,20 @@
           "purpose": "Commit formulas to the selected tap repository with contents write"
         }
       ],
-      "variables": ["AZURE_CLIENT_ID", "AZURE_KEY_VAULT_URL", "AZURE_TENANT_ID"]
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID"
+      ]
+    },
+    "release-approval": {
+      "approval": "release-approval",
+      "keys": [],
+      "purpose": "Hold the release commit for a person's approval",
+      "secrets": [],
+      "variables": []
     },
     "release-authority": {
-      "approval": "release-approval",
       "keys": [
         {
           "app_id_variable": "RELEASE_AUTHORITY_APP_ID",

@@ -26,8 +26,14 @@
         "AZURE_TENANT_ID"
       ]
     },
-    "release-authority": {
+    "release-approval": {
       "approval": "release-approval",
+      "keys": [],
+      "purpose": "Hold the release commit for a person's approval",
+      "secrets": [],
+      "variables": []
+    },
+    "release-authority": {
       "keys": [
         {
           "app_id_variable": "RELEASE_AUTHORITY_APP_ID",

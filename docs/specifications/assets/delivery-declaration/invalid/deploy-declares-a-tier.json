@@ -5,8 +5,14 @@
     "production"
   ],
   "environments": {
-    "production": {
+    "deploy-approval": {
       "approval": "deploy-approval",
+      "keys": [],
+      "purpose": "Hold each environment's deploy for a person's approval",
+      "secrets": [],
+      "variables": []
+    },
+    "production": {
       "keys": [],
       "purpose": "Deploy the Cloudflare Worker to production",
       "secrets": [
@@ -24,7 +30,6 @@
       ]
     },
     "staging": {
-      "approval": "deploy-approval",
       "keys": [],
       "purpose": "Deploy the Cloudflare Worker to staging",
       "secrets": [

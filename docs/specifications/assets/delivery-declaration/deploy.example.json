@@ -1,9 +1,18 @@
 {
   "$schema": "https://wyrd.foo/delivery/declaration/1",
-  "chain": ["staging", "production"],
+  "chain": [
+    "staging",
+    "production"
+  ],
   "environments": {
-    "production": {
+    "deploy-approval": {
       "approval": "deploy-approval",
+      "keys": [],
+      "purpose": "Hold each environment's deploy for a person's approval",
+      "secrets": [],
+      "variables": []
+    },
+    "production": {
       "keys": [],
       "purpose": "Deploy the Cloudflare Worker to production",
       "secrets": [
@@ -13,10 +22,14 @@
           "purpose": "Upload the Worker and apply its D1 migrations"
         }
       ],
-      "variables": ["AZURE_CLIENT_ID", "AZURE_KEY_VAULT_URL", "AZURE_TENANT_ID", "CLOUDFLARE_ACCOUNT_ID"]
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ]
     },
     "staging": {
-      "approval": "deploy-approval",
       "keys": [],
       "purpose": "Deploy the Cloudflare Worker to staging",
       "secrets": [
@@ -26,7 +39,12 @@
           "purpose": "Upload the Worker and apply its D1 migrations"
         }
       ],
-      "variables": ["AZURE_CLIENT_ID", "AZURE_KEY_VAULT_URL", "AZURE_TENANT_ID", "CLOUDFLARE_ACCOUNT_ID"]
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ]
     }
   },
   "template": "deploy",
