@@ -13,7 +13,9 @@ Repositories under this owner can extend it with:
 
 Renovate keeps supported managers enabled by auto-discovery. It opens separate
 major update pull requests, limits open and hourly pull requests, and does not
-merge updates automatically. Lock files are maintained weekly.
+merge updates automatically. Lock files are maintained weekly. Renovate waits
+until an npm package version is one day old before it creates a branch or pull
+request for it, so that pnpm can install it. Lock file maintenance is not held.
 
 ## Release workflow template
 
