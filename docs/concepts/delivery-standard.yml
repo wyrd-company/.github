@@ -14,7 +14,10 @@ properties:
     The committed description of what a repository releases: its release
     units, their versions, and their tags. Intentional computes versions from
     intents and writes the model, the changelogs, and the annotated tag
-    records. Intentional holds no workflow and publishes nothing.
+    records. Intentional holds no workflow and publishes nothing. Every
+    repository on the standard carries Intentional versions, and a deploy
+    ships a release, so a deployed product has a version, a release record,
+    and an observed maturity.
   template: >-
     A Toha template in the organization's `.github` repository that renders a
     workflow from the release model and the interview answers. The release
@@ -93,9 +96,9 @@ properties:
     releases this way; no person's workstation writes a release commit or a
     release tag. A repository whose packages receive their own tags after
     publication uses a second App that can create only those tags. The
-    templates name the Intentional Apps by default. An adopter outside the
-    organization installs those Apps or creates its own from the published
-    instructions.
+    templates name the Intentional Apps by default, which serve repositories
+    of this organization. An adopter outside the organization creates its own
+    Apps from the published instructions and names them in its answers.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
     job to a credential, and it carries the protection rules the tier
@@ -126,8 +129,9 @@ features:
     A repository answers the template's questions, including its targets, and
     commits the rendered workflows and the applied record.
   update-by-pull-request: >-
-    A change to a template reaches each adopting repository as a pull request
-    that merges the new revision into the rendered files.
+    A change to a template triggers an agent session for each adopting
+    repository. The session runs the Toha update, which merges the new
+    revision into the rendered files, and opens the result as a pull request.
   release-from-a-source-commit: >-
     A release starts from one commit of the default branch that has passed
     continuous integration. The workflow creates the release commit and tag
@@ -142,29 +146,32 @@ features:
     deviation.
 open-questions:
   Q01: >-
-    Does a deployed product carry an Intentional version and a release record,
-    or does a deploy identify itself by an accepted commit? Maturity is
-    observed from Intentional tag records, so a product without them has no
-    observed rung. Proposed: every deployed product carries an Intentional
-    version.
+    How does a deploy sign in to an AWS Projects account? Its managed
+    policies deny creation of the identity provider that federation needs,
+    and activating advanced features removes the spending limit for good.
+    Proposed: one limited access key held in Key Vault, which Elegua rotates
+    through the IAM API.
   Q02: >-
-    Which part opens the template update pull request in each adopting
-    repository?
+    Which actor signs for a release authority? Key Vault can sign the App's
+    token request so that the private key never reaches a runner. A job that
+    can sign can mint a token for every repository the App is installed on,
+    so an App shared across repositories is one trust boundary. Proposed: a
+    Custodial repository has its own App.
   Q03: >-
-    How are products and environments separated across cloud accounts?
-    Proposed: one cloud account per product, with a separate account per
-    environment available at the highest tier.
+    Which part audits domains: their registrar, name servers, and records?
+    Proposed: Portunus becomes the read-only audit and inventory of domains,
+    and Terraform writes the records.
   Q04: >-
-    How does a deploy sign in to an AWS account type that refuses federation?
-    Proposed: one limited access key held in Key Vault.
+    Which workflows other than release and deploy does the standard render?
+    Proposed: the Airlock audit and the Intentional check on pull requests
+    are rendered; documentation publishing is a part of the release template;
+    continuous integration is a contract the release template calls, and each
+    repository writes its own.
   Q05: >-
-    Can a workflow have Key Vault sign for a GitHub App so that the App's
-    private key never reaches a runner?
+    What triggers the agent session that opens a template update, and where
+    does it run?
   Q06: >-
-    Where does an operator see every domain and its state?
-  Q07: >-
-    Which workflows other than release and deploy does the standard render:
-    continuous integration, documentation publishing, audit?
+    How are products and environments separated across cloud accounts?
 exclusions:
   - Intentional generating or running workflows.
   - Terraform changing GitHub settings.
