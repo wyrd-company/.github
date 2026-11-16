@@ -62,16 +62,16 @@ proposed-design:
     last three is true, otherwise `standard`. The `select` question `tier`
     offers `custodial`, `trusted` and `standard`, with prompt
     `Tier (suggested: {{ tier_suggested }})` and default
-    `{{ tier_suggested }}`. The `text` question `tier_reason`, required, is
-    asked when the chosen tier ranks below the suggestion, with custodial
-    above trusted above standard. A change of tier is a pull request that
-    re-answers the interview, so lowering the tier without changing the
-    answers requires `tier_reason`.
+    `{{ tier_suggested }}`. The `text` question `tier_reason` is always
+    asked, and is required when the chosen tier ranks below the suggestion,
+    with custodial above trusted above standard. A change of tier is a pull
+    request that re-answers the interview, and a pull request that lowers the
+    recorded tier records a `tier_reason`.
 
   release-authority-app: >-
     The `text` question `release_authority_app` holds the slug of the App
     that creates the repository's release commits and tags, validated by
-    `^[a-z0-9]+(-[a-z0-9]+)*$`. Its default is the slug in the template data
+    `^[a-z0-9]+(-[a-z0-9]+)*$` and at most 34 characters. Its default is the slug in the template data
     `release_authority_apps` for the chosen tier, which holds the slugs of the
     organization's Intentional Apps for `standard` and `trusted` as they are
     registered; `custodial` has no entry, so a Custodial repository names its
@@ -158,7 +158,15 @@ proposed-design:
     Every credential reaches a job through its environment and Key Vault, as
     `delivery-skeleton` defines, and no rendered workflow reads a repository
     or organization secret. The absence of repository-level secrets is
-    Airlock's audit. Recovery runs from the immutable tag: a release dispatched
+    Airlock's audit. Airlock applies organization rulesets that refuse every
+    update, deletion and non-fast-forward of a tag with no bypass; that let
+    only the organization's release authority and package tags Apps, found by
+    `GET /apps/<slug>` from the slugs the declarations name, create a tag
+    matching a classified pattern, bare SemVer or `<name>@<SemVer>`; that
+    refuse the creation of any other tag; and that require a pull request,
+    linear history and no force push on the default branch, with the release
+    authority Apps as bypass actors so that `record` can push the release
+    commit. Recovery runs from the immutable tag: a release dispatched
     again for its source commit finds its tags, and every job that changes
     state outside the run does only what is missing. No answer removes any of
     these.
@@ -186,10 +194,12 @@ proposed-design:
   ceremony-placement: >-
     `release-start` and `deploy-start`: each workflow's `resolve` ends an
     automatic run when the effective setting is `person`. `release-approval`:
-    the `record` job's approval check, and Airlock's required reviewers on
-    `release-authority`. `deploy-approval`: each `deploy-<environment>` job's
-    approval check, and Airlock's required reviewers on every deploy
-    environment. `update-review`: the session that applies a template update
+    the release workflow's `approve-release` job, which enters
+    `release-approval` when the effective setting is `person`, and the
+    `record` job's approval check. `deploy-approval`: each
+    `approve-<environment>` job, which enters `deploy-approval`, and each
+    `deploy-<environment>` job's approval check. Airlock gives both approval
+    environments required reviewers. `update-review`: the session that applies a template update
     reads the release declaration and leaves the update's pull request for a
     person when the effective setting is `person`, and merges it otherwise.
     `rotation-approval`: Elegua's manifest gives each secret that the
@@ -207,5 +217,11 @@ proposed-design:
     repository holds a repository-level secret; when a file the record lists
     differs from what its application renders; when a control's effective
     setting needs a job, a file, a ruleset, an environment rule or a required
-    reviewer that is absent; and when a secret that a declaration lists is
-    not a destination of Elegua's manifest in the environment's vault.
+    reviewer that is absent; when the recorded tier ranks below the tier
+    recorded in the first parent of the commit that changed it and that
+    commit records no `tier_reason`; when a secret that a declaration lists
+    is not a destination of Elegua's manifest in the environment's vault; and
+    when such a secret's manifest `tier` is not the one its readers' effective
+    `rotation-approval` requires. It reads Elegua's manifest from the
+    repository and path its organization configuration names; the manifest
+    holds names and policies, never values.

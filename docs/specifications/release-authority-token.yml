@@ -7,7 +7,8 @@ relationships:
 format: github-action
 description: >-
   The token action is the JavaScript GitHub action `action.yml` at the root of
-  `wyrd-company/azure-key-vault-github-app-token`. It returns a GitHub App
+  `wyrd-company/azure-key-vault-github-app-token`, running on `node24` from
+  a bundled `dist/` committed with each release. It returns a GitHub App
   installation token limited to the repositories and permissions its caller
   names, after Azure Key Vault signs the App's JSON Web Token with a key that
   never leaves the vault. It reads no private key, accepts none as an input,
@@ -24,9 +25,10 @@ description: >-
   credential trusts the calling job. `owner` (optional): the account that
   installed the App; the calling repository's owner when absent.
   `repositories` (optional): repository names under `owner`, separated by
-  commas or newlines; the calling repository alone when both `owner` and
-  `repositories` are absent, and every repository of the installation when
-  `owner` is given without `repositories`. `permission-<name>` (optional, one
+  commas or newlines. With neither `owner` nor `repositories` the token is
+  for the calling repository alone; with `repositories` alone it is for those
+  repositories under the calling repository's owner; with `owner` alone it
+  is for every repository of that installation. `permission-<name>` (optional, one
   input per GitHub App permission, named as GitHub names it with underscores
   written as dashes, such as `permission-contents`): `read`, `write` or
   `admin`; the token carries exactly the permissions given, and the
@@ -52,7 +54,9 @@ description: >-
   now, `exp` 540 seconds after now and `iss` the App id as a string; hashes the
   unpadded base64url signing input with SHA-256; and calls the Key Vault
   operation `POST <vault-url>/keys/<key-name>/<key-version>/sign` with
-  algorithm `RS256` and the digest, under API version 7.4 or later. It appends
+  algorithm `RS256` and the digest, under API version 7.4 or later; without
+  `key-version` the version segment is empty, as the Azure SDKs send it, and
+  Key Vault signs with the latest enabled version. It appends
   the returned signature, base64url without padding. With the signed token it
   finds the installation through `GET /repos/<owner>/<repository>/installation`
   when it names one repository, and otherwise through
@@ -66,7 +70,9 @@ description: >-
   Failures. Each failure stops the action with a message that names the step
   that failed, one of `azure-sign-in`, `key-vault-sign`, `installation-lookup`,
   `token-request` and `token-revoke`, together with the HTTP status and the
-  service's error code when there is one. No message contains a token, an
+  service's error code when there is one. An App not installed for the owner
+  or repository is a 404 at `installation-lookup`; a repository or a
+  permission the installation does not grant is a 422 at `token-request`. No message contains a token, an
   assertion, a signature or a request body.
 
 

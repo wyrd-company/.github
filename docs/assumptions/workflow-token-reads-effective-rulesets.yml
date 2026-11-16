@@ -1,0 +1,21 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-skeleton
+    - release-process
+description: >-
+  A job's `GITHUB_TOKEN` with `contents: read` lists the repository's
+  effective rulesets, organization rulesets included, through
+  `GET /repos/<owner>/<repository>/rulesets?includes_parents=true`, and reads
+  each one's target, conditions and rules through
+  `GET /repos/<owner>/<repository>/rulesets/<id>`, so `resolve` and the smoke
+  workflow can require tag updates and deletions to be refused.
+end-descendant-type: spike
+evidence:
+  - GitHub documents both endpoints as readable with repository metadata
+    access, and documents that bypass actors are not disclosed to readers
+    without administration access.
+  - The catalog repository's smoke workflow reads its organization rulesets
+    with the workflow token; no run of it has been examined.
+  - The release template's live cases run `resolve` and the smoke workflow on
+    the testbed.

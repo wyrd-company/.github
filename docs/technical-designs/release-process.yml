@@ -95,8 +95,7 @@ proposed-design:
     `gh:wyrd-company/.github#templates/<name>`. `templates/release/` holds
     `template.yml` (the interview, the schema directory and the part data),
     `schemas/release-model-1.schema.yml` (vendored, see
-    release-model-acceptance), `schemas/publish-job.schema.json` and
-    `schemas/credential.schema.json` (the internal part schemas),
+    release-model-acceptance),
     `partials/` (the release workflow's own fragments), `skeleton/` (the copy
     of `templates/skeleton/` that `delivery-skeleton` defines), `targets/<part>/`
     (each part's `target.yml` and job partials) and `template/`, the source
@@ -193,15 +192,20 @@ proposed-design:
     mode, for the deploy workflow.
 
   record: >-
-    `record` enters `release-authority` with `contents: read`,
-    `actions: read` and `id-token: write`. When the effective
-    `release-approval` is `person`, it runs the approval check first. In mode
-    `release` it checks out the source commit, downloads `release-candidate`,
-    runs `git bundle verify`, fetches the bundle, and requires the release
-    commit's only parent to be the source commit, every bundled tag to point
-    at the release commit and pass `intentional verify`, and, at
-    `sealed-plan` on, the committed plan's `digest` to equal every tag
-    record's `plan-digest`. It reads the default branch head again and
+    `approve-release` runs after the build stage when the effective
+    `release-approval` is `person`; it enters `release-approval` with no
+    permission and does nothing else, so GitHub holds it until a person
+    approves. `record` then enters `release-authority` with `contents: read`,
+    `actions: read` and `id-token: write`, and runs only Git, the token
+    action and the skeleton's checks. When the effective `release-approval` is `person`, it
+    runs the approval check first. In mode `release` it checks out the source
+    commit, downloads `release-candidate`, runs `git bundle verify`, fetches
+    the bundle, and checks with Git alone that the release commit's only
+    parent is the source commit, that every bundled tag is annotated, points
+    at the release commit and carries a tag record whose first line is
+    `intentional release record` and whose `plan-digest` is the plan's
+    `digest`, and, at `sealed-plan` on, that the committed plan's `digest` is
+    that same value. It reads the default branch head again and
     requires it to be the source commit. It then runs the token action for the
     calling repository with `permission-contents: write`, and pushes with
     `git push --atomic` the release commit to `refs/heads/<default>` and every
@@ -281,17 +285,23 @@ proposed-design:
     runs `gh attestation verify <file> --repo <owner>/<repository>
     --signer-workflow <owner>/<repository>/.github/workflows/release.yml`,
     with `contents: read` and `attestations: read`. When the release model
-    gives any tag `require_phase: after-publication`, `tag-after-publication`
-    runs after every verify job of the run has succeeded: it enters
-    `package-tags`, runs `intentional tag --plan <plan> --phase
-    after-publication` on the release commit with the plan that the tag
-    records' `plan-digest` names, skips tags already on the remote that point
-    at the same tag object, and pushes the rest atomically with a token the
-    token action mints from the package tags App with
-    `permission-contents: write`. At `evidence` on, `evidence` runs last with
-    `contents: write` through `GITHUB_TOKEN`: it writes
-    `release-evidence.json` and attaches it to each release record, and when
-    the asset already exists it succeeds only if the bytes are identical.
+    gives any tag `require_phase: after-publication`,
+    `prepare-after-publication-tags` runs after every verify job of the run
+    has succeeded, with `contents: read` and no environment: it checks out the
+    release commit, computes the plan at the source commit, requires its
+    `digest` to be the tag records' `plan-digest`, runs
+    `intentional tag --plan <plan> --phase after-publication`, and uploads the
+    new tag objects as the bundle artifact `after-publication-tags`.
+    `tag-after-publication` then enters `package-tags`, checks with Git alone
+    that each bundled tag is annotated and points at the release commit,
+    skips tags already on the remote that point at the same tag object, and
+    pushes the rest atomically with a token the token action mints from the
+    package tags App with `permission-contents: write`. At `evidence` on,
+    `evidence` runs last with `contents: write` through `GITHUB_TOKEN`: it
+    writes `release-evidence.json` and attaches it to each release record,
+    and when the asset already exists it succeeds only if the bytes are
+    identical. Airlock keeps GitHub's immutable releases off for the
+    repository, so the evidence file can join a published record.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
@@ -315,8 +325,8 @@ proposed-design:
     carries. Tags of the plan with no `require_phase` or with
     `before-publication` are created by `resolve` and pushed by `record`
     with the release commit. Tags with `after-publication` are created by
-    `tag-after-publication` once every verify job succeeded, through the
-    package tags App. A primary tag with `after-publication` is refused by
+    `prepare-after-publication-tags` once every verify job succeeded and
+    pushed by `tag-after-publication` through the package tags App. A primary tag with `after-publication` is refused by
     `resolve`.
 
   internal-part-interfaces: >-
@@ -324,27 +334,32 @@ proposed-design:
     `consume_jobs`, `publish_jobs`, `verify_jobs`, `credentials` and `apps`.
     The job interfaces have key patterns `^build-[a-z0-9]+(-[a-z0-9]+)*$`,
     `^assemble-...`, `^consume-...`, `^publish-...` and `^verify-...` with the
-    same tail, and all use `schemas/publish-job.schema.json`. A job key is its
+    same tail, and all use the skeleton's `schemas/part-job.schema.json`. A
+    job key is its
     GitHub job id. `consume_jobs` run in the build stage after every build and
     assembly job and are rendered only at `consumer-before` on; a part's
     `verify_jobs` that install from the registry carry `consumer: true` in
     `target.yml` and are rendered only at `consumer-after` on. `credentials`
     has key pattern `^[a-z0-9]+(-[a-z0-9]+)*$` and uses
-    `schemas/credential.schema.json`: `name`, the Key Vault secret name;
-    `env`, the name the reading steps receive it as; `purpose`, one line; and
-    an optional `unless` naming a boolean answer that removes it. `apps` has
-    the same key pattern; each value gives `prefix`, the `<APP>` of its
-    variables; `owner` and `repositories`, each a literal or the id of an
-    answer; `permissions`, a map of GitHub App permission to `read` or
-    `write`; and `purpose`. The parent mints each App's token in a step with
+    the skeleton's `schemas/credential.schema.json`, whose members are
+    exactly `name`, the
+    Key Vault secret name; one of `env`, the name the reading steps receive it
+    as, and `fields`, which maps each member of a JSON secret to such a name;
+    `purpose`, one line; and an optional `unless` naming a boolean answer that
+    removes it. `apps` has the same key pattern; each value gives `prefix`,
+    the `<APP>` of its variables; `slug`, `owner` and `repositories`, each a
+    literal or the id of an answer; `permissions`, a map of GitHub App
+    permission to `read` or `write`; and `purpose`. A part's job keys never
+    equal a parent job id. The parent mints each App's token in a step with
     id `app-<key>` and gives the part's steps `steps.app-<key>.outputs.token`
     through `env`. A part that declares a credential or an App runs its
     deliver jobs in `publish-<part>`; its other jobs, and every job of a part
     that declares neither, enter no environment. Repository tests refuse
     repeated keys within an interface.
 
-  publish-job-schema: >-
-    `schemas/publish-job.schema.json` validates one job value of a job
+  part-job-schema: >-
+    The skeleton's `schemas/part-job.schema.json`, which both templates use,
+    validates one job value of a job
     interface. Required members are `units`, Release Unit ids separated by
     one space, and `job`, a GitHub job object. The optional member `if` is an
     extra GitHub expression without `${{ }}` that cannot call `always`,
@@ -383,7 +398,7 @@ proposed-design:
     per part, parses each part job with a comment-preserving parser, rejoins
     each external `uses` reference with its version comment, removes the
     parent-owned members, adds `units`, and validates the result against
-    `publish-job.schema.json`; it validates every credential and App against
+    `part-job.schema.json`; it validates every credential and App against
     their schemas after removing `unless`.
 
   product-recipes: >-
@@ -482,7 +497,11 @@ proposed-design:
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file. Named mutation controls
     remove each gate conjunct, each mode check, the approval check, the plan
-    digest check and the commit identity, and each must fail a test. Live
+    digest check and the commit identity, and each must fail a test. The
+    suite runs as `tests/release/README.md` states, with `TOHA_BIN` naming a
+    Toha 0.4.1 release build, `INTENTIONAL_DIR`, `RELEASE_ARTIFACT_NPM_CACHE`,
+    `RENOVATE_PACKAGE_DIR` and `actionlint`, and `actionlint` passes on every
+    rendered workflow. Live
     cases run on `wyrd-company/release-process-testbed` with the test App: a
     dispatched release creates the release commit and its tags; a second
     dispatch for the same source commit recovers and changes nothing; a
@@ -510,8 +529,9 @@ proposed-design:
     `contents: write` belongs to `release-record` and `evidence` through
     `GITHUB_TOKEN`, which organization rulesets prevent from creating tags or
     updating the default branch. Credentials are Key Vault secrets and keys
-    reached through environments, checked by preflight or in-job checks that
-    never print a value. Scripts contain no `${{ }}`, part conditions cannot
+    reached through environments, checked by preflight jobs that never print
+    a value; no job that holds one runs Intentional or a repository recipe,
+    and a secret reaches only the steps whose `env` names it. Scripts contain no `${{ }}`, part conditions cannot
     call status functions, and every external action is pinned by commit.
     Repository recipes run in jobs with read-only contents and no credential.
     Answers, the applied record and the delivery declaration contain names,

@@ -4,10 +4,10 @@ relationships:
     - delivery-skeleton
 description: >-
   `GET /repos/<owner>/<repository>/actions/runs/<run id>/approvals`, called
-  with the run's `GITHUB_TOKEN` holding `actions: read` from a job that
-  entered an environment with required reviewers, lists the approval of that
-  environment with state `approved` and the approving user's login before the
-  job's first step runs.
+  with the run's `GITHUB_TOKEN` holding `actions: read` from a job that needs
+  an earlier job of the same run that entered an approval environment with
+  required reviewers, lists the approval of that environment with state
+  `approved` and the approving user's login.
 end-descendant-type: spike
 evidence:
   - GitHub documents the endpoint as listing the approvals of a run's

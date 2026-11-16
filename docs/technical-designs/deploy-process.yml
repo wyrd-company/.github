@@ -17,7 +17,8 @@ objective: >-
   Define contract `deploy-process`: the Toha deploy template in this
   repository that renders a repository's deploy workflow, which ships one
   release of one Release Unit to the repository's environments in order, on
-  the stages it shares with the release workflow; and its first deploy part,
+  the stages it shares with the release workflow; the interface through which
+  a deploy part supplies its jobs; and the first deploy part,
   `cloudflare-worker`, which deploys a Cloudflare Worker and applies its D1
   migrations.
 background:
@@ -54,8 +55,9 @@ design-challenges:
     `build-the-worker-once-and-deploy-the-bundle` holds the trade-off.
   already-deployed-changes-nothing: >-
     Wrangler creates a new version on every deploy, so the part reads the
-    environment's deployment first and deploys only when the version serving
-    all traffic does not carry the release's tag or a migration is pending.
+    environment's deployment first and uploads only when the version serving
+    all traffic does not carry the release's tag. Applying D1 migrations when
+    none is pending changes nothing.
   schema-before-code: >-
     Each deploy applies pending D1 migrations before it uploads the Worker,
     so the new code always meets its schema. Migrations are additive while
@@ -63,9 +65,10 @@ design-challenges:
     true.
   cloud-resources-belong-to-terraform: >-
     Terraform declares the account's databases, namespaces, buckets, queues,
-    routes and custom domains. The deploy uploads the Worker script with what
-    its Wrangler environment binds and declares, and a Wrangler environment
-    that declares a route or a custom domain fails the build.
+    secrets stores, routes and custom domains. The deploy uploads the Worker
+    script with what its Wrangler environment binds and declares, and a
+    Wrangler configuration that declares a route, a custom domain or a build
+    command fails the build.
 proposed-design:
   high-level-overview: >-
     The parent template `deploy` accepts the release model through a
@@ -74,35 +77,61 @@ proposed-design:
     `.github/delivery/deploy.json`. The deploy workflow runs the six skeleton
     stages for one release of the Release Unit `deploy_unit`. `resolve`
     decides which release and which environments, from a dispatch or from a
-    completed release run, and revalidates the release. Build produces each
+    completed release run, and revalidates the release. Check credentials
+    enters each deploy environment of the run. Build produces each
     environment's bundle without credentials. Record is the GitHub deployment
     that each deploy job creates when it enters its environment, and the
     Worker version annotations that name the release. Deliver and verify run
-    once per environment in chain order: `deploy-<environment>` checks its
-    credential, reads back what is deployed, applies pending migrations and
-    deploys the bundle; `verify-<environment>` runs the repository's
-    verification recipe against it. Deploy targets are parts inside this
-    parent; `cloudflare-worker` is the first.
+    once per environment in chain order: `approve-<environment>` waits for a
+    person when the run's effective `deploy-approval` is `person`;
+    `deploy-<environment>` reads back what is deployed, applies pending
+    migrations and deploys the bundle; `verify-<environment>` runs the
+    repository's verification recipe against it. Deploy targets are parts
+    inside this parent; `cloudflare-worker` is the first.
 
   repository-layout: >-
     `templates/deploy/` holds `template.yml`, `schemas/` with the vendored
-    release model schema, `skeleton/` (the copy of `templates/skeleton/`),
-    `partials/`, `targets/cloudflare-worker/` with its `target.yml` and job
-    partials, and `template/`, whose rendered files are
-    `.github/workflows/deploy.yml`, `.github/workflows/deploy-rehearsal.yml`
-    and `.github/delivery/deploy.json`. The template is addressed as
+    release model schema, `skeleton/` (the
+    copy of `templates/skeleton/`), `partials/`, `targets/cloudflare-worker/`
+    with its `target.yml` and job partials, and `template/`, whose rendered
+    files are `.github/workflows/deploy.yml`,
+    `.github/workflows/deploy-rehearsal.yml` and
+    `.github/delivery/deploy.json`. The template is addressed as
     `gh:wyrd-company/.github#templates/deploy` and applied beside the release
     template, which every repository on the standard applies.
 
   interview: >-
     `release_model` is the same document question as the release
     template's. `targets` is the part question, a top-level `multiselect` with
-    `parts: true` and the option `cloudflare-worker`. `deploy_unit` is a
-    `select` of the release model's units that have a primary tag.
-    `environments` is a looped `text` question, at least one entry, each
-    validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, in the order an automatic
-    deploy enters them; the release template's environment names are
-    refused. Each part's questions carry `when` conditions on `targets`.
+    `parts: true`, the option `cloudflare-worker`, and `validate.min` and
+    `validate.max` of 1, so an application deploys through exactly one part.
+    `deploy_unit` is a `select` of the release model's units that have a
+    primary tag. `environments` is a looped `text` question, at least one
+    entry, each validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` and at most 64
+    characters, in the order an automatic deploy enters them; the names
+    `release-authority`, `package-tags`, `release-approval`, `deploy-approval`
+    and those starting with `publish-` are refused. Each part's questions
+    carry `when` conditions on `targets`.
+
+  part-interface: >-
+    A deploy part's `target.yml`, loaded into the parent's `data` as
+    `deploy_targets.<part>`, gives `build`, the id of its build job, which
+    starts with `build-`; `credentials` and `variables`, the Key Vault
+    secrets and the non-secret environment variables its deploy steps read in
+    each deploy environment, in the forms of the release template's
+    `credentials` interface and of variable names; and the members of the
+    release model it reads. Its partials are `targets/<part>/<build id>.yml`,
+    the build job's body; `targets/<part>/deploy-steps.yml`, the steps of its
+    deploy job; and `targets/<part>/verify.yml`, the verify job's body. The
+    parent renders the deploy steps and the verify body once per environment
+    with the template variable `environment` set. The parent writes every
+    job's id, `needs`, condition and `environment`, the `DEPLOY_` and
+    `RELEASE_` values, and the deploy job's first steps: the approval check,
+    the credential steps of `delivery-skeleton`, and the download and digest
+    check of the build's artifact. The build and verify bodies validate
+    against the skeleton's `schemas/part-job.schema.json`, and the deploy
+    steps validate as the `steps` of such a job whose permissions are
+    `contents: read`, `actions: read` and `id-token: write`.
 
   triggers-and-resolve: >-
     `deploy.yml` has `workflow_dispatch` with the required input
@@ -111,31 +140,33 @@ proposed-design:
     trigger on `Release` with `types: [completed]`. For a `workflow_run`
     event, `resolve` ends with mode `none` unless the release run concluded
     `success`; it downloads that run's `release-outcome` artifact and ends with
-    mode `none` unless `deploy_unit` is among its released units, whose tag is
-    then the release tag, and the environments are the whole chain. For a
+    mode `none` unless `deploy_unit` is a key of its `releases`, whose `tag`
+    is then the release tag, and the environments are the whole chain. For a
     dispatch, the tag and the environments come from the inputs. `resolve`
-    then requires the tag to be annotated, to pass
-    `intentional verify <tag> --json`, and to carry the record `tag-id`
-    `release-unit/<deploy_unit>/<primary tag key>` with `baseline: false`; the
-    commit it points at to be contained in the default branch head and to have
-    one parent; and, when the unit's `release_record` is `required`, a
-    published GitHub Release on the tag. It reads the release declaration,
-    observes the rung, and computes the effective ceremony at that rung; a
-    `workflow_run` start with effective `deploy-start` `person` ends with mode
-    `none`. Otherwise the mode is `deploy`. Beyond the skeleton's outputs it
-    exposes `tag`, `version` and `environments`, a JSON array in chain order.
+    then installs the pinned Intentional and requires the tag to be annotated,
+    to pass `intentional verify <tag> --json`, and to carry the record
+    `tag-id` `release-unit/<deploy_unit>/<primary tag key>` with
+    `baseline: false`; the commit it points at to be contained in the default
+    branch head and to have one parent; and, when the unit's `release_record`
+    is `required`, a published GitHub Release on the tag. It reads the release
+    declaration, observes the rung, and computes the effective ceremony at
+    that rung; a `workflow_run` start with effective `deploy-start` `person`
+    ends with mode `none`. Otherwise the mode is `deploy`. Beyond the
+    skeleton's outputs it exposes `tag`, `version` and `environments`, a JSON
+    array in chain order.
 
   stages: >-
-    The deploy workflow's check of credentials happens inside each
-    `deploy-<environment>` job, because every deploy environment carries the
-    `deploy-approval` control. Build holds `build-<part>`. Record holds no
-    parent job: entering an environment creates its GitHub deployment, and
-    the part writes the release tag and a message on the Worker version it
-    creates. Deliver and verify repeat per environment: the jobs for an
-    environment run only when it is in `environments`, and each
-    `deploy-<environment>` needs `verify-<previous environment>` in chain
-    order. Every job between them follows the skeleton's stage gate, so a
-    failure in one environment stops every later one.
+    Check credentials is one `preflight-<environment>` job per deploy
+    environment of the run, as the skeleton defines. Build holds the part's
+    build job. Record holds no parent job: entering an environment creates its
+    GitHub deployment, and the part writes the release tag and a message on
+    the Worker version it creates. Deliver and verify repeat per environment:
+    the jobs for an environment run only when it is in `environments`, and
+    `approve-<environment>`, which enters `deploy-approval` only when the
+    effective `deploy-approval` is `person`, and `deploy-<environment>` need
+    `verify-<previous environment>` in chain order. Every job follows the
+    skeleton's stage gate, so a failure in one environment stops every later
+    one.
 
   cloudflare-worker-build: >-
     `build-cloudflare-worker` runs with `contents: read` and no environment.
@@ -143,44 +174,48 @@ proposed-design:
     up Node from the file `cloudflare_worker_node_version_file` names
     (default `package.json`), and in `cloudflare_worker_directory` (default
     `.`) runs `npm ci`, then the local action `cloudflare_worker_build_recipe`
-    when one is answered. For each environment of the chain it reads the
+    when one is answered. For each environment of the run it reads the
     Wrangler configuration, `wrangler.toml`, `wrangler.json` or
-    `wrangler.jsonc`, and fails when the environment is not declared or when
-    the configuration declares `route`, `routes` or a custom domain at the top
-    level or in that environment. It runs `npx wrangler deploy --dry-run
-    --outdir .deploy/<environment> --env <environment>`, records the entry
-    module's file name and the SHA-256 of every file the dry run wrote, and
-    uploads the working directory without `.git` and `node_modules` as the
-    artifact `deploy-tree+<environment>`, which carries the bundle, the
-    configuration, every D1 migrations directory and the static assets
-    directory the configuration names.
+    `wrangler.jsonc`, and fails when the environment is not declared, or when
+    the configuration declares `route`, `routes`, a custom domain or `build`
+    at the top level or in that environment. It runs `npx wrangler deploy
+    --dry-run --outdir delivery-bundle/<environment> --env <environment>`,
+    and exposes the job output `bundles`, a JSON object mapping each
+    environment to its `entry`, the entry module's file name, and `files`,
+    the SHA-256 of every file the dry run wrote. It uploads the working
+    directory without `.git` and `node_modules` as the artifact
+    `deploy-tree+<environment>`, which carries `delivery-bundle/<environment>`,
+    the configuration, every D1 migrations directory and the static assets
+    directory the configuration names; none of them is a hidden path, so the
+    upload's default exclusion of hidden files leaves them in.
 
   cloudflare-worker-deploy: >-
     `deploy-<environment>` enters the environment with `contents: read`,
     `actions: read` and `id-token: write`. When the effective
     `deploy-approval` is `person` it runs the approval check first. It reads
-    `cloudflare-api-token` through the credential route, which is its check
-    of credentials. It downloads `deploy-tree+<environment>`, requires every
-    bundle file's SHA-256 to equal the build's, and runs
-    `npm ci --ignore-scripts` so that Wrangler comes from the repository's
-    lock file and no dependency script runs. The Wrangler steps receive
+    `cloudflare-api-token` through the credential route. It downloads
+    `deploy-tree+<environment>`, requires every bundle file's SHA-256 to equal
+    the build job's `bundles` output, and runs `npm ci --ignore-scripts` so
+    that Wrangler and its dependencies come from the repository's lock file
+    and no lifecycle script runs. The Wrangler steps receive
     `CLOUDFLARE_API_TOKEN` from the credential step and
     `CLOUDFLARE_ACCOUNT_ID` from the environment's variable. It reads the
     deployed state with `npx wrangler deployments status --env <environment>
-    --json` and, for the version at 100 percent, `npx wrangler versions view
-    <version id> --env <environment> --json`, whose
-    `annotations["workers/tag"]` is the deployed release tag; and, for each
-    binding in `cloudflare_worker_d1_databases`, the migrations that
-    `npx wrangler d1 migrations list <binding> --remote --env <environment>`
-    reports as unapplied. When the deployed tag is the release tag and no
-    migration is pending, it writes a summary that the release is already
-    deployed and changes nothing. Otherwise it runs `npx wrangler d1
-    migrations apply <binding> --remote --env <environment>` for each binding
-    in the answered order, then `npx wrangler deploy
-    .deploy/<environment>/<entry> --no-bundle --env <environment> --tag
-    <release tag> --message "<release tag> <release commit> <run url>"`, and
-    reads the deployment again, requiring the version at 100 percent to carry
-    the release tag. It never sets, replaces or deletes a Worker secret.
+    --json`; a Worker with no deployment is not deployed, and otherwise
+    `npx wrangler versions view <version id> --env <environment> --json` for
+    the version at 100 percent gives `annotations["workers/tag"]`, the
+    deployed release tag. It runs `npx wrangler d1 migrations apply <binding>
+    --remote --env <environment>` for each binding in
+    `cloudflare_worker_d1_databases`, in the answered order, which applies
+    only migrations not yet recorded in the database and changes nothing
+    when none is pending. When the deployed tag is the release tag, it writes
+    a summary that the release is already deployed and uploads nothing.
+    Otherwise it runs `npx wrangler deploy
+    delivery-bundle/<environment>/<entry> --no-bundle --env <environment>
+    --tag <release tag> --message "<release tag> <release commit> <run url>"`
+    and reads the deployment again, requiring the version at 100 percent to
+    carry the release tag. It never sets, replaces or deletes a Worker
+    secret.
 
   cloudflare-worker-verify: >-
     `verify-<environment>` runs with `contents: read` and no environment. It
@@ -191,64 +226,67 @@ proposed-design:
     it, holds no credential, and fails the job when the check fails.
 
   cloudflare-worker-configuration: >-
-    The part asks `cloudflare_worker_directory`,
-    `cloudflare_worker_node_version_file`, `cloudflare_worker_build_recipe`
-    (a local action path or empty), `cloudflare_worker_d1_databases` (D1
-    binding names separated by one space, or empty) and
-    `cloudflare_worker_verify_recipe`. Each deploy environment is a Wrangler
-    environment of the same name, so `--env <environment>` selects it. The
-    Wrangler configuration binds the resources Terraform declares by their
-    ids, declares no route and no custom domain, and keeps each D1 database's
-    schema as numbered migrations in that binding's migrations directory. The
-    upload writes the Worker's code, static assets, bindings, compatibility
-    settings, variables, Durable Object migrations, queue consumers and cron
-    triggers as the environment declares them; Terraform declares none of
-    these. The Worker's runtime secrets are placed by Elegua and are absent
-    from the repository, the configuration and the workflow. The environment's
-    `cloudflare-api-token` can edit the account's Workers scripts and D1
-    databases and the queues the Worker consumes, and nothing else.
+    The part asks `cloudflare_worker_directory`, a relative path validated by
+    `^\.(/[A-Za-z0-9_.-]+)*$`; `cloudflare_worker_node_version_file`, a
+    relative file path; `cloudflare_worker_build_recipe`, a local action path
+    or empty; `cloudflare_worker_d1_databases`, D1 binding names matching
+    `^[A-Za-z_][A-Za-z0-9_]*$` separated by one space, or empty; and
+    `cloudflare_worker_verify_recipe`, a local action path. Local action
+    paths use the release template's recipe pattern. Each deploy environment
+    is a Wrangler environment of the same name, so `--env <environment>`
+    selects it. The Wrangler configuration binds the resources Terraform
+    declares by their ids, declares no route, no custom domain and no build
+    command, and keeps each D1 database's schema as numbered migrations in
+    that binding's migrations directory. The upload writes the Worker's code,
+    static assets, bindings, compatibility settings, variables, Durable
+    Object migrations, queue consumers and cron triggers as the environment
+    declares them; Terraform declares none of these. The Worker reads its
+    runtime secrets through Cloudflare Secrets Store bindings that its
+    Wrangler environment declares; Elegua places each value in the store
+    that Terraform declares, and no secret value is in the repository, the
+    configuration or a workflow. The part reads `cloudflare-api-token` and
+    `CLOUDFLARE_ACCOUNT_ID`. The token can edit the account's Workers scripts
+    and D1 databases and the queues the Worker consumes, and nothing else.
 
   rehearsal: >-
-    `deploy-rehearsal.yml` runs on the calling commit with no environment and
-    no credential. It ends with success when Intentional reports no pending
-    intent; otherwise it runs `build-<part>` for every environment of the
-    chain, including the configuration checks and the dry-run bundles.
+    `deploy-rehearsal.yml` runs `resolve` in rehearsal mode on the calling
+    commit, with no environment and no credential: it ends with success when
+    Intentional reports no pending intent, and otherwise selects every
+    environment of the chain. It then runs the part's build job for them,
+    including the configuration checks and the dry-run bundles.
 
   recovery: >-
     A deploy dispatched again for the same release and environment reads the
-    deployed state, applies any migration still pending and deploys only when
+    deployed state, applies any migration still pending and uploads only when
     the release is not already serving all traffic. A failure in one
     environment leaves the earlier environments deployed and verified, and a
     dispatch naming the failed environment finishes the chain.
-
-  deploy-environment: >-
-    Every deploy job receives the skeleton's `RELEASE_` values for the
-    deployed release, `DEPLOY_ENVIRONMENT` and `DEPLOY_TAG`, set by the parent
-    and not overridable.
 
   implementation-validation: >-
     Local render tests cover the part with one environment and with a chain
     of two, an empty migration list, and a build recipe, and validate the
     rendered declaration against the declaration schema. A condition table
-    checks the per-environment gates for success, failure, skip and
-    cancellation. Tests of `resolve` cover a dispatch, a completed release
-    run that released the unit, one that released another unit, one that
-    failed, a baseline tag, a tag outside the default branch and a missing
-    release record. Tests of the configuration check refuse a top-level route,
-    an environment route and a custom domain. Tests of the deploy job run
-    against a fake Wrangler on `PATH` and cover a first deploy, a pending
-    migration with the release already deployed, an already deployed release
-    with nothing pending, a bundle digest mismatch, and a read-back that does
-    not show the release tag. Named mutation controls remove the read-back,
-    the digest check, the migration order and the approval check, and each
-    fails a test. Live cases deploy a release of a test Worker with a D1
-    database to two environments in order, deploy the same release again
-    with no change, and deploy after a new migration.
+    checks the per-environment gates and the approval jobs for success,
+    failure, skip and cancellation. Tests of `resolve` cover a dispatch, a
+    completed release run that released the unit, one that released another
+    unit, one that failed, a baseline tag, a tag outside the default branch
+    and a missing release record. Tests of the configuration check refuse a
+    top-level route, an environment route, a custom domain and a build
+    command. Tests of the deploy job run against a fake Wrangler on `PATH`
+    and cover a Worker never deployed, a pending migration with the release
+    already deployed, an already deployed release with nothing pending, a
+    bundle digest mismatch, and a read-back that does not show the release
+    tag. Named mutation controls remove the read-back, the digest check, the
+    migration order and the approval check, and each fails a test. `actionlint`
+    passes on every rendered workflow. Live cases deploy a release of a test
+    Worker with a D1 database to two environments in order, deploy the same
+    release again with no change, and deploy after a new migration.
 
   security-surface: >-
     The only job that holds the Cloudflare token is `deploy-<environment>`,
     inside its environment, after the bundle was built without credentials;
-    it runs no repository code and no dependency script. Its token reaches
-    only the Wrangler steps through their `env`. The deploy grants itself no
-    access, changes no trust, writes no secret, and creates no cloud resource
-    that Terraform declares.
+    it runs Wrangler and its locked dependencies with lifecycle scripts
+    disabled, and no repository code. Its token reaches only the Wrangler
+    steps through their `env`. The deploy grants itself no access, changes
+    no trust, writes no secret, and creates no cloud resource that Terraform
+    declares.

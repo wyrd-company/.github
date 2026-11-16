@@ -16,32 +16,45 @@ description: >-
   or signing with a Key Vault key. Each environment holds only variables, never
   a secret. A rendered workflow names its environments and the secrets, keys
   and variables each one carries in its delivery declaration, and nothing
-  outside this list reaches a job.
+  outside this list reaches a job. The run's `GITHUB_TOKEN`, which GitHub
+  issues for one run and revokes when it ends, is the one token a job holds
+  without an environment.
 
 
-  Environments of the release template. `release-authority` is entered by the
-  release workflow's `record` job and by `release-authority-smoke.yml`; it
+  Credential environments of the release template. `release-authority` is
+  entered by the release workflow's `record` job, its
+  `preflight-release-authority` job and `release-authority-smoke.yml`; it
   signs with the release authority App's key and reads no secret.
   `package-tags` is entered by the release workflow's `tag-after-publication`
   job and its `preflight-package-tags` job when the release model gives any
   tag `require_phase: after-publication`; it signs with the package tags App's
   key and reads no secret. `publish-<part>` is entered by the deliver jobs of a
-  publication part that declares a secret or a key, and by that environment's
+  publication part that declares a secret or an App, and by its
   `preflight-publish-<part>` job.
 
 
-  Environments of the deploy template. Each deploy environment the deploy
-  interview names, such as `staging` or `production`, is entered by the deploy
-  workflow's `deploy-<environment>` job. Its name is also the name of the
-  Wrangler environment that the `cloudflare-worker` part deploys.
+  Credential environments of the deploy template. Each deploy environment the
+  deploy interview names, such as `staging` or `production`, is entered by
+  the deploy workflow's `deploy-<environment>` job and its
+  `preflight-<environment>` job. Its name is also the name of the Wrangler
+  environment that the `cloudflare-worker` part deploys.
 
 
-  Variables in every environment that reads a secret or signs with a key.
-  `AZURE_TENANT_ID` is the Entra tenant. `AZURE_CLIENT_ID` is the client id of
-  the user-assigned managed identity whose federated credential trusts this
-  environment. `AZURE_KEY_VAULT_URL` is the vault's address, `https://` and
-  the vault host with no path and no trailing slash. An environment whose parts
-  declare no secret and no key carries none of the three.
+  Approval environments. `release-approval` is entered by the release
+  workflow's `approve-release` job, and `deploy-approval` by each of the
+  deploy workflow's `approve-<environment>` jobs, only in a run whose
+  effective `release-approval` or `deploy-approval` is `person`. An approval
+  environment carries no variable, no secret and no key; its required
+  reviewers hold the job until a person approves.
+
+
+  Variables in every credential environment that reads a secret or signs
+  with a key. `AZURE_TENANT_ID` is the Entra tenant. `AZURE_CLIENT_ID` is the
+  client id of the user-assigned managed identity whose federated credential
+  trusts this environment. `AZURE_KEY_VAULT_URL` is the address of the vault
+  the environment reads, `https://` and the vault host with no path and no
+  trailing slash. An environment whose parts declare no secret and no key
+  carries none of the three.
 
 
   An App credential is two variables in the environment that signs with it:
@@ -51,11 +64,11 @@ description: >-
   `RELEASE_AUTHORITY_KEY_NAME`, `package-tags` carries `PACKAGE_TAGS_APP_ID`
   and `PACKAGE_TAGS_KEY_NAME`, and `publish-repo-wyrd-foo` carries
   `REPO_WYRD_FOO_PUBLISHER_APP_ID` and `REPO_WYRD_FOO_PUBLISHER_KEY_NAME`.
-  The key is in the vault that the environment's
-  `AZURE_KEY_VAULT_URL` names, imported once by a person from the PEM that
-  GitHub generates, with key operations `sign` only. The environment's
-  identity holds a role on that key whose only data action is
-  `Microsoft.KeyVault/vaults/keys/sign/action`.
+  The key is imported once by a person from the PEM that GitHub generates,
+  with key operations `sign` only, into the vault that the environment's
+  `AZURE_KEY_VAULT_URL` names. An App shared by several repositories, such as
+  an Intentional App, has its key in one vault, and every environment that
+  signs with it names that vault.
 
 
   Secrets each part reads, by Key Vault secret name, with the environment
@@ -70,64 +83,74 @@ description: >-
   `GITHUB_TOKEN` and `packages: write`. A secret name is lower case letters,
   digits and single dashes, at most 119 characters, and never ends in
   `-pending`, which is Elegua's staging form. A credential with several fields
-  is one secret whose value is a JSON object, and an AWS access key is the
-  secret `aws-access-key` with members `access-key-id` and
-  `secret-access-key`, exposed as `AWS_ACCESS_KEY_ID` and
-  `AWS_SECRET_ACCESS_KEY`, with the variable `AWS_REGION`.
+  is one secret whose value is a JSON object with string members, declared
+  with `fields`, which maps each member to the variable the reading steps
+  receive it as. An AWS access key is the secret `aws-access-key` with members
+  `access-key-id` and `secret-access-key`, received as `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY`, beside the variable `AWS_REGION`.
 
 
-  Vaults. Each environment reads exactly one vault, the one its
-  `AZURE_KEY_VAULT_URL` names. Two environments read the same vault only when
-  every secret name they share holds the same value for both, so a staging
-  token and a production token of the same name live in two vaults. The vault
-  uses Azure role-based access, so each role assignment is scoped to one
-  secret or one key.
+  Vaults. Each credential environment that reads secrets reads its own vault,
+  which holds exactly the secrets that environment's parts declare, so a
+  staging and a production `cloudflare-api-token` live in two vaults. The
+  vaults use Azure role-based access. An environment's identity holds
+  `Key Vault Secrets User` on its own vault, and the role whose only data
+  action is `Microsoft.KeyVault/vaults/keys/sign/action` on each key it signs
+  with, at that key's scope. Elegua's writing identity holds
+  `Key Vault Secrets Officer` on every vault that holds a secret of its
+  manifest.
 
 
-  Terraform. For each repository environment, Terraform creates a
-  user-assigned managed identity with one federated identity credential:
-  issuer `https://token.actions.githubusercontent.com`, subject
+  Terraform. For each repository, Terraform takes from the repository's
+  delivery declarations the credential environments, which of them read
+  secrets, and the Apps each signs with, and takes as inputs the subscription,
+  the tenant, each App's id and key vault, and each variable it does not
+  create, such as `CLOUDFLARE_ACCOUNT_ID`. For each credential environment it
+  creates a user-assigned managed identity with one federated identity
+  credential: issuer `https://token.actions.githubusercontent.com`, subject
   `repo:<owner>/<repository>:environment:<environment>`, audience
-  `api://AzureADTokenExchange`. It assigns the identity `Key Vault Secrets User`
-  on each secret the environment reads and the sign-only role on each key it
-  signs with, each at that object's scope, and nothing at the vault's scope. It
-  takes the repository, the environment, the vault, the secret names, the key
-  names and the variables it does not create, such as an App id or
-  `CLOUDFLARE_ACCOUNT_ID`, as inputs. Its root module has one output,
-  `github_environments`, whose value is an object keyed by
-  `<owner>/<repository>`, then by environment name, then by variable name,
-  with each variable's value as a string. `terraform output -json
-  github_environments` prints that object, and it is the whole of what Airlock
-  reads from Terraform. Terraform writes no secret value and creates no secret.
+  `api://AzureADTokenExchange`. It creates the vault of each environment
+  that reads secrets and assigns the roles above; a key-scoped assignment
+  reads the key as existing, so the key is imported before Terraform assigns
+  sign on it. Its root module has one output, `github_environments`, whose
+  value is an object keyed by `<owner>/<repository>`, then by credential
+  environment name, then by variable name, with each variable's value as a
+  string. `terraform output -json github_environments` prints that object,
+  and it is the whole of what Airlock reads from Terraform. Terraform writes
+  no secret value and creates no secret.
 
 
   Airlock. For each environment that a repository's delivery declarations
   name, Airlock creates the environment, restricts its deployments to the
   default branch through a custom branch policy, and writes exactly the
   variables the declaration lists, with the values from `github_environments`
-  for that repository and environment. An environment whose declaration names
-  an approval control gets required reviewers, with self-review prevented,
-  whenever that control's effective setting is `person`; the reviewers come
-  from Airlock's repository configuration. Airlock writes no environment
-  secret, no repository secret and no organization secret.
+  for that repository and environment. It gives each approval environment
+  required reviewers, with self-review prevented, from Airlock's repository
+  configuration, and gives no credential environment required reviewers. It
+  turns off GitHub's immutable releases for the repository, because the
+  evidence file joins a release record after publication; tags stay immutable
+  through the organization's rulesets. Airlock writes no environment secret,
+  no repository secret and no organization secret.
 
 
   Elegua. Every secret a delivery declaration lists is a secret of Elegua's
   manifest with a destination whose store is an `azure-key-vault` store whose
   `vault-url` equals the environment's `AZURE_KEY_VAULT_URL`, and whose `path`
   equals the secret name. Its manifest `tier` is `sensitive` when the
-  effective `rotation-approval` control of any repository whose environment
-  reads it is `person`, and `routine` otherwise. App keys are Key Vault keys,
-  not secrets, and are outside Elegua's manifest.
+  effective `rotation-approval` of any repository whose environment reads it
+  is `person`, and `routine` otherwise. App keys are Key Vault keys, not
+  secrets, and are outside Elegua's manifest.
 validation-criteria: >-
-  The delivery declaration schema restricts environment names, secret names and
-  variable names to the forms above, and each template's tests render every
-  part and compare the environments, secrets, keys and variables in the
-  rendered declaration with the lists above. A test of each rendered workflow
-  finds no `secrets.` expression other than `secrets.GITHUB_TOKEN`, no
-  `vars.` expression outside a job that enters an environment, and no
-  environment variable name that the rendered declaration does not list for
-  that job's environment. Terraform's module tests plan one environment and
-  compare `github_environments` with the variable names the declaration lists
-  for it. Airlock's apply tests compare the environments and variables it
-  writes for a repository with that repository's declarations.
+  The delivery declaration schema restricts environment names, secret names,
+  fields and variable names to the forms above and refuses an approval
+  environment that carries a variable, a secret or a key. Each template's
+  tests render every part and compare the environments, secrets, keys and
+  variables in the rendered declaration with the lists above. A test of each
+  rendered workflow finds no `secrets.` expression other than
+  `secrets.GITHUB_TOKEN`, no `vars.` expression outside a job that enters an
+  environment, and no environment variable name that the rendered declaration
+  does not list for that job's environment. Terraform's module tests plan one
+  repository from a declaration and compare `github_environments` with the
+  variable names the declaration lists for each environment. Airlock's apply
+  tests compare the environments, variables and reviewers it writes for a
+  repository with that repository's declarations.

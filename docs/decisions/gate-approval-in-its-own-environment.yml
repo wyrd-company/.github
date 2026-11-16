@@ -1,0 +1,56 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Gate approval in its own environment
+relationships:
+  contextualizes:
+    - delivery-skeleton
+    - delivery-controls
+    - release-process
+    - deploy-process
+description: >-
+  At Custodial, a person approves each release and deploy once the
+  repository is Stable, and a release that takes the repository to 1.0.0
+  already carries that ceremony. GitHub's only human gate in a workflow is
+  an environment's required reviewers, which hold every job that enters the
+  environment. Airlock writes those reviewers, while the rung that decides
+  whether a run needs approval is known only when the run computes its plan.
+considered-options:
+  1: >-
+    Put the reviewers on the credential environment, `release-authority` or
+    a deploy environment, and have Airlock add them once the repository is
+    Stable. An edited workflow cannot reach the credential without a person,
+    but the release that reaches 1.0.0 runs before Airlock sees the Stable
+    rung, so it gets no approval; and every preflight job that enters the
+    environment asks the person again.
+  2: >-
+    Put the reviewers on the credential environment of every Custodial
+    repository at every rung. The approval is never missing, but a person
+    approves every release below Stable, where the standard sets no approval.
+  3: >-
+    Put the reviewers on an approval environment that holds no credential,
+    and enter it from a job that runs only when the run's effective approval
+    is `person`. The job that holds the credential then requires the run's
+    recorded approval before it acts.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    The run decides whether to ask, from the rung it computes, so the 1.0.0
+    release is approved and releases below Stable are not, and a person is
+    asked once per release and once per deploy environment. The workflow
+    file that decides is rendered by the template, reviewed in a pull request
+    at the tiers that approve, and audited by Airlock against the applied
+    record.
+expected-outcomes:
+  positive:
+    - >-
+      The approval follows the governing rung of each run without waiting for
+      Airlock to apply.
+    - >-
+      Preflight jobs never wait for a person.
+  negative:
+    - >-
+      The credential environment itself does not stop a workflow that skips
+      the approval job; the rendered workflow, its review and Airlock's audit
+      do.
+    - >-
+      Each repository that can require approval carries one or two extra
+      environments.
