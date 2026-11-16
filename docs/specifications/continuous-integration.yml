@@ -21,7 +21,9 @@ description: >-
   every release, automatic or dispatched, requires a push run of this workflow
   for exactly its source commit with `conclusion: success`, found through
   `GET /repos/<owner>/<repository>/actions/workflows/<ci_workflow>/runs` with
-  `head_sha`, `event=push` and `status=success`.
+  `head_sha`, `event=push` and `status=success`. A release whose source
+  commit has no such run fails in `resolve`, whether a dispatch or a
+  completed push run that did not succeed started it.
 
 
   Rehearsal. When the effective `rehearsal` control is `on`, the workflow has

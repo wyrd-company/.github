@@ -16,7 +16,6 @@ TYPES = {
 }
 # Documents that other repositories, or pull requests not yet merged here, hold.
 EXTERNAL = {
-    'delivery-standard': 'wyrd-company/.github docs/concepts/delivery-standard.yml (pull request 9)',
     'release-model': 'wyrd-company/intentional docs/technical-designs/release-model.yml',
     'release-process-conformance': 'wyrd-company/airlock docs/technical-designs/release-process-conformance.yml',
     'template-composition': 'wyrd-company/toha docs/technical-designs/template-composition.yml',

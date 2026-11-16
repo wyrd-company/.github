@@ -145,12 +145,12 @@ proposed-design:
     `source-sha` is required and must be 40 lowercase hexadecimal characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
     (default false) chooses the baseline mode. With `workflow_run`, the source
-    commit is `github.event.workflow_run.head_sha`, and the run is mode `none`
-    unless that run concluded `success` from a `push` on the default branch.
-    `resolve` checks out the source commit with `fetch-depth: 0`, which
-    brings every tag with its tag object, and `persist-credentials: false`,
-    reads the default
-    branch head from `GET /repos/<owner>/<repository>/git/ref/heads/<default>`,
+    commit is `github.event.workflow_run.head_sha`; the run is mode `none`
+    when the triggering run was not a `push` on the default branch, and
+    `resolve` fails, naming the triggering run, when that push run did not
+    conclude `success`. `resolve` checks out the source commit with
+    `fetch-depth: 0`, which brings every tag with its tag object, and
+    `persist-credentials: false`, reads the default branch head from `GET /repos/<owner>/<repository>/git/ref/heads/<default>`,
     and refuses to continue when the repository's effective rulesets do not
     refuse updates and deletions of tags. Mode `baseline` requires a dispatch
     whose source commit is the default branch head and creates the baseline

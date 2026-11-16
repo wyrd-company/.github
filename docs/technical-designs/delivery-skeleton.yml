@@ -232,8 +232,9 @@ proposed-design:
     trigger and a `workflow_run` trigger on `Release` with
     `types: [completed]`, and `concurrency` group `deploy` without
     cancelling. `resolve` treats a `workflow_run` event whose triggering run
-    did not conclude `success` or did not run on the default branch as mode
-    `none`, and each workflow adds its own checks of the triggering run.
+    did not run on the default branch as mode `none`, and each workflow
+    decides what a triggering run that did not succeed means: the release
+    workflow fails, and the deploy workflow ends with mode `none`.
     Continuous integration, release and deploy are three levels of
     `workflow_run`, the most GitHub chains. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.
