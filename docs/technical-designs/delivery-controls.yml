@@ -65,22 +65,33 @@ proposed-design:
     `{{ tier_suggested }}`. The `text` question `tier_reason` is always
     asked, and is required when the chosen tier ranks below the suggestion,
     with custodial above trusted above standard. A change of tier is a pull
-    request that re-answers the interview; a tier lowered because the answers
-    changed is explained by those answers, and a tier set below what the
-    answers suggest carries `tier_reason`.
+    request that re-answers the interview, and every change to a lower tier
+    than the recorded one carries a new `tier_reason`, whether or not the
+    re-answered questions suggest the lower tier, as the operator ruled and
+    the standard states. Toha cannot show the interview the recorded tier, so
+    the release template's rendered pull request check, the `delivery` job of
+    `intentional.yml`, compares `.github/delivery/release.json` at the pull
+    request's base and head, and fails when the head's tier ranks below the
+    base's and the head's `tier_reason` is absent or equals the base's.
 
   release-authority-app: >-
     The `text` question `release_authority_app` holds the slug of the App
     that creates the repository's release commits and tags, validated by
-    `^[a-z0-9]+(-[a-z0-9]+)*$` and at most 34 characters. Its default is the slug in the template data
-    `release_authority_apps` for the chosen tier, which holds the slugs of the
-    organization's Intentional Apps for `standard` and `trusted` as they are
-    registered; `custodial` has no entry, so a Custodial repository names its
-    own App. The `text` question `package_tags_app` holds the slug of the App
-    that creates tags after publication, asked when the release model gives
-    any tag `require_phase: after-publication`, with its default from
-    `package_tags_apps` keyed the same way. An adopter outside the
-    organization answers both with its own Apps.
+    `^[a-z0-9]+(-[a-z0-9]+)*$` and at most 34 characters. Its default is the
+    slug in the template data `release_authority_apps` for the chosen tier,
+    which holds the slugs of the organization's Intentional Apps for
+    `standard` and `trusted` as they are registered; `custodial` has no entry,
+    so a Custodial repository names its own App. The `text` question
+    `package_tags_app` holds the slug of the App that creates tags after
+    publication, asked when the release model gives any tag
+    `require_phase: after-publication`, with its default from
+    `package_tags_apps` keyed the same way. An answer names an App; it grants
+    nothing. A repository signs with an App only where the organization's App
+    authorization file, `delivery-apps`, allows that repository, role and
+    tier: Terraform grants the key's sign role and Airlock names the App as a
+    bypass actor only for such an enrolment, and Airlock's audit fails a
+    declaration that names any other App. An adopter outside the organization
+    answers both with its own Apps and keeps its own authorization file.
 
   control-catalog: >-
     Assurance controls take `on` or `off`. `rehearsal`, the release rehearsal
@@ -126,8 +137,8 @@ proposed-design:
     control whose effective setting ranks below the tier's default at the
     repository's current rung; it carries the recorded reason. A setting
     above its default is not a deviation and needs no reason. The skeleton's
-    `delivery.mjs` and Airlock compute both from the same three inputs: the
-    release declaration's `tier` and `controls`, and the observed rung.
+    `scripts/delivery.js` and Airlock compute both from the same three inputs:
+    the release declaration's `tier` and `controls`, and the observed rung.
     Assurance controls take effect when the release template renders, so a
     change to one is a template update; ceremony controls take effect when a
     run computes them.
@@ -135,42 +146,69 @@ proposed-design:
   applied-record-fields: >-
     In `.toha.json`, the release application is the application whose
     `source` is the release template's source that the organization accepts
-    under `REPO-TPL-01`, and the deploy application likewise for the deploy
-    template. Airlock reads from the release application `commit`, `parts`,
-    `answers.tier`, `answers.tier_reason`, the seven `answers.tier_*`
-    question answers, `answers.release_authority_app`,
+    under `REPO-TPL-01`, and the deploy and Airlock configuration applications
+    likewise for their templates. Airlock reads from the release application
+    `commit`, `parts`, `answers.tier`, `answers.tier_reason`, the seven
+    `answers.tier_*` question answers, `answers.release_authority_app`,
     `answers.package_tags_app`, `answers.customize_controls`, every
     `answers.control_<id>` and `answers.control_<id>_reason`,
     `answers.ci_workflow`, `answers.ci_workflow_name` and
     `answers.release_model`; from the deploy application `commit`, `parts`,
-    `answers.deploy_unit` and `answers.environments`; and from both, `paths`,
-    to find the files each renders. An answer absent from the record is a
-    question that was skipped, and takes its default.
+    `answers.deploy_unit` and `answers.environments`; from the Airlock
+    configuration application `commit` and `answers.airlock_audit_app`; and
+    from each, `paths`, to find the files it renders. An answer absent from
+    the record is a question that was skipped, and takes its default.
 
   floor-placement: >-
-    The release commit and its tags are created only by the release
-    workflow's `record` job, inside `release-authority`, with a token the
-    token action mints for the one repository with `contents: write`; no other
-    rendered job holds a token that can push to the default branch or create
-    a tag. Tag immutability, the tag creation authority and the refusal of
-    unclassified tags are organization rulesets that Airlock applies, and the
-    release workflow's `resolve` refuses to create a release when the
-    repository's effective rulesets do not refuse tag updates and deletions.
-    Every credential reaches a job through its environment and Key Vault, as
-    `delivery-skeleton` defines, and no rendered workflow reads a repository
-    or organization secret. The absence of repository-level secrets is
-    Airlock's audit. Airlock applies organization rulesets that refuse every
-    update, deletion and non-fast-forward of a tag with no bypass; that let
-    only the organization's release authority and package tags Apps, found by
-    `GET /apps/<slug>` from the slugs the declarations name, create a tag
-    matching a classified pattern, bare SemVer or `<name>@<SemVer>`; that
-    refuse the creation of any other tag; and that require a pull request,
-    linear history and no force push on the default branch, with the release
-    authority Apps as bypass actors so that `record` can push the release
-    commit. Recovery runs from the immutable tag: a release dispatched
-    again for its source commit finds its tags, and every job that changes
-    state outside the run does only what is missing. No answer removes any of
-    these.
+    The release commit and the tags created with it are pushed only by the
+    release workflow's `record` job, inside `release-authority`, with a token
+    the token action mints from the release authority App for the one
+    repository with `contents: write`; the tags that wait for publication are
+    pushed only by `tag-after-publication`, inside `package-tags`, with a
+    token from the package tags App. `release-record` and `evidence` hold the
+    run's `GITHUB_TOKEN` with `contents: write`, which can change releases and
+    their assets but, under the rulesets below, cannot create, move or delete
+    a tag or update the default branch. Every credential reaches a job through
+    its environment, as `delivery-skeleton` defines, and no rendered workflow
+    reads a repository or organization secret; the absence of repository
+    secrets is Airlock's audit. Tags are immutable and classified by the
+    rulesets of `rulesets`. Recovery runs from the immutable tags: a release
+    dispatched again for its source commit finds its tags, and every job that
+    changes state outside the run does only what is missing. No answer removes
+    any of these.
+
+  rulesets: >-
+    Airlock applies these organization rulesets, each with enforcement
+    `active`, each targeting the repositories whose custom property `release`
+    is `true`. `delivery-tags-immutable`: target `tag`, ref condition include
+    `~ALL`, rules `update`, `deletion` and `non_fast_forward`, no bypass
+    actor. `delivery-default-branch`: target `branch`, include
+    `~DEFAULT_BRANCH`, rules `pull_request`, `required_linear_history`,
+    `non_fast_forward` and `deletion`, with bypass mode `always` for the
+    release authority Apps that `delivery-apps` allows for the repository, so
+    that `record` can push the release commit. For each repository it also
+    applies three organization rulesets restricted to that repository by a
+    `repository_name` condition, whose ref patterns come from the release
+    model's tag templates, with `{version}` written as `[0-9]*.[0-9]*.[0-9]*`
+    and `{id}` as the unit's literal id. `delivery-tags-recorded-<repository>`:
+    target `tag`, include the patterns of every tag template with no
+    `require_phase` or with `before-publication`, rule `creation`, bypass the
+    repository's release authority App only. `delivery-tags-published-<repository>`:
+    target `tag`, include the patterns of every template with
+    `after-publication`, rule `creation`, bypass the repository's package tags
+    App only. `delivery-tags-unclassified-<repository>`: target `tag`, include
+    `~ALL`, exclude every pattern of the two others, rule `creation`, no
+    bypass actor. A tag name that matches both phases' patterns is refused to
+    both Apps, so Airlock refuses a release model whose patterns of the two
+    phases overlap, and `resolve` refuses a plan in which a tag matches a
+    pattern of the other phase. The patterns admit some names that are not
+    SemVer; the only writers of matching names are `record` and
+    `tag-after-publication`, which push exactly the tag names of the plan.
+    Bypass actors are visible only with administration access, so the
+    workflow's own check is limited: `resolve` and the smoke workflow read
+    the effective rulesets with `GITHUB_TOKEN` and require each of these to
+    be present and `active` with the conditions and rules above, and Airlock's
+    audit, which reads with administration access, checks the bypass lists.
 
   assurance-placement: >-
     `rehearsal`: the release template renders
@@ -180,48 +218,73 @@ proposed-design:
     `.intentional/release-plan.json` in the release commit, and `record` and
     `revalidate` require its `digest` to equal every tag record's
     `plan-digest`. `revalidation`: the `revalidate` job between `record` and
-    the deliver stage. `provenance`: each build job that produces release
-    assets attests them with `actions/attest-build-provenance`, and
-    `verify-provenance` verifies the attestation of every asset downloaded
-    back from its release record; the `npm` part verifies npm provenance on
-    the tarball read back from the registry. `evidence`: the `evidence` job
-    attaches `release-evidence.json` to each release record. `consumer-before`:
-    each part's `consume-` jobs in the build stage. `consumer-after`: each
-    part's `verify-` jobs that install from the registry. `authority-smoke`:
-    the release template renders
-    `.github/workflows/release-authority-smoke.yml`. A control that is `off`
-    renders none of its jobs or files.
+    the deliver stage. `provenance`: the parent's `attest` job, which runs no
+    repository code, attests every release asset the build stage produced
+    with `actions/attest-build-provenance`, and `verify-provenance` verifies
+    the attestation of every asset downloaded back from its release record
+    against the expected source and signer identity that `release-process`
+    states; each federated registry part verifies the registry's own
+    provenance for what it published. `evidence`: the `evidence` job attaches
+    `release-evidence.json` to each release record. `consumer-before`: each
+    part's `consume-` jobs in the build stage. `consumer-after`: each part's
+    `verify-` jobs that install from the registry. `authority-smoke`: the
+    release template renders `.github/workflows/release-authority-smoke.yml`.
+    A control that is `off` renders none of its jobs or files.
 
   ceremony-placement: >-
     `release-start` and `deploy-start`: each workflow's `resolve` ends an
     automatic run when the effective setting is `person`. `release-approval`:
     the release workflow's `approve-release` job, which enters
-    `release-approval` when the effective setting is `person`, and the
-    `record` job's approval check. `deploy-approval`: each
+    `release-approval` when the effective setting is `person` and the run will
+    push, and the `record` job's approval check. `deploy-approval`: each
     `approve-<environment>` job, which enters `<environment>-approval`, and
     each `deploy-<environment>` job's approval check. Airlock gives every
-    approval environment required reviewers. `update-review`: the session that applies a template update
-    reads the release declaration and leaves the update's pull request for a
-    person when the effective setting is `person`, and merges it otherwise.
-    `rotation-approval`: Elegua's manifest gives each secret that the
-    repository's environments read `tier: sensitive` when the effective
-    setting is `person`.
+    approval environment required reviewers with self-review prevented, and
+    the approval check refuses an approval by the run's `triggering_actor`,
+    so the person who approves is never the person who started the run; a
+    Custodial repository with one maintainer cannot release or deploy at the
+    Stable rung, as the standard states. `update-review`: the session that
+    applies a template update reads the release declaration and leaves the
+    update's pull request for a person when the effective setting is
+    `person`, and merges it otherwise. `rotation-approval`: Elegua's manifest
+    gives each secret that the repository's environments read
+    `tier: sensitive` when the effective setting is `person`.
 
   audit: >-
-    Airlock's audit reads the applied record, both declarations, the release
-    model, the repository's settings and environments, the repository's
-    secrets list, the tag records and Elegua's manifest, and reports the tier,
-    the observed rung, and every deviation with its reason. It fails when the
-    tier ranks below the organization's minimum for the repository; when the
-    tier ranks below the suggestion of the recorded answers and
-    `tier_reason` is absent; when a deviation has no reason; when the
+    The Airlock configuration template renders
+    `.github/workflows/airlock-audit.yml`, which runs on `schedule` once a
+    day, on `workflow_dispatch` and on `push` to the default branch, so that
+    `airlock-audit`'s default-branch policy admits it, with
+    `permissions: {}` and one job, `audit`, that enters `airlock-audit` with
+    `contents: read` and `id-token: write`. The job runs the token action
+    with the Airlock audit App, whose role in `delivery-apps` is
+    `airlock-audit` and whose permissions are read-only: `administration`,
+    `actions`, `contents`, `environments`, `metadata`, `secrets` and
+    `variables`; it asks for a token for the calling repository and the
+    repository that holds Elegua's manifest, and passes it to the pinned
+    Airlock action, which reads no repository or organization secret. The
+    template's `airlock_audit_app` question holds the App's slug. The audit
+    reads the applied record, the three declarations, the release model, the
+    repository's settings, rulesets with their bypass actors, environments
+    with their reviewers, the repository's secrets list, the tag records, the
+    release records with their assets, `delivery-apps` and Elegua's manifest,
+    and reports the tier, the observed rung, and every deviation with its
+    reason. It fails when the tier ranks below the organization's minimum for
+    the repository; when the tier ranks below the suggestion of the recorded
+    answers, or below the tier recorded in the base of a pull request or in
+    the first parent of the commit that changed it, and that change records
+    no new `tier_reason`; when a deviation has no reason; when the
     repository holds a repository-level secret; when a file the record lists
     differs from what its application renders; when a control's effective
     setting needs a job, a file, a ruleset, an environment rule or a required
     reviewer that is absent; when an approval environment has no required
-    reviewer; when GitHub's immutable releases are on; when a secret that a declaration lists
-    is not a destination of Elegua's manifest in the environment's vault; and
-    when such a secret's manifest `tier` is not the one its readers' effective
-    `rotation-approval` requires. It reads Elegua's manifest from the
-    repository and path its organization configuration names; the manifest
-    holds names and policies, never values.
+    reviewer; when immutable releases are off and `evidence` is off; when a
+    release asset differs from its `SHA256SUMS`, its evidence file or its
+    attestation; when a declaration names an App that `delivery-apps` does
+    not allow for the repository, or an App is installed outside its
+    repositories; when a secret that a declaration lists is not a destination
+    of Elegua's manifest in the environment's vault; and when such a secret's
+    manifest `tier` is not the one its readers' effective `rotation-approval`
+    requires. It reads Elegua's manifest from the repository and path its
+    organization configuration names; the manifest holds names and policies,
+    never values.
