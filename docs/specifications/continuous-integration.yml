@@ -23,8 +23,10 @@ description: >-
   commit with `conclusion: success`, found through
   `GET /repos/<owner>/<repository>/actions/workflows/<ci_workflow>/runs` with
   `head_sha`, `event=push` and `status=success`. A release whose source
-  commit has no such run fails in `resolve`, whether a dispatch or a
-  completed push run that did not succeed started it.
+  commit's push run failed fails in `resolve`, whether a dispatch or an
+  automatic start reached it; an automatic run whose head's push run has not
+  completed ends without releasing, because that run's completion starts
+  another.
 
 
   Rehearsal. When the effective `rehearsal` control is `on`, the workflow has

@@ -252,8 +252,8 @@ proposed-design:
     reads
     `GET /repos/<owner>/<repository>/actions/runs/<run id>/approvals` and
     requires an approval with state `approved` for its own approval
-    environment by a user other than the run's `triggering_actor`, and fails
-    otherwise.
+    environment by a user other than the run's `actor` and its
+    `triggering_actor`, and fails otherwise.
 
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
@@ -262,22 +262,23 @@ proposed-design:
     only a `workflow_dispatch` trigger, with the inputs `release-tag`,
     `from` and `automatic`; a person dispatches it, and the release
     workflow's `request-deploy` job dispatches it with `automatic: true` only
-    after a run that released the deployed unit. For a `workflow_run` event,
-    `resolve` requires `github.event.workflow_run.head_repository.full_name`
-    to be the repository, `head_branch` to be the default branch and `event`
-    to be `push`, and otherwise ends with mode `none`; it fails on a
-    triggering conclusion of `failure`, `timed_out`, `startup_failure` or
-    `action_required` and ends with mode `none` on `cancelled`, `skipped`,
-    `neutral` or `stale`. Each workflow has workflow-level `concurrency`
+    after a run that released the deployed unit. The `workflow_run` trigger
+    carries `branches: [<default_branch>]`, so only runs of continuous
+    integration on the default branch start a release, and the triggering
+    run only wakes the workflow: `resolve` releases the default branch head,
+    ends with mode `none` while the head's push run has not completed, and
+    fails when the head's push run concluded `failure`, `timed_out`,
+    `startup_failure` or `action_required`. Each workflow has workflow-level `concurrency`
     group `release` or `deploy` without cancelling. GitHub keeps one running
     and one pending run per group and cancels the older pending run when a
     newer one queues, so the design makes every run that can queue cover the
-    work of any run it replaces: an automatic release run releases the
-    default branch head at the moment it resolves, which holds every pending
-    intent of an earlier source commit; a deploy run exists only for a
+    work of any run it replaces: every automatic release run, whatever
+    completion started it, releases the default branch head at the moment it
+    resolves, which holds every pending intent; a deploy run exists only for a
     release that was made or a person's request, and a newer one deploys a
-    newer release; no run that ends with mode `none` can follow a delivery
-    and replace it. A person's dispatch replaced while pending shows as
+    newer release; a release run that replaces another resolves the same
+    head or a newer one, so ending with mode `none` means nothing was
+    pending. A person's dispatch replaced while pending shows as
     cancelled, and the person dispatches again. A run waiting for an approval
     holds its group. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.

@@ -132,7 +132,9 @@ proposed-design:
     defines. `ci_workflow` (default `ci.yml`, validated by
     `^[A-Za-z0-9_.-]+\.ya?ml$`) and `ci_workflow_name` (default `CI`,
     validated by `^[A-Za-z0-9 _.-]+$`) name continuous integration as
-    `continuous-integration` defines. `release_prepare_recipe`, a local
+    `continuous-integration` defines, and `default_branch` (default `main`,
+    validated by `^[A-Za-z0-9._/-]+$`) names the branch the `workflow_run`
+    trigger's `branches` filter admits. `release_prepare_recipe`, a local
     action path validated like the product recipes or empty (the default),
     names a repository action that `resolve` runs after `intentional apply` to
     update files derived from versions, such as lock files. `latest_unit` is
@@ -145,13 +147,15 @@ proposed-design:
     `resolve` sets the run's `mode`. With `workflow_dispatch`, the input
     `source-sha` is required and must be 40 lowercase hexadecimal characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
-    (default false) chooses the baseline mode. With `workflow_run`, the run is
-    mode `none` when the triggering run was not a `push` on the default branch
-    or was cancelled or skipped, and `resolve` fails, naming the triggering
-    run, when it failed, as `delivery-skeleton` lists; otherwise the source
-    commit is the default branch head at the moment `resolve` reads it, so an
-    automatic run always releases everything pending, whichever completion of
-    continuous integration started it. `resolve` checks out the source commit
+    (default false) chooses the baseline mode. With `workflow_run`, the
+    triggering run only wakes the workflow: the source commit is the default
+    branch head at the moment `resolve` reads it, so an automatic run always
+    releases everything pending, whichever completion of continuous
+    integration started it and whichever run it replaced. The run is mode
+    `none` while the head's push run of continuous integration has not
+    completed, because that run's completion starts another, and `resolve`
+    fails, naming the run, when the head's push run concluded `failure`,
+    `timed_out`, `startup_failure` or `action_required`. `resolve` checks out the source commit
     with `fetch-depth: 0`, which brings every tag with its tag object, and
     `persist-credentials: false`, reads the default branch head from
     `GET /repos/<owner>/<repository>/git/ref/heads/<default>`, and refuses to
@@ -293,9 +297,23 @@ proposed-design:
     does, and requires the same commit id, with the outcome `prepare-recipe`
     states when it differs. It proves the continuous integration evidence for
     the source commit again. For each release record it downloads the
-    published assets and requires each asset's SHA-256 to equal the matching
-    build artifact's and the published `SHA256SUMS` to list exactly those
-    digests.
+    published assets other than `release-evidence.json` and requires each
+    asset's SHA-256 to equal the matching release asset artifact's and the
+    published `SHA256SUMS` to list exactly those digests.
+
+  recovery-artifacts: >-
+    A recovery delivers the bytes the recorded release built; it builds
+    nothing. In mode `recover`, `resolve` finds the run that recorded the
+    release, the release workflow's run whose `release-outcome` artifact
+    names this release commit with mode `release`, and exposes its id as
+    `build_run`. The build stage's jobs do not run; every job that needs a
+    build artifact, `release-asset+<unit>+<name>` or a part's publication
+    artifact such as a `.crate` file, an npm tarball or an OCI layout,
+    downloads it from `build_run`, and `attest` does not run, because that
+    run attested the assets. Artifacts are kept 90 days; a recovery after
+    they expire fails in `resolve`, naming the missing artifacts, and the
+    remaining publication needs a new release. Build artifacts are uploaded
+    with that retention.
 
   deliver: >-
     Each part's `publish-` jobs check out the release commit. A part that
@@ -364,7 +382,8 @@ proposed-design:
     `request-deploy`, runs when `.github/delivery/deploy.json` exists in the
     release commit and the run released the unit it names: with
     `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
-    that unit's release tag and the input `automatic` set to `true`.
+    that unit's release tag, `from` set to the first environment of the
+    declaration's `chain`, and `automatic` set to `true`.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
@@ -584,6 +603,8 @@ proposed-design:
     a local bare remote and cover a moved default branch, a bundle whose tag
     points elsewhere or whose tag names differ from the plan's, a plan digest
     mismatch, and a recovery that pushes nothing and needs no approval. The
+    recovery cases reuse the recording run's artifacts without building and
+    fail, naming them, once those artifacts have expired. The
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file; the evidence cases cover
     a second dispatch and a re-run writing the same bytes and a run that
@@ -626,8 +647,9 @@ proposed-design:
     that hold no credential; after-publication tags only by
     `tag-after-publication`; the rulesets of `delivery-controls` refuse every
     other tag creation and every tag change. Part jobs hold `contents: read`,
-    `actions: read` and `packages: read`, and only deliver jobs, inside
-    `publish-<part>`, add `id-token: write` or `packages: write`; `attest` is
+    `actions: read` and `packages: read`; only deliver jobs add
+    `packages: write` or `id-token: write`, and one that adds
+    `id-token: write` runs inside `publish-<part>`; `attest` is
     the one job without an environment that holds `id-token: write`, and it
     runs no repository code. `contents: write` belongs to `release-record`
     and `evidence` through `GITHUB_TOKEN`, which can change releases and their

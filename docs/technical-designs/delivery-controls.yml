@@ -178,37 +178,48 @@ proposed-design:
     any of these.
 
   rulesets: >-
-    Airlock applies these organization rulesets, each with enforcement
+    Airlock applies three organization rulesets, each with enforcement
     `active`, each targeting the repositories whose custom property `release`
     is `true`. `delivery-tags-immutable`: target `tag`, ref condition include
     `~ALL`, rules `update`, `deletion` and `non_fast_forward`, no bypass
-    actor. `delivery-default-branch`: target `branch`, include
+    actor. `delivery-tags-unclassified`: target `tag`, include `~ALL`,
+    exclude `[0-9]*.[0-9]*.[0-9]*` and `**@[0-9]*.[0-9]*.[0-9]*`, rule
+    `creation`, no bypass actor, so every tag outside the organization's two
+    classified forms, bare SemVer and `<name>@<SemVer>`, is refused to
+    everyone. `delivery-default-branch`: target `branch`, include
     `~DEFAULT_BRANCH`, rules `pull_request`, `required_linear_history`,
-    `non_fast_forward` and `deletion`, with bypass mode `always` for the
-    release authority Apps that `delivery-apps` allows for the repository, so
-    that `record` can push the release commit. For each repository it also
-    applies three organization rulesets restricted to that repository by a
-    `repository_name` condition, whose ref patterns come from the release
-    model's tag templates, with `{version}` written as `[0-9]*.[0-9]*.[0-9]*`
-    and `{id}` as the unit's literal id. `delivery-tags-recorded-<repository>`:
-    target `tag`, include the patterns of every tag template with no
-    `require_phase` or with `before-publication`, rule `creation`, bypass the
-    repository's release authority App only. `delivery-tags-published-<repository>`:
-    target `tag`, include the patterns of every template with
-    `after-publication`, rule `creation`, bypass the repository's package tags
-    App only. `delivery-tags-unclassified-<repository>`: target `tag`, include
-    `~ALL`, exclude every pattern of the two others, rule `creation`, no
-    bypass actor. A tag name that matches both phases' patterns is refused to
-    both Apps, so Airlock refuses a release model whose patterns of the two
-    phases overlap, and `resolve` refuses a plan in which a tag matches a
-    pattern of the other phase. The patterns admit some names that are not
-    SemVer; the only writers of matching names are `record` and
-    `tag-after-publication`, which push exactly the tag names of the plan.
-    Bypass actors are visible only with administration access, so the
-    workflow's own check is limited: `resolve` and the smoke workflow read
-    the effective rulesets with `GITHUB_TOKEN` and require each of these to
-    be present and `active` with the conditions and rules above, and Airlock's
-    audit, which reads with administration access, checks the bypass lists.
+    `non_fast_forward` and `deletion`, with bypass mode `always` for every
+    release authority App in `delivery-apps`; an App acts only on the
+    repositories it is installed on, which `delivery-apps` limits and the
+    audit checks, so each repository's effective bypass is its own release
+    authority App, and `record` can push the release commit. On each
+    repository Airlock applies three repository rulesets whose ref patterns
+    come from the release model's tag templates, with `{version}` written as
+    `[0-9]*.[0-9]*.[0-9]*` and `{id}` as the unit's literal id.
+    `delivery-tags-recorded`: target `tag`, include the patterns of every
+    template with no `require_phase` or with `before-publication`, rule
+    `creation`, bypass the repository's release authority App only.
+    `delivery-tags-published`: target `tag`, include the patterns of every
+    template with `after-publication`, rule `creation`, bypass the
+    repository's package tags App only. `delivery-tags-repository`: target
+    `tag`, include `~ALL`, exclude every pattern of the two others, rule
+    `creation`, no bypass actor, so a classified name that no template of the
+    repository produces is refused too. These are repository rulesets because
+    their patterns belong to one repository and GitHub limits an
+    organization to 75 rulesets; a repository administrator can change them,
+    and Airlock's audit reports any difference. A tag name that matches both
+    phases' patterns is refused to both Apps, so Airlock refuses a release
+    model whose patterns of the two phases overlap, `resolve` refuses a plan
+    in which a tag matches a pattern of the other phase, and a template whose
+    tag is not bare SemVer or `<name>@<SemVer>` is refused by `resolve`. The
+    patterns admit some names that are not SemVer; the only writers of
+    matching names are `record` and `tag-after-publication`, which push
+    exactly the tag names of the plan. Bypass actors are visible only with
+    administration access, so the workflow's own check is limited: `resolve`
+    and the smoke workflow read the effective rulesets with `GITHUB_TOKEN` and
+    require each of these to be present and `active` with the conditions and
+    rules above, and Airlock's audit, which reads with administration access,
+    checks the bypass lists.
 
   assurance-placement: >-
     `rehearsal`: the release template renders
@@ -240,8 +251,9 @@ proposed-design:
     `approve-<environment>` job, which enters `<environment>-approval`, and
     each `deploy-<environment>` job's approval check. Airlock gives every
     approval environment required reviewers with self-review prevented, and
-    the approval check refuses an approval by the run's `triggering_actor`,
-    so the person who approves is never the person who started the run; a
+    the approval check refuses an approval by the run's `actor` or its
+    `triggering_actor`, so the person who approves is never a person who
+    started or re-ran the run; a
     Custodial repository with one maintainer cannot release or deploy at the
     Stable rung, as the standard states. `update-review`: the session that
     applies a template update reads the release declaration and leaves the
@@ -260,7 +272,9 @@ proposed-design:
     with the Airlock audit App, whose role in `delivery-apps` is
     `airlock-audit` and whose permissions are read-only: `administration`,
     `actions`, `contents`, `environments`, `metadata`, `secrets` and
-    `variables`; it asks for a token for the calling repository and the
+    `variables` on repositories and `organization_administration` on the
+    organization, which reads the organization rulesets' bypass actors; it
+    asks for a token for the calling repository and the
     repository that holds Elegua's manifest, and passes it to the pinned
     Airlock action, which reads no repository or organization secret. The
     template's `airlock_audit_app` question holds the App's slug. The audit
@@ -280,7 +294,9 @@ proposed-design:
     reviewer that is absent; when an approval environment has no required
     reviewer; when immutable releases are off and `evidence` is off; when a
     release asset differs from its `SHA256SUMS`, its evidence file or its
-    attestation; when a declaration names an App that `delivery-apps` does
+    attestation; when a registry's trusted publisher for one of the
+    repository's packages names another workflow or environment than its
+    declaration; when a declaration names an App that `delivery-apps` does
     not allow for the repository, or an App is installed outside its
     repositories; when a secret that a declaration lists is not a destination
     of Elegua's manifest in the environment's vault; and when such a secret's

@@ -113,9 +113,10 @@ proposed-design:
     `deploy_unit` is a `select` of the release model's units that have a
     primary tag. `environments` is a looped `text` question, at least one
     entry, each validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` and at most 64
-    characters, in the order an automatic deploy enters them; the names
-    `release-authority`, `package-tags` and `release-approval`, and names
-    starting with `publish-` or ending with `-approval`, are refused. Each part's questions
+    characters, in the order an automatic deploy enters them; the names the
+    other templates use, `release-authority`, `package-tags`,
+    `release-approval` and `airlock-audit`, and names starting with
+    `publish-` or ending with `-approval`, are refused. Each part's questions
     carry `when` conditions on `targets`.
 
   part-interface: >-
@@ -177,12 +178,12 @@ proposed-design:
     It checks out the release commit with `persist-credentials: false`, sets
     up Node from the file `cloudflare_worker_node_version_file` names
     (default `package.json`), and in `cloudflare_worker_directory` (default
-    `.`) runs `npm ci`, then the local action `cloudflare_worker_build_recipe`
-    when one is answered. For each selected environment it reads the Wrangler
-    configuration, `wrangler.toml`, `wrangler.json` or `wrangler.jsonc`, and
-    fails when the environment is not declared, or when the configuration
-    declares `route`, `routes`, a custom domain or `build` at the top level or
-    in that environment. It runs `npx wrangler deploy --dry-run --outdir
+    `.`) first checks the committed Wrangler configuration, `wrangler.toml`,
+    `wrangler.json` or `wrangler.jsonc`: it fails when a selected environment
+    is not declared, or when the configuration declares `route`, `routes`, a
+    custom domain or `build` at the top level or in that environment. It then
+    runs `npm ci` and the local action `cloudflare_worker_build_recipe` when
+    one is answered, and for each selected environment runs `npx wrangler deploy --dry-run --outdir
     delivery-bundle/<environment> --env <environment>`, then writes
     `deploy-<environment>.tar`, an archive with sorted entries, fixed owner
     and fixed times, of exactly `delivery-bundle/<environment>` and the
@@ -200,8 +201,8 @@ proposed-design:
     release commit itself, with `persist-credentials: false`, and takes from
     that checkout every file that controls what runs: the Wrangler
     configuration, every D1 migrations directory and the emitted
-    `.github/deploy-wrangler/package.json` and `package-lock.json`. It
-    installs Wrangler from those two files with `npm ci --ignore-scripts` in
+    `.github/deploy-wrangler/package.json` and `package-lock.json`, and it
+    repeats the configuration check on that checkout. It installs Wrangler from those two files with `npm ci --ignore-scripts` in
     the runner's temporary storage, so the only code it runs is the Wrangler
     version and dependencies the template pins and Airlock audits as
     rendered. It downloads `deploy-bundle+<environment>`, requires the

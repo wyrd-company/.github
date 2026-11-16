@@ -23,5 +23,8 @@ response: >-
   that run `gh attestation verify` refuse a replaced asset. Airlock's audit
   compares each release record's assets with its `SHA256SUMS`, its evidence
   file and the attestations and reports any difference. A replaced asset is
-  answered with a new release.
+  answered with a new release. Where `provenance` is set `off` with
+  `evidence` on, a recorded deviation, assets carry no attestation and a
+  replaced asset is detected only against `SHA256SUMS` and the evidence file,
+  which an actor able to replace an asset can replace as well.
 status: open

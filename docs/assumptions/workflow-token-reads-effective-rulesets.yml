@@ -7,9 +7,11 @@ description: >-
   A job's `GITHUB_TOKEN` with `contents: read` lists the repository's
   effective rulesets, organization rulesets included, through
   `GET /repos/<owner>/<repository>/rulesets?includes_parents=true`, and reads
-  each one's target, conditions and rules through
+  each one's target, enforcement, conditions and rules through
   `GET /repos/<owner>/<repository>/rulesets/<id>`, so `resolve` and the smoke
-  workflow can require tag updates and deletions to be refused.
+  workflow can require the organization and repository rulesets of
+  `delivery-controls` to be present and `active` with their conditions and
+  rules; bypass actors stay hidden from it.
 end-descendant-type: spike
 evidence:
   - GitHub documents both endpoints as readable with repository metadata
