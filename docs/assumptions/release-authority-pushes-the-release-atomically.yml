@@ -1,0 +1,21 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - release-process
+    - delivery-environments
+description: >-
+  A GitHub App that is a bypass actor of the organization ruleset requiring a
+  pull request on the default branch and of the ruleset restricting tag
+  creation, using an installation token for one repository with
+  `contents: write`, pushes a fast-forward of the default branch to the
+  release commit and creates every release tag in one `git push --atomic`
+  over HTTPS, and the push changes nothing when any ref is refused.
+end-descendant-type: spike
+evidence:
+  - GitHub documents GitHub Apps as ruleset bypass actors and documents atomic
+    pushes over HTTPS.
+  - The catalog repository's release workflow implements this push with a
+    one-repository App token, but its job is disabled and has never run.
+  - The live checkpoint on `wyrd-company/release-process-testbed` proves it
+    with the test App, including a refused push after the default branch
+    moved.
