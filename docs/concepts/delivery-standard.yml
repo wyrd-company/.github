@@ -87,8 +87,9 @@ properties:
     release authority; organization rulesets make tags immutable and refuse
     unclassified tags; a job reaches a credential only through an environment
     and Key Vault; the repository holds no repository-level secret; and
-    recovery runs from the immutable tag and performs only missing work. No
-    answer lowers the floor.
+    recovery runs from the immutable tag and performs only missing work. The
+    run's `GITHUB_TOKEN`, which GitHub issues for one run and revokes when it
+    ends, is not a credential in this sense. No answer lowers the floor.
   assurance: >-
     The controls automation performs without a person. A release rehearsal in
     continuous integration for every commit with unreleased intents, a
@@ -118,9 +119,11 @@ properties:
     no reason.
   release-authority: >-
     A GitHub App that is the only actor allowed to create a release commit on
-    the default branch and its tag. The release workflow uses it inside a
-    protected environment after validation finishes in a job that holds no
-    key, and the workflow requests a token limited to the one repository. The
+    the default branch and its tag. The release workflow uses it inside an
+    environment restricted to the default branch, after validation finishes
+    in a job that holds no key and after a person approves when the release's
+    ceremony requires it, and the workflow requests a token limited to the one
+    repository. The
     token action, a GitHub action in its own repository, has Key Vault sign
     the token request with the App's private key, so the key never reaches a
     runner. A job that can sign can mint a token for every repository the App
@@ -138,8 +141,10 @@ properties:
     names them in its answers.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
-    job to a credential, and it carries the protection rules the tier
-    requires. It holds the identifiers for federated sign-in to Azure, the Key
+    job to a credential, and it accepts jobs from the default branch only. A
+    person's approval, when the ceremony of a run requires one, is an approval
+    environment that holds no credential, whose required reviewers hold the
+    run before its job that uses the credential. It holds the identifiers for federated sign-in to Azure, the Key
     Vault address, the App identifier, and the signing key name as variables,
     and no secret value. Terraform outputs these values and Airlock writes
     them.
