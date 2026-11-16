@@ -1,0 +1,19 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - deploy-process
+    - delivery-environments
+description: >-
+  An account API token with Workers Scripts Write, D1 Write and Queues Write
+  on the account, and nothing else, can run `wrangler deploy` for a Worker
+  with Durable Objects, KV, D1, R2 and queue bindings and no route, apply D1
+  migrations with `--remote`, and read the Worker's deployments and versions.
+end-descendant-type: spike
+evidence:
+  - Cloudflare's "Edit Cloudflare Workers" token template also grants KV
+    Storage Write, R2 Storage Write, Workers Tail Read, Account Settings Read
+    and user scopes, and lists neither D1 nor Queues.
+  - Cloudflare documents no minimum token for a Worker with D1 migrations and
+    a queue consumer.
+  - Elegua mints the token with these policies, and the deploy template's
+    live cases deploy with it; a refused call names the missing permission.
