@@ -146,7 +146,9 @@ proposed-design:
     `deploy.yml` has only `workflow_dispatch`, with the required input
     `release-tag`, the `choice` input `from`, whose options are the answered
     environments with the first as default, and the boolean input
-    `automatic`, default false. A run deploys the environment `from` and
+    `automatic`, default false, and the optional input `requested-by-run`,
+    which `request-deploy` sets to its run's id for the approval check. A
+    run deploys the environment `from` and
     every later environment of the chain, in order. The release workflow's
     `request-deploy` job dispatches it with the tag of the release it made,
     the first environment and `automatic: true`; a person dispatches it with

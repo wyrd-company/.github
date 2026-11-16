@@ -148,8 +148,9 @@ proposed-design:
   modes: >-
     `resolve` sets the run's `mode`. With `workflow_dispatch` and the input
     `automatic` true, the run is an automatic start, as with `workflow_run`.
-    With `workflow_dispatch` otherwise, the input `source-sha` is required
-    and must be 40 lowercase hexadecimal characters,
+    With `workflow_dispatch` otherwise, `resolve` requires the input
+    `source-sha`, which the workflow declares optional so that an automatic
+    dispatch can omit it, to be 40 lowercase hexadecimal characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
     (default false) chooses the baseline mode. With `workflow_run`, the
     triggering run only wakes the workflow: the source commit is the default
@@ -211,7 +212,9 @@ proposed-design:
     `intentional tag --plan <plan> --phase before-publication`, whose tag
     objects Intentional writes with a fixed tagger and the release commit's
     committer time, writes
-    `git bundle create release-candidate.bundle <release commit> <each tag> ^<source commit>`,
+    `git bundle create release-candidate.bundle refs/heads/release-candidate <each tag ref> ^<source commit>`,
+    where `refs/heads/release-candidate` is a local branch at the release
+    commit,
     and uploads it as the artifact `release-candidate`. Its only output is the
     release commit's id, which no gate reads: `record` verifies the bundle
     against the plan before it pushes, and every later job reads the release
@@ -280,7 +283,8 @@ proposed-design:
     `refs/heads/<default>` and every bundled tag to its name, passing the
     token in an `http.extraheader` set for that one command. It reads the
     remote branch and every tag back and requires the pushed object ids.
-    Before it pushes, it lists the run's artifacts through
+    After its last check and immediately before it pushes, it lists the run's
+    artifacts through
     `GET /repos/<owner>/<repository>/actions/runs/<run id>/artifacts` and
     uploads `release-inventory`, a JSON object mapping each artifact the build
     stage uploaded to its `id` and its `digest`. It outputs `release_sha`, the
@@ -346,26 +350,29 @@ proposed-design:
     A recovery delivers the bytes the recorded release built; it builds
     nothing. In mode `recover`, `resolve` lists the runs of
     `.github/workflows/release.yml` with `head_sha` equal to the source
-    commit and `head_branch` equal to the default branch, and for each run and
-    attempt reads its jobs through
-    `GET /repos/<owner>/<repository>/actions/runs/<run id>/attempts/<attempt>/jobs`.
-    The recording run is the one run whose `record` job concluded `success`
-    and whose `release-outcome`, which `resolve` writes without running
-    repository code, names mode `release`; it is the only run whose `record`
-    could have pushed,
-    since `release-authority` admits only the default branch and the tags are
-    immutable. `resolve` fails, naming the runs, when there is none or more
-    than one, and exposes its id as `build_run`. Every job that needs a build
-    artifact, `release-asset+<unit>+<name>`, a part's publication artifact
-    such as a `.crate` file, an npm tarball or an OCI layout, or an evidence
-    fragment of the build stage, downloads it by the `id` that the recording
-    run's `release-inventory` names and requires the downloaded artifact's
-    `digest` to be the one the inventory names. The build stage's jobs and
-    `attest` do not run, because the recording run built and attested the
-    assets. Artifacts are kept 90 days; a recovery after they expire fails in
+    commit and `head_branch` equal to the default branch, and keeps those
+    whose `release-outcome`, which `resolve` writes without running
+    repository code, names mode `release`. The recording run is the one such
+    run that holds a `release-inventory` artifact: `record` uploads it after
+    its last check and immediately before its push, inside
+    `release-authority`, which admits only the default branch, and runs of
+    the `release` group never overlap, so exactly one run reached the push,
+    whether or not its job finished afterwards. `resolve` fails, naming the
+    runs, when there is none or more than one, and exposes its id as
+    `build_run`. Every job that needs a build artifact,
+    `release-asset+<unit>+<name>`, a part's publication artifact such as a
+    `.crate` file, an npm tarball or an OCI layout, or an evidence fragment of
+    the build stage, downloads it by the `id` that the recording run's
+    `release-inventory` names and requires the downloaded artifact's `digest`
+    to be the one the inventory names. The build stage's jobs and `attest` do
+    not run, because the recording run built and attested the assets.
+    Artifacts are kept 90 days; a recovery after they expire fails in
     `resolve`, naming the missing artifacts, and the remaining publication
     needs a new release. Build artifacts and `release-inventory` are uploaded
-    with that retention.
+    with that retention. Artifact names are unique within a run, so a run is
+    retried by re-running its failed jobs or by a new dispatch: `resolve`
+    fails a run whose `github.run_attempt` is above 1, which re-running all
+    jobs would produce.
 
   deliver: >-
     A part that declares a secret, an App or trusted publishing runs its
@@ -398,8 +405,10 @@ proposed-design:
     it publishes it reads `package/package.json` from the tarball and refuses
     a `publishConfig` member other than `access`, `tag` and `provenance`.
     Cargo runs in a checkout of the release commit from which every
-    `.cargo/config` and `.cargo/config.toml` has been removed, the build job
-    packaging the same way, with `CARGO_HOME` naming a fresh directory whose
+    `.cargo/config`, `.cargo/config.toml`, `rust-toolchain` and
+    `rust-toolchain.toml` has been removed, the build job packaging the same
+    way, with `RUSTUP_TOOLCHAIN` naming the template-pinned toolchain,
+    `CARGO_HOME` naming a fresh directory whose
     template-written `config.toml` names only `crates-io`, and with
     `--registry crates-io`; the checkout lies in the runner's workspace, whose
     parent directories hold no Cargo configuration. The OCI client runs with
@@ -452,19 +461,24 @@ proposed-design:
     by the next. Airlock keeps GitHub's immutable releases off only for a
     repository whose effective `evidence` is `on`, as the decision record
     `keep-release-assets-mutable-for-evidence` states. `request-deploy`
-    runs after every other job of a run in mode `release` or `recover` has
-    succeeded, when `.github/delivery/deploy.json` exists in the release
-    commit and its `unit` is one of the run's released units: with
+    needs every other job except `continue-release` and runs, in mode
+    `release` or `recover`, when each of them succeeded or was skipped by its
+    own condition, as the build stage is in mode `recover`, and when
+    `.github/delivery/deploy.json` exists in the release commit and its
+    `unit` is one of the run's released units: with
     `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
     that unit's release tag, `from` set to the first environment of the
-    declaration's `chain`, and `automatic` set to `true`. A successful
+    declaration's `chain`, `automatic` set to `true` and `requested-by-run`
+    set to the run's id. A successful
     recovery therefore requests the automatic deploy that its failed
     recording run did not, and the deploy changes nothing in an environment
-    that already serves the release. `continue-release` runs last, after
-    every other job whatever their results, in every run a person dispatched
-    without `automatic`: with `actions: write` through `GITHUB_TOKEN` it
-    dispatches `release.yml` with the input `automatic` set to `true` and no
-    `source-sha`, which `resolve` treats as an automatic start on the default
+    that already serves the release. `continue-release` needs every other
+    job and is exempt from the stage gate: its condition is `always()`,
+    `!cancelled()`, and a `workflow_dispatch` event without `automatic`, so it
+    runs last in every run a person dispatched that was not cancelled,
+    whatever the other jobs' results, including a failed `resolve`: with `actions: write` through `GITHUB_TOKEN` it
+    dispatches `release.yml` with the input `automatic` set to `true`,
+    `requested-by-run` set to the run's id and no `source-sha`, which `resolve` treats as an automatic start on the default
     branch head. Such a dispatch may have replaced a pending automatic run in
     the `release` group, and the dispatched run releases whatever that run
     would have, or ends with mode `none` when nothing is pending. An

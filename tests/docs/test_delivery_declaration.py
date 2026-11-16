@@ -23,6 +23,7 @@ INVALID = {
     'environment-with-secrets-and-keys': (['environments', 'publish-homebrew-tap'], 'not'),
     'airlock-config-declares-a-tier': ([], 'not'),
     'prepare-output-outside-the-repository': (['prepare_outputs', 0], 'pattern'),
+    'prepare-output-matching-every-path': (['prepare_outputs', 0], 'not'),
 }
 
 

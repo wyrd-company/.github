@@ -260,16 +260,24 @@ proposed-design:
     `GET /repos/<owner>/<repository>/actions/runs/<run id>/approvals` and
     requires an approval with state `approved` for its own approval
     environment by a user other than the run's `actor` and its
-    `triggering_actor`, and fails otherwise.
+    `triggering_actor`, and fails otherwise. When the run's `actor` is
+    `github-actions[bot]`, because `request-deploy` or `continue-release`
+    dispatched it, the check reads the run that `requested-by-run` names,
+    requires it to be a run of `.github/workflows/release.yml` on the
+    default branch, and refuses that run's `actor` and `triggering_actor` as
+    approvers too, so the person who started a release never approves the
+    runs it started.
 
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
-    with the inputs `source-sha`, `baseline` and `automatic`, and a
+    with the optional inputs `source-sha`, `baseline`, `automatic` and
+    `requested-by-run`, and a
     `workflow_run` trigger on the workflow named by `ci_workflow_name` with
     `types: [completed]` and `branches: [<default_branch>]`, so only runs of
     continuous integration on the default branch start a release. The deploy
     workflow has `name: Deploy` and only a `workflow_dispatch` trigger, with
-    the inputs `release-tag`, `from` and `automatic`; a person dispatches it,
+    the inputs `release-tag`, `from`, `automatic` and `requested-by-run`; a
+    person dispatches it,
     and the release workflow's `request-deploy` job dispatches it with
     `automatic: true` after a successful run in mode `release` or `recover`
     for the deployed unit. An automatic release start, a `workflow_run` event
@@ -286,8 +294,10 @@ proposed-design:
     dispatched, which can replace a pending automatic run and then recover an
     older release, create baseline tags or fail, ends with
     `continue-release`, which dispatches an automatic run; a deploy run
-    exists only for a release that was made or a person's request, and a
-    newer one deploys a newer release. A person's own dispatch replaced while
+    exists only for a release that was made or a person's request, a newer
+    automatic one deploys a newer release, and a person's deploy dispatch that
+    replaces a pending automatic deploy stands as the person's choice, such as
+    a rollback; the next release or dispatch deploys the newest release. A person's own dispatch replaced while
     pending shows as cancelled, and the person dispatches again. A run waiting
     for an approval holds its group. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.

@@ -226,7 +226,7 @@ proposed-design:
     `rehearsal`: the release template renders
     `.github/workflows/release-rehearsal.yml`, continuous integration calls
     it, and `resolve` requires its success for the source commit.
-    `sealed-plan`: `resolve` writes Intentional's plan to
+    `sealed-plan`: `prepare` writes Intentional's plan to
     `.intentional/release-plan.json` in the release commit, and `record` and
     `revalidate` require its `digest` to equal every tag record's
     `plan-digest`. `revalidation`: the `revalidate` job between `record` and
