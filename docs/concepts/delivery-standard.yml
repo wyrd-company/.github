@@ -43,7 +43,8 @@ properties:
     targets, deploy targets, and documentation publishing are parts a
     repository selects. The standard also renders the Airlock audit workflow
     and the Intentional check on pull requests. Continuous integration is a
-    contract the release template calls, and each repository writes its own.
+    contract the release template relies on, and each repository writes its
+    own.
   applied-record: >-
     The committed `.toha.json` that names the template revision, the selected
     parts, and the answers a repository rendered from. Toha renders the files
@@ -106,8 +107,10 @@ properties:
     and reviews each template update. At Custodial a person starts it, a
     person approves it, and Elegua waits for a person before it promotes a
     rotated secret. A tier's ceremony applies at the Stable rung. Below
-    Stable, every tier carries Standard's ceremony. Maturity relaxes ceremony
-    and never assurance.
+    Stable, every tier carries Standard's ceremony. A release carries the
+    ceremony of the rung the repository holds once that release exists, so
+    the first release at or above 1.0.0 carries the tier's ceremony. Maturity
+    relaxes ceremony and never assurance.
   deviation: >-
     An assurance or ceremony control set below the default that applies at the
     repository's current rung, recorded in the applied record with a reason.
@@ -176,9 +179,10 @@ features:
     change, lists the adopting repositories, and starts the sessions. An
     adopter outside the organization chooses its own trigger.
   release-from-a-source-commit: >-
-    A release starts from one commit of the default branch that has passed
-    continuous integration. The workflow creates the release commit and tag
-    through the release authority, then delivers through the selected parts.
+    A release starts from one commit of the default branch whose push run of
+    continuous integration succeeded, and a release of a commit without one
+    fails. The workflow creates the release commit and tag through the
+    release authority, then delivers through the selected parts.
   read-credentials-through-an-environment: >-
     A job enters its environment, signs in to Azure by federation, and reads
     only the Key Vault secrets its part declares.
