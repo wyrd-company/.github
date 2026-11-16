@@ -105,9 +105,10 @@ proposed-design:
     mode; a mode of `none` ends the run with a job summary and success. Check
     credentials is one `preflight-<environment>` job per credential
     environment the run enters. Build holds the jobs that turn the source into
-    what ships, all without credentials: release part jobs prefixed `build-`,
-    `assemble-` and `consume-`, the release parent's `attest`, and the deploy
-    part's job prefixed `build-`. Record holds the release workflow's
+    what ships, all without credentials: the release parent's `prepare`,
+    which builds the release commit and which the release part jobs prefixed
+    `build-`, `assemble-` and `consume-` need, the release parent's `attest`,
+    and the deploy part's job prefixed `build-`. Record holds the release workflow's
     `approve-release`, `record`, `release-record` and, at `revalidation` on,
     `revalidate`; the deploy workflow's record is the GitHub deployment that
     each deploy job creates by entering its environment, together with the
@@ -115,8 +116,9 @@ proposed-design:
     jobs prefixed `publish-` and the deploy workflow's `approve-<environment>`
     and `deploy-<environment>`. Verify holds release part jobs prefixed
     `verify-`, the parent's `verify-provenance`,
-    `prepare-after-publication-tags`, `tag-after-publication`, `evidence` and
-    `request-deploy`, and deploy jobs `verify-<environment>`. A job id is
+    `prepare-after-publication-tags`, `tag-after-publication`, `evidence`,
+    `request-deploy` and `continue-release`, and deploy jobs
+    `verify-<environment>`. A job id is
     unique in its workflow, and a part cannot declare a job id that the parent
     uses.
 
@@ -230,20 +232,25 @@ proposed-design:
     build.
 
   ceremony-at-run-time: >-
-    `resolve` reads `.github/delivery/release.json` from the commit the
-    workflow file came from and refuses a run without it. It observes the rung
-    from the tag records reachable from the default branch, as Airlock does:
-    Seeded without a baseline record, Building from a baseline record,
-    Released from a non-baseline primary release record below 1.0.0, Stable
-    from one at or above 1.0.0 without a prerelease part. For each ceremony
-    control, the effective setting is the declaration's setting when present
-    and otherwise the default that `delivery-controls` gives for the tier at
-    the governing rung. The governing rung of a release is the rung the
-    repository holds once that release exists, as the standard states; the
-    governing rung of a deploy is the rung the repository holds. `resolve`
-    outputs the effective settings as `ceremony`, a JSON object keyed by
-    control id. A run started by `workflow_run` whose effective start setting
-    is `person` ends in `resolve` with mode `none`, success, and a summary
+    A rung is observed from a set of tag records as Airlock does: Seeded
+    without a baseline record, Building from a baseline record, Released
+    from a non-baseline primary release record below 1.0.0, Stable from one
+    at or above 1.0.0 without a prerelease part. For each ceremony control,
+    the effective setting is the declaration's setting when present and
+    otherwise the default that `delivery-controls` gives for the tier at the
+    governing rung. The governing rung of a release is the rung the
+    repository holds once that release exists, as the standard states,
+    observed from the tag records reachable from the release commit, its own
+    included, with the tier and controls of `.github/delivery/release.json`
+    at the release commit; both are fixed once the release commit and its
+    tags exist, so every run that concerns one release computes the same
+    ceremony for it, whatever was released later. The governing rung of a
+    deploy, and of a run that releases nothing, is the rung observed from the
+    tag records reachable from the default branch head, with the declaration
+    at the commit the workflow file came from. `resolve` refuses a run without
+    the declaration, and outputs the effective settings as `ceremony`, a JSON
+    object keyed by control id. A run started automatically whose effective
+    start setting is `person` ends in `resolve` with mode `none`, success, and a summary
     naming the control and the rung. When the effective approval setting is
     `person`, the run's approval job enters its approval environment,
     `release-approval` for a release and `<environment>-approval` for each
@@ -257,30 +264,32 @@ proposed-design:
 
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
-    and a `workflow_run` trigger on the workflow named by `ci_workflow_name`
-    with `types: [completed]`. The deploy workflow has `name: Deploy` and
-    only a `workflow_dispatch` trigger, with the inputs `release-tag`,
-    `from` and `automatic`; a person dispatches it, and the release
-    workflow's `request-deploy` job dispatches it with `automatic: true` only
-    after a run that released the deployed unit. The `workflow_run` trigger
-    carries `branches: [<default_branch>]`, so only runs of continuous
-    integration on the default branch start a release, and the triggering
-    run only wakes the workflow: `resolve` releases the default branch head,
-    ends with mode `none` while the head's push run has not completed, and
-    fails when the head's push run concluded `failure`, `timed_out`,
-    `startup_failure` or `action_required`. Each workflow has workflow-level `concurrency`
-    group `release` or `deploy` without cancelling. GitHub keeps one running
-    and one pending run per group and cancels the older pending run when a
-    newer one queues, so the design makes every run that can queue cover the
-    work of any run it replaces: every automatic release run, whatever
-    completion started it, releases the default branch head at the moment it
-    resolves, which holds every pending intent; a deploy run exists only for a
-    release that was made or a person's request, and a newer one deploys a
-    newer release; a release run that replaces another resolves the same
-    head or a newer one, so ending with mode `none` means nothing was
-    pending. A person's dispatch replaced while pending shows as
-    cancelled, and the person dispatches again. A run waiting for an approval
-    holds its group. Both workflows are fixed paths,
+    with the inputs `source-sha`, `baseline` and `automatic`, and a
+    `workflow_run` trigger on the workflow named by `ci_workflow_name` with
+    `types: [completed]` and `branches: [<default_branch>]`, so only runs of
+    continuous integration on the default branch start a release. The deploy
+    workflow has `name: Deploy` and only a `workflow_dispatch` trigger, with
+    the inputs `release-tag`, `from` and `automatic`; a person dispatches it,
+    and the release workflow's `request-deploy` job dispatches it with
+    `automatic: true` after a successful run in mode `release` or `recover`
+    for the deployed unit. An automatic release start, a `workflow_run` event
+    or a dispatch with `automatic: true`, only wakes the workflow: `resolve`
+    releases the default branch head, ends with mode `none` while the head's
+    push run has not completed, and fails when the head's push run concluded
+    `failure`, `timed_out`, `startup_failure` or `action_required`. Each
+    workflow has workflow-level `concurrency` group `release` or `deploy`
+    without cancelling. GitHub keeps one running and one pending run per group
+    and cancels the older pending run when a newer one queues. The design
+    keeps the work of a replaced run: an automatic release run, whatever
+    started it, releases the head as it stands when it resolves, which holds
+    every pending intent of any automatic run it replaced; every run a person
+    dispatched, which can replace a pending automatic run and then recover an
+    older release, create baseline tags or fail, ends with
+    `continue-release`, which dispatches an automatic run; a deploy run
+    exists only for a release that was made or a person's request, and a
+    newer one deploys a newer release. A person's own dispatch replaced while
+    pending shows as cancelled, and the person dispatches again. A run waiting
+    for an approval holds its group. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.
 
   rehearsal-workflows: >-
@@ -327,10 +336,15 @@ proposed-design:
     its list.
 
   outputs-and-environment: >-
-    `resolve` exposes `proceed` (`'true'` or `'false'`), `mode`, `source_sha`,
-    `release_sha`, `units` (a JSON array of Release Unit ids), `releases` (an
-    object mapping each unit id to `tag`, `version` and `prerelease`),
-    `ceremony` and `rung`; each workflow adds its own. Every part job receives
+    `resolve` runs no repository or dependency code and exposes `proceed`
+    (`'true'` or `'false'`), `mode`, `source_sha`, `units` (a JSON array of
+    Release Unit ids), `releases` (an object mapping each unit id to `tag`,
+    `version` and `prerelease`), `ceremony` and `rung`, and, when the release
+    commit already exists, `release_sha`; each workflow adds its own. The
+    gates read only these outputs. In the release workflow, the release
+    commit of a new release comes from the `release-candidate` bundle for the
+    build stage and from `record`'s `release_sha` output for every later
+    job. Every part job receives
     `RELEASE_SOURCE_SHA`, `RELEASE_SHA`, `RELEASE_UNITS` (ids separated by one
     space) and `RELEASE_JSON` (the `releases` object), set by the parent and
     not overridable. In the deploy workflow these describe the deployed

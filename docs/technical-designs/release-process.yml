@@ -136,16 +136,20 @@ proposed-design:
     validated by `^[A-Za-z0-9._/-]+$`) names the branch the `workflow_run`
     trigger's `branches` filter admits. `release_prepare_recipe`, a local
     action path validated like the product recipes or empty (the default),
-    names a repository action that `resolve` runs after `intentional apply` to
-    update files derived from versions, such as lock files. `latest_unit` is
+    names a repository action that `prepare` runs after `intentional apply` to
+    update files derived from versions, such as lock files, and
+    `release_prepare_outputs`, a looped `text` question of Git pathspec globs,
+    names the paths that recipe may change. `latest_unit` is
     asked when more than one unit has `release_record: required`.
     `customize_controls` and the `control_` questions follow. Each part's
     own questions, including `<part>_units`, carry `when` conditions on
     `targets`.
 
   modes: >-
-    `resolve` sets the run's `mode`. With `workflow_dispatch`, the input
-    `source-sha` is required and must be 40 lowercase hexadecimal characters,
+    `resolve` sets the run's `mode`. With `workflow_dispatch` and the input
+    `automatic` true, the run is an automatic start, as with `workflow_run`.
+    With `workflow_dispatch` otherwise, the input `source-sha` is required
+    and must be 40 lowercase hexadecimal characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
     (default false) chooses the baseline mode. With `workflow_run`, the
     triggering run only wakes the workflow: the source commit is the default
@@ -161,8 +165,8 @@ proposed-design:
     `GET /repos/<owner>/<repository>/git/ref/heads/<default>`, and refuses to
     continue when the rulesets check of `delivery-controls` fails. Mode
     `baseline` requires a dispatch whose source commit is the default branch
-    head and creates the baseline tags that `intentional tag --baseline`
-    computes. Otherwise `resolve` runs `intentional plan`. An empty plan is
+    head, and `prepare` creates the baseline tags that
+    `intentional tag --baseline` computes. Otherwise `resolve` runs `intentional plan`. An empty plan is
     mode `none` for an automatic run and fails a dispatch. A plan whose
     released unit has a primary tag with `require_phase: after-publication`
     fails and names the unit and the tag, and a plan with a tag whose name
@@ -178,47 +182,77 @@ proposed-design:
     branch head contains. Any other combination fails and names the tags.
     Modes `release` and `recover` require continuous integration evidence for
     the source commit as `continuous-integration` defines. Finally `resolve`
-    computes the effective ceremony at the rung the repository holds once the
-    plan's versions exist, and an automatic run whose effective
+    computes the effective ceremony at the release's governing rung, observed
+    from the tag records reachable from the source commit together with the
+    plan's tags, which are exactly the records reachable from the release
+    commit once it exists, and an automatic run whose effective
     `release-start` is `person` is mode `none`.
 
   release-commit: >-
-    In mode `release`, `resolve` runs `intentional apply`, then the
-    `release_prepare_recipe` action when one is answered, then, at
-    `sealed-plan` on, writes the exact bytes `intentional plan` printed to
-    `.intentional/release-plan.json`. It stages every change and commits it
-    with author and committer `Intentional <intentional@wyrd.company>`, both
-    dates one second after the source commit's committer date with its UTC
-    offset, and the message `chore(release): ` followed by the plan's tag
-    names in `tag_order`, separated by a comma and a space. The release
-    commit's only parent is the source commit. `resolve` builds the release
-    commit twice, in two fresh checkouts of the source commit, and fails
-    unless both have the same commit id. It then runs
+    `resolve` runs no repository or dependency code: it runs Git, the
+    pinned Intentional's `plan`, `verify` and `status`, and the skeleton's
+    script, and it alone writes the outputs every later gate reads, `proceed`,
+    `mode`, `ceremony`, `releases`, `record_units`, `record` and
+    `plan_digest`, with the plan as the artifact `release-plan`. In mode
+    `release`, the job `prepare`, with `contents: read` and no environment,
+    then builds the candidate: it checks out the source commit, runs
+    `intentional apply`, then the `release_prepare_recipe` action when one is
+    answered, then, at `sealed-plan` on, writes the exact bytes of the
+    `release-plan` artifact to `.intentional/release-plan.json`. It stages
+    every change and commits it with author and committer
+    `Intentional <intentional@wyrd.company>`, both dates one second after the
+    source commit's committer date with its UTC offset, and the message
+    `chore(release): ` followed by the plan's tag names in `tag_order`,
+    separated by a comma and a space. The release commit's only parent is the
+    source commit. `prepare` builds the release commit twice, in two fresh
+    checkouts of the source commit, fails unless both have the same commit
+    id, and fails unless the release tree check below passes. It then runs
     `intentional tag --plan <plan>` and
     `intentional tag --plan <plan> --phase before-publication`, whose tag
     objects Intentional writes with a fixed tagger and the release commit's
-    committer time. It writes
+    committer time, writes
     `git bundle create release-candidate.bundle <release commit> <each tag> ^<source commit>`,
-    and uploads it with the plan as the artifact `release-candidate`. It
-    uploads `release-outcome.json`, holding `mode`, `source_sha`,
-    `release_sha` and `releases`, as the artifact `release-outcome` in every
-    mode, which the run's final `request-deploy` job reads.
+    and uploads it as the artifact `release-candidate`. Its only output is the
+    release commit's id, which no gate reads: `record` verifies the bundle
+    against the plan before it pushes, and every later job reads the release
+    commit from the pushed tags. `resolve` uploads `release-outcome.json`,
+    holding `mode`, `source_sha` and `releases`, as the artifact
+    `release-outcome` in every mode.
+
+  release-tree: >-
+    The release commit may differ from the source commit only in paths that
+    Intentional's `apply` writes and paths the release declaration's
+    `prepare_outputs` names. Intentional's paths are, for each released unit,
+    its `changelog`, the `file` and `workspace_file` of each of its
+    `projections`, the deletion of the consumed intents under
+    `.intentional/intents/`, and `.intentional/release-plan.json` at
+    `sealed-plan` on. No path is writable whatever the declaration names when
+    it is under `.github/`, is `.toha.json`, `.intentional/config.yml` or
+    `.intentional/release-model.json`, is a Wrangler configuration or lies in
+    a D1 migrations directory, or is a client configuration file,
+    `.npmrc`, `.yarnrc`, `.yarnrc.yml`, `.cargo/config`, `.cargo/config.toml`,
+    `.env` or `.env.*` or `.dev.vars`, anywhere in the tree. Every change is
+    the modification or creation of a regular file with mode `100644`, or the
+    deletion of a consumed intent; a new link, executable, submodule or mode
+    change is refused. `prepare` checks this on its construction and `record`
+    checks it again with `git diff --raw --no-renames <source commit>
+    <release commit>` before it pushes, and either fails naming each
+    offending path.
 
   prepare-recipe: >-
     The prepare recipe is a local action that receives the working tree
     after `intentional apply` and the parent's `RELEASE_` values, and changes
-    only files under the repository that are derived from the versions, such
-    as lock files and generated version constants. Its output is a function
-    of the tree it receives and the toolchain the repository pins: it reads no
-    clock, no random source, no environment value other than `RELEASE_`
-    values, and no network resource other than registry content pinned by a
-    lock file's integrity hashes. `resolve` enforces what it can observe by
-    the double construction above, which fails the run before anything is
-    pushed. When `revalidate`, after the push, builds a different release
-    commit, it fails, the deliver stage does not run, and the release stays
-    recorded and undelivered; a recovery dispatch repeats the same check and
-    fails the same way, and the repository releases a new version once the
-    recipe is fixed.
+    only the paths `prepare_outputs` names, which `release-tree` enforces.
+    Its output is a function of the tree it receives and the toolchain the
+    repository pins: it reads no clock, no random source, no environment
+    value other than `RELEASE_` values, and no network resource other than
+    registry content pinned by a lock file's integrity hashes. `prepare`
+    enforces what it can observe by the double construction, which fails the
+    run before anything is pushed. When `revalidate`, after the push, builds
+    a different release commit, it fails, the deliver stage does not run, and
+    the release stays recorded and undelivered; a recovery dispatch repeats
+    the same check and fails the same way, and the repository releases a new
+    version once the recipe is fixed.
 
   record: >-
     `approve-release` runs after the build stage in modes `release` and
@@ -230,10 +264,12 @@ proposed-design:
     only Git, the token action and the skeleton's checks. In the modes that
     push, when the effective `release-approval` is `person`, it runs the
     approval check first. In mode `release` it checks out the source commit,
-    downloads `release-candidate`, runs `git bundle verify`, fetches the
-    bundle, and checks with Git alone that the release commit's only parent is
-    the source commit, that the bundled tags are exactly the plan's tags with
-    no `require_phase` or with `before-publication`, by name, that every
+    downloads `release-plan` and `release-candidate`, requires the plan's
+    `digest` to be `resolve`'s `plan_digest`, runs `git bundle verify`,
+    fetches the bundle, and checks with Git alone that the release commit's
+    only parent is the source commit, that the release tree check of
+    `release-tree` passes, that the bundled tags are exactly the plan's tags
+    with no `require_phase` or with `before-publication`, by name, that every
     bundled tag is annotated, points at the release commit and carries a tag
     record whose first line is `intentional release record` and whose
     `plan-digest` is the plan's `digest`, and, at `sealed-plan` on, that the
@@ -243,8 +279,13 @@ proposed-design:
     and pushes with `git push --atomic` the release commit to
     `refs/heads/<default>` and every bundled tag to its name, passing the
     token in an `http.extraheader` set for that one command. It reads the
-    remote branch and every tag back and requires the pushed object ids. In
-    mode `recover` it mints no token, needs no approval, requires every tag
+    remote branch and every tag back and requires the pushed object ids.
+    Before it pushes, it lists the run's artifacts through
+    `GET /repos/<owner>/<repository>/actions/runs/<run id>/artifacts` and
+    uploads `release-inventory`, a JSON object mapping each artifact the build
+    stage uploaded to its `id` and its `digest`. It outputs `release_sha`, the
+    commit it pushed or found, which every later job reads. In mode `recover`
+    it mints no token, needs no approval, requires every tag
     the release commit carries to exist on the remote and point at the
     release commit, and pushes nothing: a recovery delivers only what the
     approved release recorded. In mode `baseline` it pushes the baseline tags
@@ -303,26 +344,36 @@ proposed-design:
 
   recovery-artifacts: >-
     A recovery delivers the bytes the recorded release built; it builds
-    nothing. In mode `recover`, `resolve` finds the run that recorded the
-    release, the release workflow's run whose `release-outcome` artifact
-    names this release commit with mode `release`, and exposes its id as
-    `build_run`. The build stage's jobs do not run; every job that needs a
-    build artifact, `release-asset+<unit>+<name>` or a part's publication
-    artifact such as a `.crate` file, an npm tarball or an OCI layout,
-    downloads it from `build_run`, and `attest` does not run, because that
-    run attested the assets. Artifacts are kept 90 days; a recovery after
-    they expire fails in `resolve`, naming the missing artifacts, and the
-    remaining publication needs a new release. Build artifacts are uploaded
+    nothing. In mode `recover`, `resolve` lists the runs of
+    `.github/workflows/release.yml` with `head_sha` equal to the source
+    commit and `head_branch` equal to the default branch, and for each run and
+    attempt reads its jobs through
+    `GET /repos/<owner>/<repository>/actions/runs/<run id>/attempts/<attempt>/jobs`.
+    The recording run is the one run whose `record` job concluded `success`
+    and whose `release-outcome`, which `resolve` writes without running
+    repository code, names mode `release`; it is the only run whose `record`
+    could have pushed,
+    since `release-authority` admits only the default branch and the tags are
+    immutable. `resolve` fails, naming the runs, when there is none or more
+    than one, and exposes its id as `build_run`. Every job that needs a build
+    artifact, `release-asset+<unit>+<name>`, a part's publication artifact
+    such as a `.crate` file, an npm tarball or an OCI layout, or an evidence
+    fragment of the build stage, downloads it by the `id` that the recording
+    run's `release-inventory` names and requires the downloaded artifact's
+    `digest` to be the one the inventory names. The build stage's jobs and
+    `attest` do not run, because the recording run built and attested the
+    assets. Artifacts are kept 90 days; a recovery after they expire fails in
+    `resolve`, naming the missing artifacts, and the remaining publication
+    needs a new release. Build artifacts and `release-inventory` are uploaded
     with that retention.
 
   deliver: >-
-    Each part's `publish-` jobs check out the release commit. A part that
-    declares a secret, an App or trusted publishing runs its deliver jobs in
-    the environment `publish-<part>`, and the parent writes the credential
-    steps of `delivery-skeleton` as the job's first steps; a part that
-    publishes through a registry's trusted publishing, such as `npm` with
-    `npm_trusted_publishing`, always runs in `publish-<part>`, and the
-    registry's trust names that environment. A credentialed job publishes
+    A part that declares a secret, an App or trusted publishing runs its
+    deliver jobs in the environment `publish-<part>`, and the parent writes
+    the credential steps of `delivery-skeleton` as the job's first steps; a
+    part that publishes through a registry's trusted publishing, such as
+    `npm` with `npm_trusted_publishing`, always runs in `publish-<part>`, and
+    the registry's trust names that environment. A credentialed job publishes
     bytes that a credential-free build job made, and runs the registry client
     with its own build, verification and lifecycle scripts off: `crates-io`
     packages and verifies each crate with `cargo package` in the build job
@@ -331,14 +382,36 @@ proposed-design:
     --no-verify` reproduces the uploaded file's SHA-256; `npm` packs each
     package with `npm pack` in `build-npm` and publishes the uploaded tarball
     with `npm publish <tarball> --ignore-scripts`; `ghcr` builds each image as
-    an OCI layout in `build-ghcr` and pushes that layout by digest. Each
-    publish job reads the registry or target first and does only what is
-    missing: a version already published with the same bytes succeeds, and
-    different bytes fail before any write. A publish job of a unit that
-    requires a release record runs only when that unit's `release-record`
-    succeeded. The `repo-wyrd-foo` part mints its publisher token with the
-    token action, for the package inbox repository, and hands the submit
-    action that token rather than a key.
+    an OCI layout in `build-ghcr` and pushes that layout by digest with a
+    template-pinned OCI client.
+
+  publication-client-isolation: >-
+    No credentialed client reads configuration the repository controls. Each
+    runs with its working directory, `HOME`, `XDG_CONFIG_HOME` and every
+    client configuration location set to fresh directories in the runner's
+    temporary storage, holding only files the template writes, and with its
+    registry endpoint passed explicitly. npm runs in an empty directory with
+    `NPM_CONFIG_USERCONFIG` naming a template-written file whose only entries
+    are `registry=https://registry.npmjs.org/` and, in token mode, the
+    `_authToken` line that reads `NODE_AUTH_TOKEN`, `NPM_CONFIG_GLOBALCONFIG`
+    naming an empty file, and `--registry https://registry.npmjs.org/`; before
+    it publishes it reads `package/package.json` from the tarball and refuses
+    a `publishConfig` member other than `access`, `tag` and `provenance`.
+    Cargo runs in a checkout of the release commit from which every
+    `.cargo/config` and `.cargo/config.toml` has been removed, the build job
+    packaging the same way, with `CARGO_HOME` naming a fresh directory whose
+    template-written `config.toml` names only `crates-io`, and with
+    `--registry crates-io`; the checkout lies in the runner's workspace, whose
+    parent directories hold no Cargo configuration. The OCI client runs with
+    `DOCKER_CONFIG` naming a fresh directory and pushes only to `ghcr.io`.
+    The `homebrew-tap` and `repo-wyrd-foo` parts call the GitHub API at
+    `github.api_url` and the pinned submit action. Each publish job reads the
+    registry or target first and does only what is missing: a version already
+    published with the same bytes succeeds, and different bytes fail before
+    any write. A publish job of a unit that requires a release record runs
+    only when that unit's `release-record` succeeded. The `repo-wyrd-foo` part
+    mints its publisher token with the token action, for the package inbox
+    repository, and hands the submit action that token rather than a key.
 
   verify: >-
     Each part's `verify-` jobs read back what was published. At
@@ -378,12 +451,24 @@ proposed-design:
     so a run that attached evidence to some records and stopped is completed
     by the next. Airlock keeps GitHub's immutable releases off only for a
     repository whose effective `evidence` is `on`, as the decision record
-    `keep-release-assets-mutable-for-evidence` states. The run's last job,
-    `request-deploy`, runs when `.github/delivery/deploy.json` exists in the
-    release commit and the run released the unit it names: with
+    `keep-release-assets-mutable-for-evidence` states. `request-deploy`
+    runs after every other job of a run in mode `release` or `recover` has
+    succeeded, when `.github/delivery/deploy.json` exists in the release
+    commit and its `unit` is one of the run's released units: with
     `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
     that unit's release tag, `from` set to the first environment of the
-    declaration's `chain`, and `automatic` set to `true`.
+    declaration's `chain`, and `automatic` set to `true`. A successful
+    recovery therefore requests the automatic deploy that its failed
+    recording run did not, and the deploy changes nothing in an environment
+    that already serves the release. `continue-release` runs last, after
+    every other job whatever their results, in every run a person dispatched
+    without `automatic`: with `actions: write` through `GITHUB_TOKEN` it
+    dispatches `release.yml` with the input `automatic` set to `true` and no
+    `source-sha`, which `resolve` treats as an automatic start on the default
+    branch head. Such a dispatch may have replaced a pending automatic run in
+    the `release` group, and the dispatched run releases whatever that run
+    would have, or ends with mode `none` when nothing is pending. An
+    automatic run requests nothing, so the chain ends.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
@@ -393,19 +478,27 @@ proposed-design:
     bytes. It holds `repository`; `source_commit`; `release_commit`;
     `plan_digest`; `tier` and `ceremony`, read from
     `.github/delivery/release.json` at the release commit and computed at the
-    release's governing rung; `ci` with the workflow file, `head_sha` and
-    `conclusion`; and `units`, mapping each released unit id to `tag`,
-    `version`, `prerelease`, `assets` (each `name` with its `sha256`),
-    `publications` and `consumers`. Each part's publish and verify jobs upload
-    a fragment artifact `evidence+<job id>+<unit>`, a JSON object with
-    `publications`, each a `part`, a `coordinate` such as
+    release's governing rung as `delivery-skeleton` fixes it; `ci` with the
+    workflow file, `head_sha` and `conclusion`; and `units`, mapping each
+    released unit id to `tag`, `version`, `prerelease`, `assets` (each `name`
+    with its `sha256`, sorted by `name`), `publications` and `consumers`. The
+    facts come from fragment artifacts named `evidence+<job id>+<unit>`, each
+    a JSON object with `publications`, each a `part`, a `coordinate` such as
     `npm:@scope/name@1.2.3`, the `sha256` of the bytes read back, and, when
     the part verified provenance, `provenance` with `predicate_type` and
     `signer_workflow`; and `consumers`, each a `part`, a `phase` (`before` or
-    `after`), a `runner` and a `result`. The run's identity, its id, attempt
-    and URL, goes to the run's artifact `release-run` and its job summary,
-    never to the evidence file. A unit without a release record has its
-    evidence in the run's artifact `release-evidence` only.
+    `after`), a `runner` and a `result`. Each `consume-` job uploads the
+    fragment for its `before` results, and each `publish-` and `verify-` job
+    the fragment for what it published, read back or installed. In mode
+    `recover`, `evidence` takes the build stage's fragments from the
+    recording run through its `release-inventory`, as `recovery-artifacts`
+    states, and the deliver and verify fragments from the current run, whose
+    jobs read back the same published bytes. `evidence` merges each unit's
+    fragments and sorts `publications` by `part`, then `coordinate`, and
+    `consumers` by `phase`, then `part`, then `runner`. The run's identity,
+    its id, attempt and URL, goes to the run's artifact `release-run` and its
+    job summary, never to the evidence file. A unit without a release record
+    has its evidence in the run's artifact `release-evidence` only.
 
   phased-tags: >-
     A run identifies a release by its primary tags, which the release commit
@@ -534,11 +627,11 @@ proposed-design:
     `prerelease` from the unit's resolved release, with `contents: read` only.
 
   rehearsal: >-
-    `release-rehearsal.yml` runs `resolve` in rehearsal mode on the calling
-    commit: it computes the plan, ends with success when the plan is empty,
-    and otherwise builds the release commit and its tags locally exactly as
-    mode `release` does, without the default branch head and continuous
-    integration checks. It then runs every build, assembly and clean-consumer
+    `release-rehearsal.yml` runs `resolve` and `prepare` in rehearsal mode on
+    the calling commit: `resolve` computes the plan and ends with success when
+    it is empty, without the default branch head and continuous integration
+    checks, and `prepare` builds the release commit and its tags locally
+    exactly as mode `release` does, including the release tree check. It then runs every build, assembly and clean-consumer
     job, and every publish job with `RELEASE_REHEARSAL=true`, in which each
     part performs its dry run: it reads and computes everything it would
     publish and writes nothing outside the run. No rehearsal job enters an
@@ -568,12 +661,12 @@ proposed-design:
   resolve-outputs: >-
     Beyond the skeleton's outputs, `resolve` exposes `plan_digest`,
     `record_units` (a JSON array of released units whose policy is
-    `required`) and `record` (`'true'` when `record_units` is not empty). A
-    job that serves several units reads `RELEASE_UNITS` and acts only for
-    units in both lists. Every job checks out the release commit except
-    `resolve` and `record`, which check out the source commit; before the
-    release commit is on the remote, build jobs fetch it from the
-    `release-candidate` bundle.
+    `required`), `record` (`'true'` when `record_units` is not empty) and, in
+    mode `recover`, `build_run`. A job that serves several units reads
+    `RELEASE_UNITS` and acts only for units in both lists. `resolve`,
+    `prepare` and `record` check out the source commit; build jobs check out
+    the commit the `release-candidate` bundle holds; every job after `record`
+    checks out the commit `record` outputs.
 
   template-updates: >-
     An update runs `toha apply gh:wyrd-company/.github#templates/release .
@@ -599,21 +692,38 @@ proposed-design:
     the other phase's pattern, a missing continuous integration run and a
     missing rehearsal job; two independent constructions of one release
     commit and its tags produce equal object ids, and a prepare recipe that
-    writes the time fails the double construction. Tests of `record` push to
+    writes the time fails the double construction. The release tree cases
+    refuse a recipe change outside `prepare_outputs`, a change to each
+    protected path even when `prepare_outputs` names it, a new link, a new
+    executable and a mode change, in `prepare` and again in `record`. A test
+    shows that no step of `resolve` runs a repository recipe or installs a
+    dependency. Tests of `record` push to
     a local bare remote and cover a moved default branch, a bundle whose tag
     points elsewhere or whose tag names differ from the plan's, a plan digest
     mismatch, and a recovery that pushes nothing and needs no approval. The
-    recovery cases reuse the recording run's artifacts without building and
-    fail, naming them, once those artifacts have expired. The
+    recovery cases reuse the recording run's artifacts by the ids and digests
+    of its `release-inventory`, without building; they fail, naming the runs,
+    when no run or two runs match, ignore a run on another branch and a
+    recovery run of the same release, refuse an artifact whose digest
+    differs, and fail, naming them, once the artifacts have expired. A
+    recovery run that succeeds requests the automatic deploy, and every run a
+    person dispatched ends by dispatching an automatic run, which releases a
+    head whose pending automatic run the dispatch replaced. The
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file; the evidence cases cover
     a second dispatch and a re-run writing the same bytes and a run that
-    attached evidence to one of two records and stopped. The provenance cases
+    attached evidence to one of two records and stopped, with the
+    before-consumer fragments taken from the recording run and a later
+    release at 1.0.0 leaving the earlier release's ceremony unchanged. The
+    provenance cases
     refuse an attestation from the same workflow path at another ref and at
     another commit. The `delivery` check refuses a lowered tier without a new
     reason, including one the answers suggest. The publication parts' tests
     show `cargo publish --no-verify`, `npm publish <tarball> --ignore-scripts`
-    and the OCI push running no build. Named mutation controls remove each
+    and the OCI push running no build, and show each client ignoring a
+    repository `.npmrc`, `.cargo/config.toml` and Docker configuration that
+    name another registry, and npm refusing a tarball whose `publishConfig`
+    names a registry. Named mutation controls remove each
     gate conjunct, each mode check, the approval check, the plan digest
     check, the tag name check and the commit identity, and each must fail a
     test. The suite runs as `tests/release/README.md` states, with `TOHA_BIN`
@@ -659,6 +769,10 @@ proposed-design:
     one runs Intentional, a repository recipe, a build, a package step or a
     lifecycle script: credentialed jobs publish bytes built without
     credentials, and a secret reaches only the steps whose `env` names it.
+    Every gate reads outputs that `resolve` writes without running repository
+    or dependency code; `prepare`, which runs the recipe, feeds no gate, and
+    `record` checks its bundle and the release tree before pushing.
+    Credentialed clients read no configuration the repository controls.
     Scripts contain no `${{ }}`, part conditions cannot call status
     functions, and every external action is pinned by commit. Answers, the
     applied record and the delivery declaration contain names, never values.
