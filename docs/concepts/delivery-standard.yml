@@ -1,0 +1,203 @@
+$schema: https://refinery.systems/ontology/concept
+relationships:
+  related-to:
+    - release-process
+description: >-
+  The delivery standard is the one way a Wyrd repository versions, releases,
+  deploys, and obtains credentials. A repository adopts it by answering a Toha
+  interview, and receives each change to it as a pull request. Each kind of
+  thing the standard touches has one writer, so that a reader can say for any
+  setting, secret, resource, or workflow which tool put it there and which
+  tool checks it.
+properties:
+  adoption-boundary: >-
+    The line between what anyone who adopts the templates takes on and what is
+    Wyrd Company's own arrangement. An adopter takes on Intentional, the Toha
+    templates and the applied record, the tier with its floor, assurance, and
+    ceremony, its own release authority Apps, the token action, and an Azure
+    Key Vault reached through environments. Azure Key Vault is the only
+    credential source the templates support. Airlock is offered to adopters
+    and is optional. An adopter who does not run Airlock or Elegua applies the
+    settings and places the secrets itself. Wyrd Company's own arrangement is
+    how those are fulfilled: Elegua fills and rotates the Key Vault, Terraform
+    writes the cloud resources, Airlock applies and audits the settings, the
+    Intentional Apps serve its repositories, and a Dagu workflow starts the
+    rollout. A part on the adopter's side works without any tool, account, or
+    service that only Wyrd Company has. No one outside the organization is
+    known to use the standard, so the organization's own need decides each
+    choice unless the choice makes outside adoption impossible. What an
+    outside adopter lacks is recorded as issues in the Intentional repository.
+  release-model: >-
+    The committed description of what a repository releases: its release
+    units, their versions, and their tags. Intentional computes versions from
+    intents and writes the model, the changelogs, and the annotated tag
+    records. Intentional holds no workflow and publishes nothing. Every
+    repository on the standard carries Intentional versions, and a deploy
+    ships a release, so a deployed product has a version, a release record,
+    and an observed maturity.
+  template: >-
+    A Toha template in the organization's `.github` repository that renders a
+    workflow from the release model and the interview answers. The release
+    template and the deploy template share one skeleton of stages: resolve the
+    source, check credentials, build, record, deliver, verify. Publication
+    targets, deploy targets, and documentation publishing are parts a
+    repository selects. The standard also renders the Airlock audit workflow
+    and the Intentional check on pull requests. Continuous integration is a
+    contract the release template calls, and each repository writes its own.
+  applied-record: >-
+    The committed `.toha.json` that names the template revision, the selected
+    parts, and the answers a repository rendered from. Toha renders the files
+    and merges each template update into them. Toha pushes nothing and holds
+    no secret.
+  tier: >-
+    What a bad release of the repository can reach. A Custodial repository
+    holds other people's secrets or data, or can change other repositories. A
+    Trusted repository runs inside other people's builds and releases with
+    their credentials. A Standard repository affects only whoever runs it. The
+    tier is an interview answer held in the applied record, and that answer is
+    its only declaration. It sets the default for every assurance control and
+    every ceremony control. The organization's Airlock configuration can name
+    a minimum tier for a repository. An answer below the minimum fails the
+    audit and is not a deviation. A change of tier is a re-answered interview
+    that arrives as a pull request, and a lower tier carries a recorded
+    reason.
+  tier-questions: >-
+    The yes-or-no interview questions whose answers suggest a tier, which the
+    person answering then confirms or changes. Any yes among these suggests
+    Custodial: it stores or handles secrets, credentials, or personal data
+    that belong to someone other than the person running it; people sign in to
+    it or through it; it holds credentials that can change other repositories,
+    cloud accounts, or organization settings; it is a running service that
+    other people's data passes through. Otherwise any yes among these suggests
+    Trusted: it runs inside other repositories' build or release workflows; it
+    produces or changes what other projects ship, such as versions, generated
+    files, or base images; handling credentials or tokens is its purpose. All
+    no suggests Standard.
+  maturity: >-
+    The repository's lifecycle rung, as Airlock observes it from Intentional
+    tag records: Seeded before the baseline tag, Building from the baseline
+    tag, Released from the first release below 1.0.0, and Stable from the
+    first release at or above 1.0.0. Maturity is observed and never declared.
+    A release at or above 1.0.0 states that other people rely on the
+    repository.
+  floor: >-
+    The controls every repository carries at every tier and every rung from
+    Building: the workflow creates the release commit and tag through the
+    release authority; organization rulesets make tags immutable and refuse
+    unclassified tags; a job reaches a credential only through an environment
+    and Key Vault; the repository holds no repository-level secret; and
+    recovery runs from the immutable tag and performs only missing work. No
+    answer lowers the floor.
+  assurance: >-
+    The controls automation performs without a person. A release rehearsal in
+    continuous integration for every commit with unreleased intents, a
+    digest-sealed release plan committed with the release, independent
+    revalidation before publication, provenance verified on read-back, and a
+    durable evidence file on the release record are defaults at Trusted and
+    Custodial. A clean-consumer install runs after publication at Trusted and
+    before and after publication at Custodial. A smoke workflow that proves
+    the release authority without changing anything is a default at Custodial.
+    Assurance applies to every release, including the first, and does not vary
+    with maturity.
+  ceremony: >-
+    The controls that need a person. At Standard a release or deploy starts
+    automatically on merge, secrets rotate unattended, and a template update
+    merges without review. At Trusted a person starts each release or deploy
+    and reviews each template update. At Custodial a person starts it, a
+    person approves it, and Elegua waits for a person before it promotes a
+    rotated secret. A tier's ceremony applies at the Stable rung. Below
+    Stable, every tier carries Standard's ceremony. Maturity relaxes ceremony
+    and never assurance.
+  deviation: >-
+    An assurance or ceremony control set below the default that applies at the
+    repository's current rung, recorded in the applied record with a reason.
+    Airlock reports every deviation. Setting a control above its default needs
+    no reason.
+  release-authority: >-
+    A GitHub App that is the only actor allowed to create a release commit on
+    the default branch and its tag. The release workflow uses it inside a
+    protected environment after validation finishes in a job that holds no
+    key, and the workflow requests a token limited to the one repository. The
+    token action, a GitHub action in its own repository, has Key Vault sign
+    the token request with the App's private key, so the key never reaches a
+    runner. A job that can sign can mint a token for every repository the App
+    is installed on, so a shared App is one trust boundary. The organization
+    has one Intentional App for its Standard repositories and one for its
+    Trusted repositories, and a Custodial repository has its own App. A person
+    registers and installs each App from the published instructions, and
+    Airlock audits its permissions and its installations. Every tier releases
+    this way; no person's workstation writes a release commit or a release
+    tag. A repository whose packages receive their own tags after publication
+    uses a second App that can create only those tags. The templates name the
+    Intentional App of the repository's tier by default, and these Apps serve
+    only repositories of this organization. An adopter outside the
+    organization creates its own Apps from the published instructions and
+    names them in its answers.
+  environment: >-
+    A GitHub environment of a repository. It is the only route from a workflow
+    job to a credential, and it carries the protection rules the tier
+    requires. It holds the identifiers for federated sign-in to Azure, the Key
+    Vault address, the App identifier, and the signing key name as variables,
+    and no secret value. Terraform outputs these values and Airlock writes
+    them.
+  key-vault: >-
+    The Azure Key Vault a workflow reads from after federated sign-in through
+    its environment. Every credential a workflow needs that a service cannot
+    federate is a Key Vault secret. A publication credential and a deploy
+    credential have the same shape. An AWS Projects account refuses
+    federation, so a deploy signs in to it with one limited access key held in
+    Key Vault, which Elegua rotates through the IAM API.
+  secret-manifest: >-
+    Elegua's declaration of every long-lived credential: its issuer, the
+    stores that carry it, and its rotation policy. Elegua mints, places,
+    verifies, rotates, and revokes each credential. No other part creates or
+    replaces a secret.
+  cloud-resource: >-
+    A resource in Cloudflare, AWS, or Azure, including each Key Vault, the
+    Terraform state storage, and the trust between GitHub and Azure. Terraform
+    creates and changes cloud resources and holds no secret value. A scheduled
+    Terraform plan reports any difference between the declared resources and
+    what the cloud holds.
+  repository-settings: >-
+    The GitHub configuration of a repository and the organization: rulesets,
+    environments with their protection rules and variables, and the trusted
+    publishing settings of each registry. Airlock applies them from the
+    declared configuration, and its audit reports any difference between the
+    declaration and what GitHub and the registries hold.
+features:
+  adopt-by-interview: >-
+    A repository answers the template's questions, including its targets, and
+    commits the rendered workflows and the applied record.
+  update-by-pull-request: >-
+    A change to a template starts an agent session for each adopting
+    repository. The session runs the Toha update, which merges the new
+    revision into the rendered files, and opens the result as a pull request.
+    In this organization a Dagu workflow in the workspace notices the merged
+    change, lists the adopting repositories, and starts the sessions. An
+    adopter outside the organization chooses its own trigger.
+  release-from-a-source-commit: >-
+    A release starts from one commit of the default branch that has passed
+    continuous integration. The workflow creates the release commit and tag
+    through the release authority, then delivers through the selected parts.
+  read-credentials-through-an-environment: >-
+    A job enters its environment, signs in to Azure by federation, and reads
+    only the Key Vault secrets its part declares.
+  audit-conformance: >-
+    Airlock reads the applied record, the release model, the repository
+    settings, the absence of repository-level secrets, the tier, and the
+    observed maturity, and reports whether the repository carries the controls
+    its tier and rung require, with every deviation. It also reports a
+    rendered workflow that differs from what the applied record renders, and a
+    secret that a selected part reads and Elegua's manifest does not declare.
+open-questions:
+  Q01: >-
+    Which part audits domains: their registrar, name servers, and records?
+    Proposed: Portunus becomes the read-only audit and inventory of domains,
+    and Terraform writes the records.
+  Q02: >-
+    How are products and environments separated across cloud accounts?
+exclusions:
+  - Intentional generating or running workflows.
+  - Terraform changing GitHub settings.
+  - A workflow creating, replacing, or revoking a secret.
+  - A workflow or a deploy granting itself access or changing its own trust.
