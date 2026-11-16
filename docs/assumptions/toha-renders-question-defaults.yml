@@ -1,0 +1,18 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+    - delivery-skeleton
+description: >-
+  Toha renders a `select` question's `default` and `prompt` as templates over
+  the answers and computed values defined before the question, so `tier`
+  defaults to `{{ tier_suggested }}` and `release_authority_app` to the
+  template data's slug for the chosen tier.
+end-descendant-type: spike
+evidence:
+  - Toha's template guide names defaults among the rendered surfaces on which
+    `{% include %}` is unavailable, and its format specification lets every
+    expression and template in a node reference earlier ids.
+  - No Toha test renders a select default from a computed value.
+  - The release template's render tests answer the tier questions and read
+    the recorded default.

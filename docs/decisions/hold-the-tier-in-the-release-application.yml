@@ -1,0 +1,51 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Hold the tier in the release application
+relationships:
+  contextualizes:
+    - delivery-controls
+    - deploy-process
+description: >-
+  The delivery standard makes the tier an interview answer in the applied
+  record and its only declaration, and both delivery workflows depend on the
+  tier and on the controls set away from their defaults. Toha gives no
+  template the answers of another application, and the deploy template is
+  applied separately from the release template.
+considered-options:
+  1: >-
+    Ask the tier in both templates and have Airlock fail when the answers
+    differ. The repository then declares its tier twice.
+  2: >-
+    Have the deploy template read `.toha.json` through a document question.
+    Toha records a document answer inside the record, so each update would
+    nest the previous record inside the new one.
+  3: >-
+    Ask the tier and every control in the release template, which every
+    repository on the standard applies, render them into
+    `.github/delivery/release.json`, and have the deploy workflow read that
+    file when it runs.
+  4: >-
+    Add a third template that holds only the tier and the controls. Every
+    repository then applies three templates, and the release template still
+    needs the tier to render its assurance jobs.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    The tier is declared once, in the release application's answers, and
+    every reader, the release template, the deploy workflow and Airlock, takes
+    it from that answer or from a file rendered from it. Ceremony depends on
+    the rung and is computed when a workflow runs in either case, so reading
+    it at run time costs the deploy workflow nothing it would not compute
+    anyway.
+expected-outcomes:
+  positive:
+    - >-
+      Changing the tier is one re-answered interview in one pull request.
+    - >-
+      A deploy reads the same controls the release workflow reads.
+  negative:
+    - >-
+      The release template asks the deploy controls, `deploy-start` and
+      `deploy-approval`, even in a repository that applies no deploy
+      template.
+    - >-
+      The deploy workflow fails when the release template is not applied.

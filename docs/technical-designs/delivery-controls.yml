@@ -1,0 +1,211 @@
+$schema: https://refinery.systems/ontology/technical-design
+relationships:
+  related-to:
+    - delivery-standard
+    - delivery-skeleton
+    - release-process
+    - deploy-process
+  references:
+    - delivery-declaration
+    - delivery-environments
+    - continuous-integration
+objective: >-
+  Define how a repository answers its tier, how the tier, the controls set
+  away from their defaults and their reasons are held in the applied record,
+  how a workflow and Airlock compute each control's effective setting and
+  every deviation at the repository's rung, and where each floor, assurance and
+  ceremony control sits in what the templates render.
+background:
+  current-design: >-
+    The delivery standard defines three tiers, the yes-or-no questions that
+    suggest one, four rungs that Airlock observes from Intentional tag records,
+    the floor, the assurance controls with their tier defaults, the ceremony
+    with its tier defaults at Stable, and a deviation as a control set below
+    the default at the current rung with a recorded reason. The release
+    template on `epic/release-process` asks no tier question and renders no
+    tier-dependent control. Airlock has rungs, waivers and exceptions, and no
+    tier.
+  problems:
+    - >-
+      The tier is the only declaration of how strict delivery is, and it must
+      exist once, in the applied record, while two templates render workflows
+      that depend on it.
+    - >-
+      A deviation is judged at the current rung, which changes after the
+      answers were given, so a reason must exist before the deviation does.
+design-challenges:
+  one-declaration-two-templates: >-
+    Toha gives no template another application's answers. The release
+    template, which every repository on the standard applies, asks the tier
+    and every control, and renders them into `.github/delivery/release.json`,
+    which the deploy workflow reads when it runs. The decision record
+    `hold-the-tier-in-the-release-application` holds the trade-off.
+  reasons-before-deviations: >-
+    A reason is required for every control answered below the tier's default
+    at the Stable rung, which is the strictest default the control will reach,
+    so no rung change creates a deviation without a reason.
+proposed-design:
+  tier-interview: >-
+    The release template asks seven `confirm` questions, each with default
+    false, in this order. `tier_others_secrets`: does it store or handle
+    secrets, credentials, or personal data that belong to someone other than
+    the person running it? `tier_sign_in`: do people sign in to it or through
+    it? `tier_changes_others`: does it hold credentials that can change other
+    repositories, cloud accounts, or organization settings?
+    `tier_others_data_service`: is it a running service that other people's
+    data passes through? `tier_runs_in_builds`: does it run inside other
+    repositories' build or release workflows? `tier_shapes_shipments`: does it
+    produce or change what other projects ship, such as versions, generated
+    files, or base images? `tier_credentials_purpose`: is handling credentials
+    or tokens its purpose? A computed value `tier_suggested` is `custodial`
+    when any of the first four is true, otherwise `trusted` when any of the
+    last three is true, otherwise `standard`. The `select` question `tier`
+    offers `custodial`, `trusted` and `standard`, with prompt
+    `Tier (suggested: {{ tier_suggested }})` and default
+    `{{ tier_suggested }}`. The `text` question `tier_reason`, required, is
+    asked when the chosen tier ranks below the suggestion, with custodial
+    above trusted above standard. A change of tier is a pull request that
+    re-answers the interview, so lowering the tier without changing the
+    answers requires `tier_reason`.
+
+  release-authority-app: >-
+    The `text` question `release_authority_app` holds the slug of the App
+    that creates the repository's release commits and tags, validated by
+    `^[a-z0-9]+(-[a-z0-9]+)*$`. Its default is the slug in the template data
+    `release_authority_apps` for the chosen tier, which holds the slugs of the
+    organization's Intentional Apps for `standard` and `trusted` as they are
+    registered; `custodial` has no entry, so a Custodial repository names its
+    own App. The `text` question `package_tags_app` holds the slug of the App
+    that creates tags after publication, asked when the release model gives
+    any tag `require_phase: after-publication`, with its default from
+    `package_tags_apps` keyed the same way. An adopter outside the
+    organization answers both with its own Apps.
+
+  control-catalog: >-
+    Assurance controls take `on` or `off`. `rehearsal`, the release rehearsal
+    that continuous integration runs on every commit with pending intents;
+    `sealed-plan`, the release plan committed in the release commit and bound
+    to the tag records by its digest; `revalidation`, the independent check of
+    the pushed release before anything is published; `provenance`, build
+    provenance attested for each release asset and verified on the bytes read
+    back after publication; `evidence`, the durable evidence file on each
+    release record; and `consumer-after`, a clean install of what was
+    published, are `on` at Trusted and Custodial and `off` at Standard.
+    `consumer-before`, a clean install of what was built before anything is
+    published, and `authority-smoke`, the smoke workflow that proves the
+    release authority without changing anything, are `on` at Custodial and
+    `off` at Trusted and Standard. Assurance defaults do not vary with the
+    rung. Ceremony controls are `release-start` and `deploy-start`, which take
+    `automatic` or `person`; `release-approval`, `deploy-approval`,
+    `update-review` and `rotation-approval`, which take `none` or `person`.
+    Below Stable every tier takes Standard's ceremony: both starts
+    `automatic` and the four others `none`. At Stable, Standard keeps that;
+    Trusted takes `person` for both starts and for `update-review`, and `none`
+    for the three others; Custodial takes `person` for all six. A setting
+    ranks below another when it is `off` against `on`, `automatic` against
+    `person`, or `none` against `person`.
+
+  control-answers: >-
+    The `confirm` question `customize_controls`, default false, asks whether
+    any control is set away from its default. When it is true, the template
+    asks one `select` question per control, with id `control_` followed by
+    the control id with dashes written as underscores, such as
+    `control_sealed_plan`, options `default` and the control's two settings,
+    and default `default`. For each answer that is not `default` and ranks
+    below the tier's default at Stable, the required `text` question
+    `control_<id>_reason` is asked. Questions that are skipped are not
+    recorded, so a repository that sets nothing records only its tier
+    answers. The release declaration's `controls` holds every control whose
+    answer is not `default`, with its `setting` and, when asked, its
+    `reason`.
+
+  effective-setting-and-deviation: >-
+    A control's effective setting at a rung is the recorded setting when one
+    exists and otherwise the tier's default at that rung. A deviation is a
+    control whose effective setting ranks below the tier's default at the
+    repository's current rung; it carries the recorded reason. A setting
+    above its default is not a deviation and needs no reason. The skeleton's
+    `delivery.mjs` and Airlock compute both from the same three inputs: the
+    release declaration's `tier` and `controls`, and the observed rung.
+    Assurance controls take effect when the release template renders, so a
+    change to one is a template update; ceremony controls take effect when a
+    run computes them.
+
+  applied-record-fields: >-
+    In `.toha.json`, the release application is the application whose
+    `source` is the release template's source that the organization accepts
+    under `REPO-TPL-01`, and the deploy application likewise for the deploy
+    template. Airlock reads from the release application `commit`, `parts`,
+    `answers.tier`, `answers.tier_reason`, the seven `answers.tier_*`
+    question answers, `answers.release_authority_app`,
+    `answers.package_tags_app`, `answers.customize_controls`, every
+    `answers.control_<id>` and `answers.control_<id>_reason`,
+    `answers.ci_workflow`, `answers.ci_workflow_name` and
+    `answers.release_model`; from the deploy application `commit`, `parts`,
+    `answers.deploy_unit` and `answers.environments`; and from both, `paths`,
+    to find the files each renders. An answer absent from the record is a
+    question that was skipped, and takes its default.
+
+  floor-placement: >-
+    The release commit and its tags are created only by the release
+    workflow's `record` job, inside `release-authority`, with a token the
+    token action mints for the one repository with `contents: write`; no other
+    rendered job holds a token that can push to the default branch or create
+    a tag. Tag immutability, the tag creation authority and the refusal of
+    unclassified tags are organization rulesets that Airlock applies, and the
+    release workflow's `resolve` refuses to create a release when the
+    repository's effective rulesets do not refuse tag updates and deletions.
+    Every credential reaches a job through its environment and Key Vault, as
+    `delivery-skeleton` defines, and no rendered workflow reads a repository
+    or organization secret. The absence of repository-level secrets is
+    Airlock's audit. Recovery runs from the immutable tag: a release dispatched
+    again for its source commit finds its tags, and every job that changes
+    state outside the run does only what is missing. No answer removes any of
+    these.
+
+  assurance-placement: >-
+    `rehearsal`: the release template renders
+    `.github/workflows/release-rehearsal.yml`, continuous integration calls
+    it, and `resolve` requires its success for the source commit.
+    `sealed-plan`: `resolve` writes Intentional's plan to
+    `.intentional/release-plan.json` in the release commit, and `record` and
+    `revalidate` require its `digest` to equal every tag record's
+    `plan-digest`. `revalidation`: the `revalidate` job between `record` and
+    the deliver stage. `provenance`: each build job that produces release
+    assets attests them with `actions/attest-build-provenance`, and
+    `verify-provenance` verifies the attestation of every asset downloaded
+    back from its release record; the `npm` part verifies npm provenance on
+    the tarball read back from the registry. `evidence`: the `evidence` job
+    attaches `release-evidence.json` to each release record. `consumer-before`:
+    each part's `consume-` jobs in the build stage. `consumer-after`: each
+    part's `verify-` jobs that install from the registry. `authority-smoke`:
+    the release template renders
+    `.github/workflows/release-authority-smoke.yml`. A control that is `off`
+    renders none of its jobs or files.
+
+  ceremony-placement: >-
+    `release-start` and `deploy-start`: each workflow's `resolve` ends an
+    automatic run when the effective setting is `person`. `release-approval`:
+    the `record` job's approval check, and Airlock's required reviewers on
+    `release-authority`. `deploy-approval`: each `deploy-<environment>` job's
+    approval check, and Airlock's required reviewers on every deploy
+    environment. `update-review`: the session that applies a template update
+    reads the release declaration and leaves the update's pull request for a
+    person when the effective setting is `person`, and merges it otherwise.
+    `rotation-approval`: Elegua's manifest gives each secret that the
+    repository's environments read `tier: sensitive` when the effective
+    setting is `person`.
+
+  audit: >-
+    Airlock's audit reads the applied record, both declarations, the release
+    model, the repository's settings and environments, the repository's
+    secrets list, the tag records and Elegua's manifest, and reports the tier,
+    the observed rung, and every deviation with its reason. It fails when the
+    tier ranks below the organization's minimum for the repository; when the
+    tier ranks below the suggestion of the recorded answers and
+    `tier_reason` is absent; when a deviation has no reason; when the
+    repository holds a repository-level secret; when a file the record lists
+    differs from what its application renders; when a control's effective
+    setting needs a job, a file, a ruleset, an environment rule or a required
+    reviewer that is absent; and when a secret that a declaration lists is
+    not a destination of Elegua's manifest in the environment's vault.
