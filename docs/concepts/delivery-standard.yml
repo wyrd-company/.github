@@ -54,10 +54,13 @@ properties:
     holds other people's secrets or data, or can change other repositories. A
     Trusted repository runs inside other people's builds and releases with
     their credentials. A Standard repository affects only whoever runs it. The
-    tier is an interview answer held in the applied record. It sets the
-    default for every assurance control and every ceremony control. The
-    organization's Airlock configuration can name a minimum tier for a
-    repository.
+    tier is an interview answer held in the applied record, and that answer is
+    its only declaration. It sets the default for every assurance control and
+    every ceremony control. The organization's Airlock configuration can name
+    a minimum tier for a repository. An answer below the minimum fails the
+    audit and is not a deviation. A change of tier is a re-answered interview
+    that arrives as a pull request, and a lower tier carries a recorded
+    reason.
   tier-questions: >-
     The yes-or-no interview questions whose answers suggest a tier, which the
     person answering then confirms or changes. Any yes among these suggests
@@ -94,8 +97,8 @@ properties:
     Custodial. A clean-consumer install runs after publication at Trusted and
     before and after publication at Custodial. A smoke workflow that proves
     the release authority without changing anything is a default at Custodial.
-    Assurance applies from the Released rung and does not vary with maturity
-    above it.
+    Assurance applies to every release, including the first, and does not vary
+    with maturity.
   ceremony: >-
     The controls that need a person. At Standard a release or deploy starts
     automatically on merge, secrets rotate unattended, and a template update
@@ -106,9 +109,10 @@ properties:
     Stable, every tier carries Standard's ceremony. Maturity relaxes ceremony
     and never assurance.
   deviation: >-
-    An assurance or ceremony control set below its default, recorded in the
-    applied record with a reason. Airlock reports every deviation. Setting a
-    control above its default needs no reason.
+    An assurance or ceremony control set below the default that applies at the
+    repository's current rung, recorded in the applied record with a reason.
+    Airlock reports every deviation. Setting a control above its default needs
+    no reason.
   release-authority: >-
     A GitHub App that is the only actor allowed to create a release commit on
     the default branch and its tag. The release workflow uses it inside a
@@ -117,19 +121,25 @@ properties:
     token action, a GitHub action in its own repository, has Key Vault sign
     the token request with the App's private key, so the key never reaches a
     runner. A job that can sign can mint a token for every repository the App
-    is installed on, so a shared App is one trust boundary, and a Custodial
-    repository has its own App. Every tier releases this way; no person's
-    workstation writes a release commit or a release tag. A repository whose
-    packages receive their own tags after publication uses a second App that
-    can create only those tags. The templates name the Intentional Apps by
-    default, which serve the Trusted and Standard repositories of this
-    organization. An adopter outside the organization creates its own Apps
-    from the published instructions and names them in its answers.
+    is installed on, so a shared App is one trust boundary. The organization
+    has one Intentional App for its Standard repositories and one for its
+    Trusted repositories, and a Custodial repository has its own App. A person
+    registers and installs each App from the published instructions, and
+    Airlock audits its permissions and its installations. Every tier releases
+    this way; no person's workstation writes a release commit or a release
+    tag. A repository whose packages receive their own tags after publication
+    uses a second App that can create only those tags. The templates name the
+    Intentional App of the repository's tier by default, and these Apps serve
+    only repositories of this organization. An adopter outside the
+    organization creates its own Apps from the published instructions and
+    names them in its answers.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
     job to a credential, and it carries the protection rules the tier
-    requires. It holds the identifiers for federated sign-in to Azure and no
-    secret value.
+    requires. It holds the identifiers for federated sign-in to Azure, the Key
+    Vault address, the App identifier, and the signing key name as variables,
+    and no secret value. Terraform outputs these values and Airlock writes
+    them.
   key-vault: >-
     The Azure Key Vault a workflow reads from after federated sign-in through
     its environment. Every credential a workflow needs that a service cannot
@@ -145,13 +155,15 @@ properties:
   cloud-resource: >-
     A resource in Cloudflare, AWS, or Azure, including each Key Vault, the
     Terraform state storage, and the trust between GitHub and Azure. Terraform
-    creates and changes cloud resources and holds no secret value.
+    creates and changes cloud resources and holds no secret value. A scheduled
+    Terraform plan reports any difference between the declared resources and
+    what the cloud holds.
   repository-settings: >-
     The GitHub configuration of a repository and the organization: rulesets,
-    environments and their protection rules, and the federated sign-in
-    identifiers. Airlock applies them from the declared configuration, and its
-    audit reports any difference between the declaration and what GitHub and
-    the registries hold.
+    environments with their protection rules and variables, and the trusted
+    publishing settings of each registry. Airlock applies them from the
+    declared configuration, and its audit reports any difference between the
+    declaration and what GitHub and the registries hold.
 features:
   adopt-by-interview: >-
     A repository answers the template's questions, including its targets, and
@@ -174,7 +186,9 @@ features:
     Airlock reads the applied record, the release model, the repository
     settings, the absence of repository-level secrets, the tier, and the
     observed maturity, and reports whether the repository carries the controls
-    its tier and rung require, with every deviation.
+    its tier and rung require, with every deviation. It also reports a
+    rendered workflow that differs from what the applied record renders, and a
+    secret that a selected part reads and Elegua's manifest does not declare.
 open-questions:
   Q01: >-
     Which part audits domains: their registrar, name servers, and records?
