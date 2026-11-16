@@ -75,9 +75,12 @@ proposed-design:
     document question and renders `.github/workflows/deploy.yml`,
     `.github/workflows/deploy-rehearsal.yml` and
     `.github/delivery/deploy.json`. The deploy workflow runs the six skeleton
-    stages for one release of the Release Unit `deploy_unit`. `resolve`
-    decides which release and which environments, from a dispatch or from a
-    completed release run, and revalidates the release. Check credentials
+    stages for one release of the Release Unit `deploy_unit`. It starts only
+    by dispatch: a person dispatches it, or the release workflow's
+    `request-deploy` job does after a successful release or recovery, with
+    `automatic: true`. `resolve` decides which release and which
+    environments from the inputs `release-tag` and `from`, and revalidates
+    the release. Check credentials
     enters each deploy environment of the run. Build produces each
     environment's bundle without credentials. Record is the GitHub deployment
     that each deploy job creates when it enters its environment, and the
@@ -198,21 +201,31 @@ proposed-design:
     `actions: read` and `id-token: write`. When the effective
     `deploy-approval` is `person` it runs the approval check first. It reads
     `cloudflare-api-token` through the credential route. It checks out the
-    release commit itself, with `persist-credentials: false`, and takes from
-    that checkout every file that controls what runs: the Wrangler
-    configuration, every D1 migrations directory and the emitted
-    `.github/deploy-wrangler/package.json` and `package-lock.json`, and it
-    repeats the configuration check on that checkout. It installs Wrangler from those two files with `npm ci --ignore-scripts` in
-    the runner's temporary storage, so the only code it runs is the Wrangler
-    version and dependencies the template pins and Airlock audits as
-    rendered. It downloads `deploy-bundle+<environment>`, requires the
-    archive's SHA-256 to equal the build job's `bundles` output, and extracts
-    only `delivery-bundle/<environment>` and the configured assets directory
-    into the checkout, refusing any other path, a link, or a path outside the
-    working directory. The Wrangler steps run the pinned Wrangler with
-    `CLOUDFLARE_API_TOKEN` from the credential step and
-    `CLOUDFLARE_ACCOUNT_ID` from the environment's variable. It reads the
-    deployed state with `wrangler deployments status --env <environment>
+    release commit itself, with `persist-credentials: false`, repeats the
+    configuration check on that checkout, and requires that no control file,
+    the Wrangler configuration, any D1 migrations directory or any file
+    named `.env`, `.env.*` or `.dev.vars`, lies inside the configured assets
+    directory. It installs Wrangler from the emitted
+    `.github/deploy-wrangler/package.json` and `package-lock.json` of that
+    checkout with `npm ci --ignore-scripts` in the runner's temporary storage,
+    so the only code it runs is the Wrangler version and dependencies the
+    template pins and Airlock audits as rendered. It then assembles the
+    directory Wrangler runs in, a fresh directory in the runner's temporary
+    storage outside the checkout: it downloads `deploy-bundle+<environment>`,
+    requires the archive's SHA-256 to equal the build job's `bundles` output,
+    and extracts into that directory only `delivery-bundle/<environment>` and
+    the configured assets directory, refusing any other path, a link, a path
+    outside the directory, and any file named `.env`, `.env.*` or
+    `.dev.vars`; it then copies the Wrangler configuration and the D1
+    migrations directories from the checkout into it last, records their
+    SHA-256, and requires those digests again immediately before each
+    Wrangler call. The directory holds nothing else. Every Wrangler call runs
+    in that directory with `HOME`, `XDG_CONFIG_HOME` and
+    `WRANGLER_LOG_PATH` set to fresh directories in the runner's temporary
+    storage, with `CLOUDFLARE_API_TOKEN` from the credential step and
+    `CLOUDFLARE_ACCOUNT_ID` from the environment's variable as the only
+    `CLOUDFLARE_` variables, and with no other `WRANGLER_` variable. It reads
+    the deployed state with `wrangler deployments status --env <environment>
     --json`; a Worker with no deployment is not deployed, and otherwise
     `wrangler versions view <version id> --env <environment> --json` for the
     version at 100 percent gives `annotations["workers/tag"]`, the deployed
@@ -281,33 +294,40 @@ proposed-design:
   implementation-validation: >-
     Local render tests cover the part with one environment and with a chain
     of two, an empty migration list, and a build recipe, and validate the
-    rendered declaration against the declaration schema. A condition table
-    checks the per-environment gates and the approval jobs for success,
-    failure, skip and cancellation. Tests of `resolve` cover a dispatch, a
-    completed release run that released the unit, one that released another
-    unit, one that failed, a baseline tag, a tag outside the default branch
-    and a missing release record. Tests of the configuration check refuse a
-    top-level route, an environment route, a custom domain and a build
-    command. Tests of the deploy job run against a fake Wrangler on `PATH`
-    and cover a Worker never deployed, a pending migration with the release
-    already deployed, an already deployed release with nothing pending, an
-    archive digest mismatch, an archive holding a path other than the bundle
-    and assets or a link, a build that rewrote the repository's lock file to
-    supply its own `wrangler`, which the deploy job never runs, and a
-    read-back that does not show the release tag. Selection tests cover a
-    dispatch `from` the failed middle environment of three, which deploys it
-    and the last, with the earlier one's preflight skipped. Named mutation controls remove the read-back, the digest check, the
-    migration order and the approval check, and each fails a test. `actionlint`
-    passes on every rendered workflow. Live cases deploy a release of a test
-    Worker with a D1 database to two environments in order, deploy the same
-    release again with no change, and deploy after a new migration.
+    rendered declaration against the declaration schema; they find no trigger
+    other than `workflow_dispatch`. A condition table checks the
+    per-environment gates and the approval jobs for success, failure, skip and
+    cancellation. Tests of `resolve` cover a person's dispatch, a dispatch
+    with `automatic: true` at an effective `deploy-start` of `person` and of
+    `automatic`, a dispatch `from` each environment, a baseline tag, a tag of
+    another unit, a tag outside the default branch and a missing release
+    record. Tests of the configuration check refuse a top-level route, an
+    environment route, a custom domain, a build command, and an assets
+    directory that holds the configuration, a migrations directory or an
+    environment file. Tests of the deploy job run against a fake Wrangler on
+    `PATH` and cover a Worker never deployed, a pending migration with the
+    release already deployed, an already deployed release with nothing
+    pending, an archive digest mismatch, an archive holding a path other than
+    the bundle and assets, a link or an environment file, a build that
+    rewrote the repository's lock file to supply its own `wrangler`, which
+    the deploy job never runs, a repository `.env` that names another API
+    base URL, which never reaches Wrangler's directory, a control file
+    changed after its digest was recorded, and a read-back that does not show
+    the release tag. Selection tests cover a dispatch `from` the failed
+    middle environment of three, which deploys it and the last, with the
+    earlier one's preflight skipped. Named mutation controls remove the
+    read-back, the digest checks, the overlap check, the migration order and
+    the approval check, and each fails a test. `actionlint` passes on every
+    rendered workflow. Live cases deploy a release of a test Worker with a D1
+    database to two environments in order, deploy the same release again with
+    no change, and deploy after a new migration.
 
   security-surface: >-
     The only job that holds the Cloudflare token is `deploy-<environment>`,
     inside its environment, after the bundle was built without credentials;
     it runs only the template-pinned Wrangler installed with lifecycle scripts
-    disabled, reads its configuration and migrations from its own checkout of
-    the release commit, and takes from the build only the archive whose digest
-    the build reported. Its token reaches only the Wrangler steps through
+    disabled, in a directory that holds only the build's digest-checked bundle
+    and assets and the configuration and migrations of its own checkout of the
+    release commit, with a fresh home and no repository environment file. Its token reaches only the Wrangler steps through
     their `env`. The deploy grants itself no access, changes no trust, writes
     no secret, and creates no cloud resource that Terraform declares.
