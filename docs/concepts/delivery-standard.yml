@@ -12,10 +12,21 @@ description: >-
 properties:
   adoption-boundary: >-
     The line between what anyone who adopts the templates takes on and what
-    is Wyrd Company's own arrangement. Every statement of the standard
-    belongs to one side, and the standard says which. A part on the
-    adopter's side works without any tool, account, or service that only
-    Wyrd Company has.
+    is Wyrd Company's own arrangement. An adopter takes on Intentional, the
+    Toha templates and the applied record, the tier with its floor,
+    assurance, and ceremony, its own release authority Apps, the token
+    action, and an Azure Key Vault reached through environments. Azure Key
+    Vault is the only credential source the templates support. Airlock is
+    offered to adopters and is optional. Wyrd Company's own arrangement is
+    how those are fulfilled: Elegua fills and rotates the Key Vault,
+    Terraform writes the cloud resources, Airlock applies and audits the
+    settings, the Intentional Apps serve its repositories, and a Dagu
+    workflow starts the rollout. A part on the adopter's side works without
+    any tool, account, or service that only Wyrd Company has. No one outside
+    the organization is known to use the standard, so the organization's own
+    need decides each choice unless the choice makes outside adoption
+    impossible. What an outside adopter lacks is recorded as issues in the
+    Intentional repository.
   release-model: >-
     The committed description of what a repository releases: its release
     units, their versions, and their tags. Intentional computes versions from
@@ -149,9 +160,7 @@ features:
     revision into the rendered files, and opens the result as a pull request.
     In this organization a Dagu workflow in the workspace notices the merged
     change, lists the adopting repositories, and starts the sessions. An
-    adopter outside the organization chooses its own trigger, and the
-    templates' published documentation gives examples, such as a GitHub
-    workflow that starts a coding agent.
+    adopter outside the organization chooses its own trigger.
   release-from-a-source-commit: >-
     A release starts from one commit of the default branch that has passed
     continuous integration. The workflow creates the release commit and tag
@@ -171,15 +180,6 @@ open-questions:
     and Terraform writes the records.
   Q02: >-
     How are products and environments separated across cloud accounts?
-  Q03: >-
-    Where does the adoption boundary fall? Proposed: an adopter takes on
-    Intentional, the Toha templates and the applied record, the tier with
-    its floor, assurance, and ceremony, its own release authority Apps, the
-    token action, and a Key Vault reached through environments. Wyrd
-    Company's own arrangement is how those are fulfilled: Elegua fills and
-    rotates the Key Vault, Terraform writes the cloud resources, Airlock
-    applies and audits the settings, the Intentional Apps serve its
-    repositories, and a Dagu workflow starts the rollout.
 exclusions:
   - Intentional generating or running workflows.
   - Terraform changing GitHub settings.
