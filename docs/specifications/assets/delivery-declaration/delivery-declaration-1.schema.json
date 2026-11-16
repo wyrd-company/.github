@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/declaration/1",
   "title": "Delivery declaration",
-  "description": "What one applied delivery template declares for its repository: for the release template, the tier and every control set away from its tier's default; for the deploy template, the deployed Release Unit and the environment chain; for both, every environment the rendered workflows enter and the variables, Key Vault secrets and Key Vault keys each environment carries.",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for both, every environment the rendered workflows enter and the variables, Key Vault secrets and Key Vault keys each environment carries.",
   "type": "object",
   "additionalProperties": false,
   "required": [

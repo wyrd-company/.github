@@ -145,9 +145,9 @@ proposed-design:
     `github.ref` must be the default branch, and the boolean input `baseline`
     (default false) chooses the baseline mode. With `workflow_run`, the source
     commit is `github.event.workflow_run.head_sha`; the run is mode `none`
-    when the triggering run was not a `push` on the default branch, and
-    `resolve` fails, naming the triggering run, when that push run did not
-    conclude `success`. `resolve` checks out the source commit with
+    when the triggering run was not a `push` on the default branch or was
+    cancelled or skipped, and `resolve` fails, naming the triggering run, when
+    that push run failed, as `delivery-skeleton` lists. `resolve` checks out the source commit with
     `fetch-depth: 0`, which brings every tag with its tag object, and
     `persist-credentials: false`, reads the default branch head from `GET /repos/<owner>/<repository>/git/ref/heads/<default>`,
     and refuses to continue when the repository's effective rulesets do not
@@ -192,16 +192,18 @@ proposed-design:
     mode, for the deploy workflow.
 
   record: >-
-    `approve-release` runs after the build stage when the effective
-    `release-approval` is `person`; it enters `release-approval` with no
-    permission and does nothing else, so GitHub holds it until a person
+    `approve-release` runs after the build stage in modes `release` and
+    `baseline` when the effective `release-approval` is `person`; it enters
+    `release-approval` with no permission and does nothing else, so GitHub holds it until a person
     approves. `record` then enters `release-authority` with `contents: read`,
     `actions: read` and `id-token: write`, and runs only Git, the token
     action and the skeleton's checks. When the effective `release-approval` is `person`, it
     runs the approval check first. In mode `release` it checks out the source
     commit, downloads `release-candidate`, runs `git bundle verify`, fetches
     the bundle, and checks with Git alone that the release commit's only
-    parent is the source commit, that every bundled tag is annotated, points
+    parent is the source commit, that the bundled tags are exactly the plan's
+    tags with no `require_phase` or with `before-publication`, by name, that
+    every bundled tag is annotated, points
     at the release commit and carries a tag record whose first line is
     `intentional release record` and whose `plan-digest` is the plan's
     `digest`, and, at `sealed-plan` on, that the committed plan's `digest` is
@@ -288,12 +290,14 @@ proposed-design:
     gives any tag `require_phase: after-publication`,
     `prepare-after-publication-tags` runs after every verify job of the run
     has succeeded, with `contents: read` and no environment: it checks out the
-    release commit, computes the plan at the source commit, requires its
-    `digest` to be the tag records' `plan-digest`, runs
-    `intentional tag --plan <plan> --phase after-publication`, and uploads the
-    new tag objects as the bundle artifact `after-publication-tags`.
-    `tag-after-publication` then enters `package-tags`, checks with Git alone
-    that each bundled tag is annotated and points at the release commit,
+    source commit with full history, computes the plan there, requires its
+    `digest` to be the tag records' `plan-digest`, checks out the release
+    commit, runs `intentional tag --plan <plan> --phase after-publication`,
+    and uploads the plan and the new tag objects as the bundle artifact
+    `after-publication-tags`. `tag-after-publication` then enters
+    `package-tags`, checks with Git alone that the bundled tags are exactly
+    the plan's tags with `after-publication`, by name, and that each is
+    annotated and points at the release commit,
     skips tags already on the remote that point at the same tag object, and
     pushes the rest atomically with a token the token action mints from the
     package tags App with `permission-contents: write`. At `evidence` on,

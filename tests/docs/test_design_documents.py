@@ -11,6 +11,7 @@ TYPES = {
     'assumptions': 'assumption',
     'concepts': 'concept',
     'decisions': 'decision-record',
+    'risks': 'risk',
     'specifications': 'specification',
     'technical-designs': 'technical-design',
 }

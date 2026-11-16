@@ -109,8 +109,8 @@ proposed-design:
     primary tag. `environments` is a looped `text` question, at least one
     entry, each validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` and at most 64
     characters, in the order an automatic deploy enters them; the names
-    `release-authority`, `package-tags`, `release-approval`, `deploy-approval`
-    and those starting with `publish-` are refused. Each part's questions
+    `release-authority`, `package-tags` and `release-approval`, and names
+    starting with `publish-` or ending with `-approval`, are refused. Each part's questions
     carry `when` conditions on `targets`.
 
   part-interface: >-
@@ -162,8 +162,8 @@ proposed-design:
     GitHub deployment, and the part writes the release tag and a message on
     the Worker version it creates. Deliver and verify repeat per environment:
     the jobs for an environment run only when it is in `environments`, and
-    `approve-<environment>`, which enters `deploy-approval` only when the
-    effective `deploy-approval` is `person`, and `deploy-<environment>` need
+    `approve-<environment>`, which enters `<environment>-approval` only when
+    the effective `deploy-approval` is `person`, and `deploy-<environment>` need
     `verify-<previous environment>` in chain order. Every job follows the
     skeleton's stage gate, so a failure in one environment stops every later
     one.
@@ -246,7 +246,8 @@ proposed-design:
     that Terraform declares, and no secret value is in the repository, the
     configuration or a workflow. The part reads `cloudflare-api-token` and
     `CLOUDFLARE_ACCOUNT_ID`. The token can edit the account's Workers scripts
-    and D1 databases and the queues the Worker consumes, and nothing else.
+    and D1 databases and the queues the Worker consumes, can read the secrets
+    stores the Worker binds, and nothing else.
 
   rehearsal: >-
     `deploy-rehearsal.yml` runs `resolve` in rehearsal mode on the calling

@@ -5,9 +5,11 @@ relationships:
     - delivery-environments
 description: >-
   An account API token with Workers Scripts Write, D1 Write and Queues Write
-  on the account, and nothing else, can run `wrangler deploy` for a Worker
-  with Durable Objects, KV, D1, R2 and queue bindings and no route, apply D1
-  migrations with `--remote`, and read the Worker's deployments and versions.
+  on the account, and Secrets Store Read when the Worker binds a secrets
+  store, and nothing else, can run `wrangler deploy` for a Worker with
+  Durable Objects, KV, D1, R2, queue and secrets store bindings and no route,
+  apply D1 migrations with `--remote`, and read the Worker's deployments and
+  versions.
 end-descendant-type: spike
 evidence:
   - Cloudflare's "Edit Cloudflare Workers" token template also grants KV

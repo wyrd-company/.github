@@ -125,10 +125,14 @@ proposed-design:
     `needs.resolve.outputs.proceed == 'true'`, so GitHub's implicit
     `success()` also applies. Every later job starts from the stage gate
     `!cancelled() && !failure() && needs.resolve.result == 'success' &&
-    needs.resolve.outputs.proceed == 'true'` joined with one
-    `needs.<preflight job>.result == 'success'` per preflight job; `!failure()`
-    is false when any ancestor failed, and the `result` tests stop the job
-    when `resolve` or a preflight did not succeed for any other reason. A part
+    needs.resolve.outputs.proceed == 'true'` joined with one test per
+    preflight job: `needs.<preflight job>.result == 'success'`, or, for a
+    deploy environment's preflight, that result or the environment's absence
+    from `fromJSON(needs.resolve.outputs.environments)`. A deploy
+    environment's preflight runs only when its environment is in the run.
+    `!failure()` is false when any ancestor failed, and the `result` tests
+    stop the job when `resolve` or a needed preflight did not succeed for any
+    other reason. A part
     job adds `&& (<unit test>)`, one clause per Release Unit it serves joined
     with `||`, and, when the part job has `if`, `&& (<if>)`; the parent writes
     every `needs` and every condition, and a part can only narrow its own
@@ -185,7 +189,10 @@ proposed-design:
 
   credential-route: >-
     A job that needs a credential names its credential environment with
-    `environment:` and requests `id-token: write`. Its first steps, before any
+    `environment:` and requests `id-token: write`. Every such job sets the
+    environment's `deployment: false` except `deploy-<environment>`, whose
+    GitHub deployment is the deploy's record; required reviewers and branch
+    policies apply either way. Its first steps, before any
     step that installs a dependency, are the skeleton's. To read secrets, the
     job runs `azure/login` pinned by commit with `client-id`, `tenant-id` and
     `allow-no-subscriptions: true` from `vars.AZURE_CLIENT_ID` and
@@ -207,7 +214,8 @@ proposed-design:
   check-credentials: >-
     Each credential environment the run enters gets one
     `preflight-<environment>` job that enters it with `id-token: write` and no
-    other permission. For each declared secret it reads the secret as the
+    other permission, and with `deployment: false`, so it creates no GitHub
+    deployment. For each declared secret it reads the secret as the
     credential route does and discards the value; for each declared App it
     runs the token action with the App's declared owner and repositories and
     `permission-metadata: read`, and lets the post step revoke the token. A
@@ -234,12 +242,15 @@ proposed-design:
     control id. A run started by `workflow_run` whose effective start setting
     is `person` ends in `resolve` with mode `none`, success, and a summary
     naming the control and the rung. When the effective approval setting is
-    `person`, the run's approval job enters the approval environment, and
-    GitHub holds it until a person approves; the job it gates then runs the
-    skeleton's approval check before anything else: it reads
+    `person`, the run's approval job enters its approval environment,
+    `release-approval` for a release and `<environment>-approval` for each
+    deploy environment, and GitHub holds it until a person approves; the job
+    it gates then runs the skeleton's approval check before anything else: it
+    reads
     `GET /repos/<owner>/<repository>/actions/runs/<run id>/approvals` and
-    requires an approval with state `approved` for the approval environment by
-    a user other than the run's `triggering_actor`, and fails otherwise.
+    requires an approval with state `approved` for its own approval
+    environment by a user other than the run's `triggering_actor`, and fails
+    otherwise.
 
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
@@ -253,7 +264,10 @@ proposed-design:
     repository and `head_branch` to be the default branch, and otherwise ends
     with mode `none`; the release workflow also requires the triggering run's
     `event` to be `push`, and each workflow decides what a triggering run that
-    did not succeed means. A deploy that follows an automatic release is two
+    did not succeed means: the release workflow fails on a conclusion of
+    `failure`, `timed_out`, `startup_failure` or `action_required` and ends
+    with mode `none` on `cancelled`, `skipped`, `neutral` or `stale`, and the
+    deploy workflow ends with mode `none` on any conclusion but `success`. A deploy that follows an automatic release is two
     `workflow_run` links after continuous integration, within the chain that
     GitHub runs. GitHub keeps one
     running and one pending run per concurrency group and cancels an older

@@ -41,9 +41,10 @@ description: >-
 
 
   Approval environments. `release-approval` is entered by the release
-  workflow's `approve-release` job, and `deploy-approval` by each of the
-  deploy workflow's `approve-<environment>` jobs, only in a run whose
-  effective `release-approval` or `deploy-approval` is `person`. An approval
+  workflow's `approve-release` job, and `<environment>-approval` by the
+  deploy workflow's `approve-<environment>` job for each deploy environment,
+  only in a run whose effective `release-approval` or `deploy-approval` is
+  `person`. An approval
   environment carries no variable, no secret and no key; its required
   reviewers hold the job until a person approves.
 
@@ -94,15 +95,19 @@ description: >-
   which holds exactly the secrets that environment's parts declare, so a
   staging and a production `cloudflare-api-token` live in two vaults. The
   vaults use Azure role-based access. An environment's identity holds
-  `Key Vault Secrets User` on its own vault, and the role whose only data
+  `Key Vault Secrets User` on its own vault, which also lets it read the
+  `<name>-pending` value Elegua stages there during a rotation, and the role
+  whose only data
   action is `Microsoft.KeyVault/vaults/keys/sign/action` on each key it signs
   with, at that key's scope. Elegua's writing identity holds
   `Key Vault Secrets Officer` on every vault that holds a secret of its
   manifest.
 
 
-  Terraform. For each repository, Terraform takes from the repository's
-  delivery declarations the credential environments, which of them read
+  Terraform. For each repository, Terraform reads the repository's delivery
+  declarations from its default branch through the GitHub provider's
+  `github_repository_file` data source, changing nothing in GitHub, and takes
+  from them the credential environments, which of them read
   secrets, and the Apps each signs with, and takes as inputs the subscription,
   the tenant, each App's id and key vault, and each variable it does not
   create, such as `CLOUDFLARE_ACCOUNT_ID`. For each credential environment it
