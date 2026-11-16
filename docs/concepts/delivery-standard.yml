@@ -60,8 +60,9 @@ properties:
     every ceremony control. The organization's Airlock configuration can name
     a minimum tier for a repository. An answer below the minimum fails the
     audit and is not a deviation. A change of tier is a re-answered interview
-    that arrives as a pull request, and a lower tier carries a recorded
-    reason.
+    that arrives as a pull request, and every change to a lower tier than the
+    one recorded carries a recorded reason, whether or not the re-answered
+    questions suggest the lower tier.
   tier-questions: >-
     The yes-or-no interview questions whose answers suggest a tier, which the
     person answering then confirms or changes. Any yes among these suggests
@@ -106,8 +107,11 @@ properties:
     automatically on merge, secrets rotate unattended, and a template update
     merges without review. At Trusted a person starts each release or deploy
     and reviews each template update. At Custodial a person starts it, a
-    person approves it, and Elegua waits for a person before it promotes a
-    rotated secret. A tier's ceremony applies at the Stable rung. Below
+    second person approves it, a person reviews each template update, and
+    Elegua waits for a person before it promotes a rotated secret. The person
+    who approves a release or deploy is never the person who started it, so a
+    Custodial repository with one maintainer cannot release at the Stable
+    rung. A tier's ceremony applies at the Stable rung. Below
     Stable, every tier carries Standard's ceremony. A release carries the
     ceremony of the rung the repository holds once that release exists, so
     the first release at or above 1.0.0 carries the tier's ceremony. Maturity
