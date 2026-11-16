@@ -58,6 +58,9 @@
       ]
     }
   },
+  "prepare_outputs": [
+    "package-lock.json"
+  ],
   "release_authority": {
     "slug": "example-release-authority"
   },

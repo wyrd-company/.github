@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / 'docs/specifications/assets/delivery-apps'
 SCHEMA = json.loads((ASSETS / 'delivery-apps-1.schema.json').read_text())
 INVALID = {
-    'custodial-app-serving-two-repositories': (['apps', 'example-service-release', 'repositories'], 'maxItems'),
+    'custodial-app-serving-two-repositories': (['apps', 'example-service-release', 'installed_on'], 'maxItems'),
+    'app-without-installation-targets': (['apps', 'example-package-publisher'], 'required'),
     'release-authority-without-a-tier': (['apps', 'example-intentional-standard'], 'required'),
 }
 

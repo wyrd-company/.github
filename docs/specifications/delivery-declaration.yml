@@ -20,7 +20,9 @@ description: >-
 
 
   The release declaration holds `tier`, the repository's tier as answered;
-  `tier_reason`, when answered;
+  `tier_reason`, when answered; `prepare_outputs`, the Git pathspec globs
+  that the prepare recipe may change, from the `release_prepare_outputs`
+  answer;
   `controls`, every control the interview answers with a setting rather than
   `default`, each with its `setting` and, when the setting ranks below the
   tier's default at the Stable rung, its `reason`; `release_authority.slug`, the slug of the App that

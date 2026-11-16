@@ -34,7 +34,8 @@
         "role",
         "app_id",
         "key_vault_url",
-        "repositories"
+        "signers",
+        "installed_on"
       ],
       "properties": {
         "role": {
@@ -60,14 +61,25 @@
           "type": "string",
           "pattern": "^https://[a-z0-9-]+\\.vault\\.azure\\.net$"
         },
-        "repositories": {
+        "signers": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$"
-          }
+          },
+          "description": "The repositories whose environments may sign with the App's key."
+        },
+        "installed_on": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$"
+          },
+          "description": "The repositories the App may be installed on, and so the only repositories a token signed with its key can reach."
         }
       },
       "allOf": [
@@ -108,7 +120,10 @@
           },
           "then": {
             "properties": {
-              "repositories": {
+              "signers": {
+                "maxItems": 1
+              },
+              "installed_on": {
                 "maxItems": 1
               }
             }

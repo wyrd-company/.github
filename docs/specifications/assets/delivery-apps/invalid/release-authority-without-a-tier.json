@@ -1,32 +1,41 @@
 {
   "$schema": "https://wyrd.foo/delivery/apps/1",
   "apps": {
-    "example-airlock-audit": {
-      "app_id": 1000003,
-      "key_vault_url": "https://example-apps.vault.azure.net",
-      "repositories": [
-        "example-org/example-service",
-        "example-org/tool-a",
-        "example-org/tool-b"
-      ],
-      "role": "airlock-audit"
-    },
     "example-intentional-standard": {
       "app_id": 1000001,
-      "key_vault_url": "https://example-apps.vault.azure.net",
-      "repositories": [
+      "installed_on": [
         "example-org/tool-a",
         "example-org/tool-b"
       ],
-      "role": "release-authority"
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "role": "release-authority",
+      "signers": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ]
+    },
+    "example-package-publisher": {
+      "app_id": 1000004,
+      "installed_on": [
+        "example-org/package-inbox"
+      ],
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "role": "repo-wyrd-foo-publisher",
+      "signers": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ]
     },
     "example-service-release": {
       "app_id": 1000002,
-      "key_vault_url": "https://example-service-release.vault.azure.net",
-      "repositories": [
+      "installed_on": [
         "example-org/example-service"
       ],
+      "key_vault_url": "https://example-service-release.vault.azure.net",
       "role": "release-authority",
+      "signers": [
+        "example-org/example-service"
+      ],
       "tier": "custodial"
     }
   }

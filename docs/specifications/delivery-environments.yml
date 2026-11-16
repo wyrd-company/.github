@@ -43,8 +43,11 @@ description: >-
 
 
   Credential environment of the Airlock configuration template.
-  `airlock-audit` is entered by the job of `airlock-audit.yml`; it signs with
-  the Airlock audit App's key and reads no secret.
+  `airlock-audit` is the audit's environment as the Airlock configuration
+  template renders it; which App it signs with, and whether a repository
+  holds it at all, await the operator's ruling on the audit's trust
+  boundary, and no repository's environment is granted an audit key until
+  then.
 
 
   Approval environments. `release-approval` is entered by the release
@@ -73,7 +76,7 @@ description: >-
   `RELEASE_AUTHORITY_KEY_NAME`, `package-tags` carries `PACKAGE_TAGS_APP_ID`
   and `PACKAGE_TAGS_KEY_NAME`, `publish-repo-wyrd-foo` carries
   `REPO_WYRD_FOO_PUBLISHER_APP_ID` and `REPO_WYRD_FOO_PUBLISHER_KEY_NAME`, and
-  `airlock-audit` carries `AIRLOCK_AUDIT_APP_ID` and
+  an audit environment carries `AIRLOCK_AUDIT_APP_ID` and
   `AIRLOCK_AUDIT_KEY_NAME`. Every App and its key's vault are listed in the
   organization's App authorization file, `delivery-apps`, and an environment
   signs with an App only where that file allows it. The key is imported once
@@ -150,7 +153,16 @@ description: >-
   configuration, and gives no credential environment required reviewers. For
   each environment that declares `trusted_publishing`, it sets each listed
   registry's trusted publisher for the repository's packages to that
-  repository, workflow file and environment. It keeps GitHub's immutable
+  repository, workflow file and environment. npm manages trusted publishers
+  only for an account with write access to the package and two-factor
+  authentication, through `npm trust github`, `npm trust list` and
+  `npm trust revoke`, so Airlock writes and reads npm trust only in an
+  attended run that uses the npm session of the person running it; Airlock
+  holds no npm credential, and its scheduled audit reports npm trust as not
+  verified in that run. Airlock defines the organization custom property
+  `release`, a boolean, and sets it to `true` on every repository that holds
+  a release declaration, which selects the repository for the rulesets of
+  `delivery-controls`. It keeps GitHub's immutable
   releases on unless the repository's effective `evidence` control is `on`,
   as the decision record `keep-release-assets-mutable-for-evidence` states.
   Airlock writes no environment secret, no repository secret and no

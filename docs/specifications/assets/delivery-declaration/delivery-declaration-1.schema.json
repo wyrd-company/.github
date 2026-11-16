@@ -65,6 +65,16 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 1000
+    },
+    "prepare_outputs": {
+      "description": "Paths, as Git pathspec globs, that the release's prepare recipe may change, besides the files Intentional writes.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9_.*/@+-]+$"
+      }
     }
   },
   "allOf": [
@@ -137,6 +147,11 @@
               "required": [
                 "package_tags"
               ]
+            },
+            {
+              "required": [
+                "prepare_outputs"
+              ]
             }
           ]
         }
@@ -186,6 +201,11 @@
             {
               "required": [
                 "chain"
+              ]
+            },
+            {
+              "required": [
+                "prepare_outputs"
               ]
             }
           ]
