@@ -253,8 +253,9 @@ proposed-design:
     repository and `head_branch` to be the default branch, and otherwise ends
     with mode `none`; the release workflow also requires the triggering run's
     `event` to be `push`, and each workflow decides what a triggering run that
-    did not succeed means. Continuous integration, release and deploy are
-    three levels of `workflow_run`, the most GitHub chains. GitHub keeps one
+    did not succeed means. A deploy that follows an automatic release is two
+    `workflow_run` links after continuous integration, within the chain that
+    GitHub runs. GitHub keeps one
     running and one pending run per concurrency group and cancels an older
     pending run when a newer one queues, so a dispatch that waits behind a
     running release can be replaced by a later run; a run waiting for an
