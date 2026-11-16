@@ -23,7 +23,10 @@ properties:
     workflow from the release model and the interview answers. The release
     template and the deploy template share one skeleton of stages: resolve the
     source, check credentials, build, record, deliver, verify. Publication
-    targets and deploy targets are parts a repository selects.
+    targets, deploy targets, and documentation publishing are parts a
+    repository selects. The standard also renders the Airlock audit workflow
+    and the Intentional check on pull requests. Continuous integration is a
+    contract the release template calls, and each repository writes its own.
   applied-record: >-
     The committed `.toha.json` that names the template revision, the selected
     parts, and the answers a repository rendered from. Toha renders the files
@@ -92,12 +95,16 @@ properties:
     A GitHub App that is the only actor allowed to create a release commit on
     the default branch and its tag. The release workflow uses it inside a
     protected environment after validation finishes in a job that holds no
-    key, and the token it mints is limited to the one repository. Every tier
+    key, and the token it mints is limited to the one repository. Key Vault
+    holds the App's private key and signs the token request, so the key never
+    reaches a runner. A job that can sign can mint a token for every
+    repository the App is installed on, so a shared App is one trust
+    boundary, and a Custodial repository has its own App. Every tier
     releases this way; no person's workstation writes a release commit or a
     release tag. A repository whose packages receive their own tags after
     publication uses a second App that can create only those tags. The
-    templates name the Intentional Apps by default, which serve repositories
-    of this organization. An adopter outside the organization creates its own
+    templates name the Intentional Apps by default, which serve the Trusted
+    and Standard repositories of this organization. An adopter outside the organization creates its own
     Apps from the published instructions and names them in its answers.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
@@ -108,7 +115,9 @@ properties:
     The Azure Key Vault a workflow reads from after federated sign-in through
     its environment. Every credential a workflow needs that a service cannot
     federate is a Key Vault secret. A publication credential and a deploy
-    credential have the same shape.
+    credential have the same shape. An AWS Projects account refuses
+    federation, so a deploy signs in to it with one limited access key held
+    in Key Vault, which Elegua rotates through the IAM API.
   secret-manifest: >-
     Elegua's declaration of every long-lived credential: its issuer, the
     stores that carry it, and its rotation policy. Elegua mints, places,
@@ -146,31 +155,13 @@ features:
     deviation.
 open-questions:
   Q01: >-
-    How does a deploy sign in to an AWS Projects account? Its managed
-    policies deny creation of the identity provider that federation needs,
-    and activating advanced features removes the spending limit for good.
-    Proposed: one limited access key held in Key Vault, which Elegua rotates
-    through the IAM API.
-  Q02: >-
-    Which actor signs for a release authority? Key Vault can sign the App's
-    token request so that the private key never reaches a runner. A job that
-    can sign can mint a token for every repository the App is installed on,
-    so an App shared across repositories is one trust boundary. Proposed: a
-    Custodial repository has its own App.
-  Q03: >-
     Which part audits domains: their registrar, name servers, and records?
     Proposed: Portunus becomes the read-only audit and inventory of domains,
     and Terraform writes the records.
-  Q04: >-
-    Which workflows other than release and deploy does the standard render?
-    Proposed: the Airlock audit and the Intentional check on pull requests
-    are rendered; documentation publishing is a part of the release template;
-    continuous integration is a contract the release template calls, and each
-    repository writes its own.
-  Q05: >-
+  Q02: >-
     What triggers the agent session that opens a template update, and where
     does it run?
-  Q06: >-
+  Q03: >-
     How are products and environments separated across cloud accounts?
 exclusions:
   - Intentional generating or running workflows.
