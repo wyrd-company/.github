@@ -389,7 +389,11 @@ proposed-design:
     with that retention. Artifact names are unique within a run, so a run is
     retried by re-running its failed jobs or by a new dispatch: `resolve`
     fails a run whose `github.run_attempt` is above 1, which re-running all
-    jobs would produce.
+    jobs would produce. A re-run of a `resolve` that failed is such an
+    attempt and fails too, so a run whose `resolve` failed is retried only
+    by a new run, which resolves afresh: a person's dispatch for the same
+    source commit, or, for an automatic run, the next start by continuous
+    integration or by `continue-release`.
 
   deliver: >-
     A part that declares a secret, an App or trusted publishing runs its
@@ -752,7 +756,9 @@ proposed-design:
     and whose push did not land, followed by a dispatch that pushed and then
     failed in publication, which is the second run; after a `record` stopped
     between its push and its read-back, which is that run; and after a re-run
-    of `record` that replaced its run's inventory and pushed. A
+    of `record` that replaced its run's inventory and pushed. A re-run of a
+    failed `resolve` fails, and a new dispatch for the same source commit
+    then resolves afresh. A
     recovery run that succeeds requests the automatic deploy, and every run a
     person dispatched ends by dispatching an automatic run, which releases a
     head whose pending automatic run the dispatch replaced. The
