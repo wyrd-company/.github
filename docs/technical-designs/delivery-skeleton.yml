@@ -306,8 +306,9 @@ proposed-design:
     by `github-actions[bot]`, ends with mode `none` when the effective
     `release-approval` is `person`, and the pending intents then wait,
     unchanged, for a person's dispatch or the next start by continuous
-    integration whose `actor` is of type `User`, because a start whose
-    `actor` is of type `Bot` ends with mode `none` by the same rule; a
+    integration whose `actor` and `triggering_actor` are both of type
+    `User`, because a start with either of type `Bot` ends with mode `none`
+    by the same rule; a
     deploy run
     exists only for a release that was made or recovered, or for a person's
     request, and `request-deploy` requests one only for the newest release
