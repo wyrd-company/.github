@@ -513,6 +513,11 @@ proposed-design:
     release was made with, because `release-tree` keeps
     `.intentional/release-model.json` unchanged in a release commit. A later
     change of the unit's primary key therefore never hides a later release.
+    The rung observation of `delivery-skeleton` classifies every tag record
+    by this same revision. Where the commit holds no model that names the
+    key, the scan takes that observation's fallbacks too, the record's
+    `tag-role` and otherwise primary, so a candidate that no model
+    classifies withholds a request and never causes one.
     When one exists, it writes a summary naming that release and dispatches
     nothing; that release's own successful run or recovery requests its
     deploy. Only `record` pushes release tags and runs of the `release` group

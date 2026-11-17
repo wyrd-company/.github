@@ -237,8 +237,37 @@ proposed-design:
     A rung is observed from a set of tag records as Airlock does: Seeded
     without a baseline record, Building from a baseline record, Released
     from a non-baseline primary release record below 1.0.0, Stable from one
-    at or above 1.0.0 without a prerelease part. For each ceremony control,
-    the effective setting is the declaration's setting when present and
+    at or above 1.0.0 without a prerelease part. A record with
+    `baseline: true` is a baseline record whatever its `tag-id`, and a record
+    whose `tag-id` starts with `workspace/` is never a primary record. A
+    non-baseline record whose `tag-id` is `release-unit/<unit>/<key>` takes
+    its role from the release model at the commit its tag points at: it is a
+    primary record when that model gives tag `<key>` of unit `<unit>` the
+    `role` `primary`, and not when it gives another role. This is the
+    revision from which the later-release scan of `release-process` takes
+    each candidate's role. It is the model the release was made with,
+    because `release-tree` keeps `.intentional/release-model.json` unchanged
+    in a release commit, so a record's role is fixed once its tag exists,
+    and a later model, such as one that renames the unit's primary key,
+    never reclassifies it. A tag of the plan, which `resolve` classifies
+    before the tag exists, takes its role from the model at the source
+    commit, which the release commit carries unchanged. When the commit
+    holds no `.intentional/release-model.json` whose `$schema` is
+    `https://intentional.foo/schemas/release-model/1` and which names tag
+    `<key>` of unit `<unit>`, as for a record made before the repository
+    committed a release model, the record's `tag-role` decides when the
+    record carries one, and a record without one counts as primary. A
+    `tag-role` is read only then; one that differs from the model's role is
+    ignored. These fallbacks never lower a rung. The plan gives every tag of
+    a unit the unit's version, and every tag of a release points at its
+    release commit, so a release's records carry one version and are
+    reachable together: a role decides which record stands for a release,
+    never which versions were released, and counting a projection record as
+    primary changes the rung only when its release's primary record is
+    missing, and then raises it. `scripts/delivery.js` holds this one
+    classification, which the later-release scan and every rung observation
+    use, and Airlock classifies tag records the same way. For each ceremony
+    control, the effective setting is the declaration's setting when present and
     otherwise the default that `delivery-controls` gives for the tier at the
     governing rung. The governing rung of a release is the rung the
     repository holds once that release exists, as the standard states,
