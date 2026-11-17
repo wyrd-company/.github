@@ -175,7 +175,10 @@ properties:
     environments with their protection rules and variables, and the trusted
     publishing settings of each registry. Airlock applies them from the
     declared configuration, and its audit reports any difference between the
-    declaration and what GitHub and the registries hold.
+    declaration and what GitHub and the registries hold. npm shows a
+    package's trusted publishing only to a person's session, so an attended
+    Airlock run reports any difference in npm trust, and the scheduled audit
+    reports npm trust as not verified.
 features:
   adopt-by-interview: >-
     A repository answers the template's questions, including its targets, and
