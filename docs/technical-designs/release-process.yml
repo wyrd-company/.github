@@ -289,7 +289,9 @@ proposed-design:
     artifacts through
     `GET /repos/<owner>/<repository>/actions/runs/<run id>/artifacts` and
     uploads `release-inventory`, a JSON object mapping each artifact the build
-    stage uploaded to its `id` and its `digest`. It outputs `release_sha`, the
+    stage uploaded to its `id` and its `digest`; a re-run of `record`
+    replaces the inventory its run already holds, so a run holds at most
+    one. It outputs `release_sha`, the
     commit it pushed or found, which every later job reads. In mode `recover`
     it mints no token, needs no approval, requires every tag
     the release commit carries to exist on the remote and point at the
@@ -355,13 +357,18 @@ proposed-design:
     commit and `head_branch` equal to the default branch, and keeps those
     whose `release-outcome`, which `resolve` writes without running
     repository code, names mode `release`. The recording run is the one such
-    run that holds a `release-inventory` artifact: `record` uploads it after
-    its last check and immediately before its push, inside
-    `release-authority`, which admits only the default branch, and runs of
-    the `release` group never overlap, so exactly one run reached the push,
-    whether or not its job finished afterwards. `resolve` fails, naming the
-    runs, when there is none or more than one, and exposes its id as
-    `build_run`. Every job that needs a build artifact,
+    run whose `release-inventory` artifact GitHub created last, by the
+    artifact's `created_at`. `record` uploads the inventory only after it has
+    read the default branch head and found the source commit, and pushes
+    immediately after. Once the push of the release commit lands, the head
+    never points at the source commit again, because
+    `delivery-default-branch` refuses a non-fast-forward update to everyone;
+    runs of the `release` group never overlap; so every inventory created
+    before the last belongs to an attempt whose push did not land, and the
+    last belongs to the attempt whose push did, whether or not its job
+    finished afterwards. `resolve` fails, naming the runs, when no such run
+    holds an inventory or two inventories share the latest `created_at`, and
+    exposes the recording run's id as `build_run`. Every job that needs a build artifact,
     `release-asset+<unit>+<name>`, a part's publication artifact such as a
     `.crate` file, an npm tarball or an OCI layout, or an evidence fragment of
     the build stage, downloads it by the `id` that the recording run's
@@ -721,9 +728,14 @@ proposed-design:
     mismatch, and a recovery that pushes nothing and needs no approval. The
     recovery cases reuse the recording run's artifacts by the ids and digests
     of its `release-inventory`, without building; they fail, naming the runs,
-    when no run or two runs match, ignore a run on another branch and a
+    when no run holds an inventory, ignore a run on another branch and a
     recovery run of the same release, refuse an artifact whose digest
-    differs, and fail, naming them, once the artifacts have expired. A
+    differs, and fail, naming them, once the artifacts have expired. The
+    recording run is found after a run whose `record` uploaded its inventory
+    and whose push did not land, followed by a dispatch that pushed and then
+    failed in publication, which is the second run; after a `record` stopped
+    between its push and its read-back, which is that run; and after a re-run
+    of `record` that replaced its run's inventory and pushed. A
     recovery run that succeeds requests the automatic deploy, and every run a
     person dispatched ends by dispatching an automatic run, which releases a
     head whose pending automatic run the dispatch replaced. The
