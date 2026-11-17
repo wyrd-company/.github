@@ -843,7 +843,11 @@ proposed-design:
     a second dispatch and a re-run writing the same bytes and a run that
     attached evidence to one of two records and stopped, with the
     before-consumer fragments taken from the recording run and a later
-    release at 1.0.0 leaving the earlier release's ceremony unchanged. The
+    release at 1.0.0 leaving the earlier release's ceremony unchanged.
+    `resolve`'s tests run the rung cases of `delivery-skeleton` in modes
+    `release` and `recover`, and the recovery of a release at 1.0.0 made
+    under a primary key that the head's model no longer names writes the
+    `ceremony` its recording run wrote to the evidence file. The
     provenance cases
     refuse an attestation from the same workflow path at another ref and at
     another commit. The `delivery` check refuses a lowered tier without a new
