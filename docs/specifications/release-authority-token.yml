@@ -37,7 +37,11 @@ description: >-
   installation may reach, each `<owner>/<repository>`, separated by commas
   or newlines, or the single entry `<owner>/*` when it may reach every
   repository of the owner; when given, the action refuses to return a token
-  from an installation that reaches any other. `skip-token-revoke`
+  from an installation that reaches any other. Names match whole and
+  without regard to case, as GitHub's do; `*` is allowed only as that single
+  entry, which every repository of the owner matches whatever the
+  selection; an empty value is the same as an absent one, so a caller that
+  must check passes a value it has proved present. `skip-token-revoke`
   (optional): `true` leaves the token valid after the job; `false` when absent.
   `github-api-url` (optional): the REST API root; the calling run's
   `github.api_url` when absent.

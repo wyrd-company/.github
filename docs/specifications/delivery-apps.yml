@@ -31,7 +31,8 @@ description: >-
   `read`, its one signer is the organization's audit repository, whose
   central audit `delivery-controls` defines, and its `installed_on` is
   `<owner>/*`, every repository of the owner, which no other role may name.
-  The organization has no other audit App.
+  The role names Airlock Safe alone: Airlock's central mode signs only for
+  the App id it is built with.
 
 
   An enrolment is a repository's delivery declaration naming an App's slug in
@@ -41,9 +42,10 @@ description: >-
   equals the App's `tier`. Terraform reads this file beside the declarations
   and grants a key's sign role to an environment's identity only for an
   allowed enrolment; it takes the key's vault from `key_vault_url`, and
-  outputs `<APP>_APP_ID` from `app_id`, `<APP>_KEY_NAME` as the slug,
-  `<APP>_INSTALLED_ON` as `installed_on` joined by commas in the file's
-  order, and `AZURE_KEY_VAULT_URL` as `key_vault_url` for that environment.
+  outputs for that environment, under the names the declaration's key
+  gives, its `app_id_variable` from `app_id`, its `key_name_variable` as the
+  slug and its `installed_on_variable` as `installed_on` joined by commas in
+  the file's order, and `AZURE_KEY_VAULT_URL` as `key_vault_url`.
   Airlock names an App as a bypass actor only for an allowed enrolment, and
   only on a ruleset of the enrolled repository.
 

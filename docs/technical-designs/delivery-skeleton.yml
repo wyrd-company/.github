@@ -224,7 +224,7 @@ proposed-design:
     runs the token action as the credential route does, with
     `permission-metadata: read`, so a misplaced installation of the App fails
     the run before any build, and lets the post step revoke the token. A
-    missing variable, a refused sign-in, an absent or disabled secret, a JSON
+    missing or empty variable, `<APP>_INSTALLED_ON` included, a refused sign-in, an absent or disabled secret, a JSON
     secret without a declared member, and a refused signature each fail the
     job with a line naming the environment, the variable, secret or App, and
     its declared purpose, never a value. An environment that carries only

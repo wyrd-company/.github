@@ -67,8 +67,9 @@ decision-outcome:
     account. Its trust boundary is stated and small: Airlock Safe reads every
     repository and writes nothing, and only the audit repository's default
     branch can reach its key. Bypass lists and npm trust stay with the
-    attended runs, as ruled, and the record those runs leave lets the
-    scheduled run notice a change after them.
+    attended runs, as ruled, and the record those runs leave, as variables
+    that Airlock Admin already writes, lets the scheduled run notice a change
+    after them.
 expected-outcomes:
   positive:
     - >-
@@ -87,8 +88,9 @@ expected-outcomes:
       Airlock gains a Key Vault signer and an installation-token path, and
       its central mode accepts no other credential.
     - >-
-      Whoever can merge to the audit repository's default branch can read
-      every repository of the organization.
+      Whoever can change the audit repository's default branch or settings
+      can read every repository of the organization and rewrite the attested
+      record; the organization keeps those writers to its owners.
     - >-
       Bypass lists are read only as often as a person runs the console;
       between runs the scheduled audit sees that a ruleset changed, not what
