@@ -501,9 +501,16 @@ proposed-design:
     release's tag of that unit does not carry the current primary identity:
     a release of a unit or a primary identity that the configuration no
     longer deploys is never requested. It then looks for a later release of
-    the current target: a tag other than the release's own whose tag record
-    carries the current primary identity with `baseline: false` and which
-    points at a commit that descends from the release commit and is not it.
+    the current target: a tag other than the release's own, pointing at a
+    commit that descends from the release commit and is not it, whose tag
+    record has `baseline: false` and the `tag-id` `release-unit/<unit>/<key>`
+    of a `<key>` whose `role` is `primary` in the release model at the
+    commit that tag points at. A tag record names its tag key and no role,
+    so a model revision must decide which key is primary, and the
+    candidate's own release commit decides: it carries the model that
+    release was made with, because `release-tree` keeps
+    `.intentional/release-model.json` unchanged in a release commit. A later
+    change of the unit's primary key therefore never hides a later release.
     When one exists, it writes a summary naming that release and dispatches
     nothing; that release's own successful run or recovery requests its
     deploy. Only `record` pushes release tags and runs of the `release` group
@@ -514,8 +521,8 @@ proposed-design:
     set to `true`. A configuration change that lands between this read and
     the deploy's own `resolve` makes that deploy fail its tag check. A
     request from `request-deploy` is therefore always for the newest release
-    of the current target under its current primary identity, and it never
-    replaces a pending deploy of a newer release of that target. A pending
+    of the current target, which carries the current primary identity, and
+    it never replaces a pending deploy of a newer release of that target. A pending
     deploy dispatched before the target changed, of a unit the configuration
     no longer deploys, would ship what the configuration no longer selects,
     and a request for the current target may replace it. A successful
@@ -790,13 +797,17 @@ proposed-design:
     failed `resolve` fails, and a new dispatch for the same source commit
     then resolves afresh. A
     recovery run that succeeds requests the automatic deploy when its release
-    is the newest release of the current target under its current primary
-    identity, and requests nothing otherwise. Each of these histories leaves
-    the pending deploy to run: a deploy of an older release runs, a deploy of
-    a newer one is pending and the older release's recovery succeeds; and the
-    deploy target changes from unit A to unit B, a deploy of a release of B
-    is pending, and a release of A, with no later release of A, is
-    recovered. Every run a person dispatched ends by
+    is the newest release of the current target and carries the current
+    primary identity, and requests nothing otherwise. Each of these
+    histories leaves the pending deploy to run: a deploy of an older release
+    runs, a deploy of a newer one is pending and the older release's
+    recovery succeeds; the deploy target changes from unit A to unit B, a
+    deploy of a release of B is pending, and a release of A, with no later
+    release of A, is recovered; and the unit's primary key changes from
+    `primary` to `ship`, a deploy of a release made under `ship` is pending,
+    and a release made under `primary` is recovered. The scan also finds a
+    later release made under a primary key that is no longer the
+    unit's. Every run a person dispatched ends by
     dispatching an automatic run, which releases a head whose pending
     automatic run the dispatch replaced. The
     release record cases cover each retry state, on a unit with build assets
