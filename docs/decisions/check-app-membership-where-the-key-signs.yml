@@ -1,0 +1,76 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Check App membership where the key signs
+relationships:
+  contextualizes:
+    - delivery-apps
+    - delivery-controls
+    - release-authority-token
+description: >-
+  An App installed on a repository outside its `installed_on` lets every
+  signer of that App mint a token for that repository too. The organization
+  ruleset on the default branch named every release authority App as a
+  bypass actor, so a misplaced installation would also let another
+  repository's release job push to that default branch. Which repositories an
+  installation with selected repositories reaches is readable only with a
+  token of that App, through `GET /installation/repositories`, and only the
+  App's signers can mint one. Airlock Safe can list every installation of the
+  organization, with its repository selection and permissions, but not the
+  repositories it selects. No read-only identity can.
+considered-options:
+  1: >-
+    Give the central audit's identity sign access to every enrolled App's key
+    and read each installation with it. The audit could then mint a write
+    token for every repository of every App, which joins every App's trust
+    boundary into one.
+  2: >-
+    Have the person in the attended run open each App's installation page
+    and confirm it, and Airlock record the answer. The check is manual,
+    proves nothing a reviewer can repeat, and is stale as soon as anyone
+    changes an installation.
+  3: >-
+    Have the token action list the installation's repositories before every
+    token it returns and refuse when the installation reaches a repository
+    outside the authorization file; have the central audit check every
+    installation's selection and permissions; and move the pull request
+    rule of the default branch to a repository ruleset whose only bypass
+    actor is the repository's own release authority App.
+  4: >-
+    Keep the organization ruleset's bypass for every release authority App,
+    and rely on detection alone.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    The check runs inside the boundary that already holds the key, so it
+    needs no new authority, and it runs before every signature an honest
+    workflow makes, the preflight's included, so a misplaced installation
+    stops every release of that App until it is fixed. A signer that skips
+    the token action and signs with Key Vault itself also skips the check,
+    so the repository ruleset makes a misplaced installation worth little: it
+    gives no bypass of another repository's default branch or tags, because
+    each of those rulesets names only that repository's own App. The central
+    audit covers what a read-only identity can see.
+expected-outcomes:
+  positive:
+    - >-
+      A misplaced installation fails the next preflight of any repository
+      that signs with that App, with the repositories it should not reach
+      named.
+    - >-
+      No App's installation, wherever it is, bypasses the default branch or
+      tag rules of a repository that did not enrol it.
+  negative:
+    - >-
+      Each signing environment carries `<APP>_INSTALLED_ON`, so a repository
+      that signs with a shared App can see the names of the other
+      repositories that App serves.
+    - >-
+      A repository administrator can change the repository ruleset that
+      requires pull requests, as with the tag rulesets; the scheduled audits
+      see a missing or changed ruleset, and only the attended run sees its
+      bypass actors.
+    - >-
+      The token action makes one more token request and a paged list for
+      each token it returns.
+    - >-
+      Between signatures nothing reads a selected installation's
+      repositories; the next signature does.

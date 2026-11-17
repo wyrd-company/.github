@@ -1,0 +1,19 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+description: >-
+  Every change to a ruleset, a change to its bypass actors included, changes
+  the ruleset's `updated_at`, and a reader without write access to the
+  ruleset reads that time through
+  `GET /repos/<owner>/<repository>/rulesets/<id>`, organization rulesets
+  included, so the central audit can tell that a ruleset changed after the
+  attended run that last read its bypass actors.
+end-descendant-type: spike
+evidence:
+  - GitHub documents `updated_at` on the ruleset object and documents that
+    `bypass_actors` is returned only to a reader with write access to the
+    ruleset; neither statement says which changes move `updated_at`.
+  - Proven on the testbed by reading a repository ruleset and an
+    organization ruleset with a metadata-only token, changing only each
+    one's bypass actors, and reading them again.

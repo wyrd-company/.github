@@ -1,0 +1,18 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+description: >-
+  A job's `GITHUB_TOKEN` with `actions: read` lists the repository's
+  environments through `GET /repos/<owner>/<repository>/environments`, with
+  each environment's protection rules, required reviewers included, and its
+  deployment branch policy, so the per-repository audit can check that each
+  declared environment exists, admits the default branch only, and, for an
+  approval environment, has a required reviewer.
+end-descendant-type: spike
+evidence:
+  - GitHub's list of permissions required for GitHub Apps places listing
+    environments under the repository permission Actions, read, and places
+    environment variables under the separate permission Environments, which
+    a workflow token cannot hold.
+  - Proven by the per-repository audit's run on the testbed.

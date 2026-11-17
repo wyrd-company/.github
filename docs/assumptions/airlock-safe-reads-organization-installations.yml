@@ -1,0 +1,21 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+    - delivery-apps
+description: >-
+  An installation token of Airlock Safe, whose registration grants
+  `organization_administration: read`, lists every App installation of the
+  organization through `GET /orgs/<org>/installations`, with each
+  installation's `app_id`, `app_slug`, `repository_selection` and
+  `permissions`, so the central audit can check each App of `delivery-apps`
+  without any person's account.
+end-descendant-type: spike
+evidence:
+  - GitHub's list of permissions required for GitHub Apps places the endpoint
+    under the organization permission Administration, read.
+  - The endpoint's own description says the authenticated user must be an
+    organization owner, and an installation token has no user, so whether
+    that condition applies to it is not documented.
+  - Proven by the central audit's first run against the testbed's
+    organization, reading the testbed's release authority App installation.

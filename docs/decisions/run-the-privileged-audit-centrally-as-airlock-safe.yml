@@ -1,0 +1,99 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Run the privileged audit centrally as Airlock Safe
+relationships:
+  contextualizes:
+    - delivery-controls
+    - delivery-environments
+    - delivery-apps
+description: >-
+  The standard has Airlock audit each repository's settings, the absence of
+  repository-level secrets, and each App's permissions and installations, and
+  renders the Airlock audit workflow into each repository. Its floor allows
+  no repository-level secret and lets a job reach a credential only through
+  an environment and Key Vault, and a job that can sign with an App's key can
+  mint a token for every repository the App is installed on. The run's
+  `GITHUB_TOKEN` cannot read a repository's secrets list, its environment
+  variables, its immutable releases setting or the organization's
+  installations. GitHub returns a ruleset's bypass actors only to a reader
+  with write access to the ruleset, and npm shows trusted publishers only to
+  a person's npm session. Airlock already has two Apps: Airlock Safe, id
+  4409712, whose registration is read-only and which `airlock audit` accepts
+  only as a user token today, and Airlock Admin, the write App that only the
+  attended console uses. Today Airlock's own audit workflow reads a
+  long-lived Safe user token from the repository secret `AIRLOCK_TOKEN`. The
+  operator ruled on 2026-11-17 that the privileged audit runs centrally as
+  Airlock Safe, with no separate audit App, that bypass lists are read in
+  attended Airlock Admin runs, and that the rendered workflow keeps only the
+  checks its `GITHUB_TOKEN` can make. What remains to decide is the central
+  run's credential and where it runs.
+considered-options:
+  1: >-
+    Keep a separate audit App whose key each repository's audit environment
+    signs with. Every repository holding that key shares one trust boundary
+    that reaches every repository the App is installed on. The operator ruled
+    this out.
+  2: >-
+    Hold Airlock Safe's non-expiring user token as a Key Vault secret that
+    the central run reads through its environment. Airlock's verifier needs
+    no change, but the token never expires, acts as the person who authorized
+    it and reaches only what that person can, stops working when they leave
+    the organization's owners, and can be minted or replaced only by a person
+    in the device flow, which Elegua cannot do.
+  3: >-
+    Run the central audit in a dedicated private repository whose one job
+    enters `airlock-safe`, signs in to Azure by federation, and has Airlock
+    sign Airlock Safe's JSON Web Token with the Key Vault key; Airlock checks
+    the App's registration through `GET /app` and mints its own read-only
+    installation token for each run. No token is stored, the key never
+    leaves the vault, and one repository is the only signer.
+  4: >-
+    Run the same audit on the operator's Dagu host. No GitHub environment is
+    needed, but the host needs a standing Azure credential outside the
+    standard's routes, its results live outside GitHub, and the audit stops
+    whenever the workspace host does.
+  5: >-
+    Run the same audit from the Airlock repository or the organization's
+    `.github` repository. Both take frequent code changes on their default
+    branches, Airlock's audit builds Airlock from its own head, and each
+    merged change would run with read access to every repository.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    It keeps the credential on the standard's own route, an environment, a
+    federated identity and a Key Vault key that signs, as the release
+    authority does, and so removes the last repository secret rather than
+    moving it. A token minted per run from a read-only registration that
+    Airlock checks before use needs no rotation and depends on no person's
+    account. Its trust boundary is stated and small: Airlock Safe reads every
+    repository and writes nothing, and only the audit repository's default
+    branch can reach its key. Bypass lists and npm trust stay with the
+    attended runs, as ruled, and the record those runs leave lets the
+    scheduled run notice a change after them.
+expected-outcomes:
+  positive:
+    - >-
+      No repository other than the audit repository holds any audit
+      credential, and `AIRLOCK_TOKEN` and the long-lived Safe user token
+      retire.
+    - >-
+      One scheduled report covers every repository and the organization,
+      including the checks a repository's own run cannot make.
+  negative:
+    - >-
+      The organization creates and maintains one more private repository,
+      generates a private key for Airlock Safe, and imports it into Key
+      Vault.
+    - >-
+      Airlock gains a Key Vault signer and an installation-token path, and
+      its central mode accepts no other credential.
+    - >-
+      Whoever can merge to the audit repository's default branch can read
+      every repository of the organization.
+    - >-
+      Bypass lists are read only as often as a person runs the console;
+      between runs the scheduled audit sees that a ruleset changed, not what
+      it now lets bypass.
+    - >-
+      An adopter outside the organization cannot sign with Airlock Safe's
+      key; it runs Airlock with its own read credential, as Airlock already
+      supports.
