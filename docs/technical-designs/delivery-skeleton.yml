@@ -258,7 +258,10 @@ proposed-design:
     automatic start, including a dispatch by an account of type `Bot`, such
     as `github-actions[bot]` or an App, whatever inputs it passes. GitHub
     cannot tell a person from automation that acts through a user account's
-    token, so such an account counts as a person. A run started
+    token, so such an account counts as a person. That automation can act
+    as a person through a user account's token is a known limit, which the
+    operator accepted on 2026-11-17, and no rule is written against it,
+    because nothing could check one. A run started
     automatically whose effective start setting is `person` ends in `resolve`
     with mode `none`, success, and a summary naming the control and the rung.
     A run whose `actor` or `triggering_actor` is not of type `User` has no
