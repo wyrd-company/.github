@@ -518,12 +518,17 @@ proposed-design:
     mode `release` the release is always the newest. Otherwise it dispatches
     `deploy.yml` with the release's tag of the current target, `from` set to
     the first environment of the head declaration's `chain` and `automatic`
-    set to `true`. A change of the target or its primary identity that lands
-    between this read and the deploy's own `resolve` makes that deploy fail
-    its tag check. A
-    request from `request-deploy` is therefore always for the newest release
-    of the current target, which carries the current primary identity, and
-    it never replaces a pending deploy of a newer release of that target. A pending
+    set to `true`. A dispatched run keeps the commit that was the default
+    branch head when it was dispatched, and its `resolve` reads the deploy
+    configuration and model at that commit. A change of the target or its
+    primary identity that lands between this read and the dispatch therefore
+    makes that deploy fail its tag check, and one that lands after the
+    dispatch leaves the queued deploy on its dispatch snapshot, so it ships
+    the release it was requested for unless a later request replaces it
+    while it is pending. When it is made, a request from `request-deploy` is
+    always for the newest release of the current target, which carries the
+    current primary identity, and it never replaces a pending deploy of a
+    newer release of that target. A pending
     deploy dispatched before the target changed, of a unit the configuration
     no longer deploys, would ship what the configuration no longer selects,
     and a request for the current target may replace it. A successful
@@ -816,7 +821,12 @@ proposed-design:
     `primary` to `ship`, a deploy of a release made under `ship` is pending,
     and a release made under `primary` is recovered. The scan also finds a
     later release made under a primary key that is no longer the
-    unit's. Every run a person dispatched ends by
+    unit's. A change of the deploy target that lands between `request-deploy`'s
+    read and its dispatch fails the dispatched deploy's tag check; one that
+    lands after the dispatch leaves the queued deploy to ship its release
+    from its dispatch snapshot; and a request for the current target
+    replaces a pending deploy of a unit the configuration no longer deploys.
+    Every run a person dispatched ends by
     dispatching an automatic run, which releases a head whose pending
     automatic run the dispatch replaced. The
     release record cases cover each retry state, on a unit with build assets
