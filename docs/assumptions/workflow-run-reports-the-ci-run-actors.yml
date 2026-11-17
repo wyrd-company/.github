@@ -11,11 +11,13 @@ description: >-
   continuous integration starts is a new run at `run_attempt` 1, not a
   re-run of an earlier release run, and an account of type `Bot` that
   re-runs continuous integration gives that release run a
-  `triggering_actor` of type `Bot`, which ends it with
-  mode `none` at an effective `release-approval` of `person`. If GitHub
-  reports the account that pushed in both fields instead, the release run
-  reads as that account's start, and the approval check still refuses that
-  account as the approver.
+  `triggering_actor` of type `Bot`, which ends it with mode `none` at an
+  effective `release-approval` of `person`. If GitHub instead reports the
+  account that started the continuous integration run in both fields, a
+  re-run by an account of type `Bot` starts a release run that reads as
+  that account's start: the run reaches approval, and the approval check
+  refuses that account as the approver but not the account that re-ran
+  continuous integration.
 end-descendant-type: spike
 evidence:
   - GitHub's contexts reference describes `github.triggering_actor` as the
