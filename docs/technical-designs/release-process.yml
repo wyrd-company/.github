@@ -510,9 +510,11 @@ proposed-design:
     of a `<key>` whose `role` is `primary` in the release model at the
     commit that tag points at. A tag record names its tag key in `tag-id`,
     and its `tag-role` is optional in contracts `contract-1` and
-    `contract-2` and absent from the records Intentional writes today, so
-    the record cannot be relied on
-    for the role; a model revision must decide which key is primary, and the
+    `contract-2` of the release `delivery-skeleton` `intentional-toolchain`
+    names, and absent
+    from the records Intentional writes today, so the record cannot be
+    relied on for the role; a model revision must decide which key is
+    primary, and the
     candidate's own release commit decides: it carries the model that
     release was made with, because `release-tree` keeps
     `.intentional/release-model.json` unchanged in a release commit. A later

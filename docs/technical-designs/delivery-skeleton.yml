@@ -187,11 +187,12 @@ proposed-design:
     `https://intentional.foo/schemas/release-model/1` with the commands
     `plan`, `apply`, `tag --plan [--phase]`, `tag --baseline`,
     `verify <tag> --json`, `check` and `status --json`, and the tag record
-    contracts `contract-1` and `contract-2`, which carry the same `baseline`,
-    `tag-id` and optional `tag-role` fields. The templates require Toha
-    0.4.1 or later, the
-    first release with part selection, document questions and the applied
-    record that this design reads.
+    contracts `contract-1` and `contract-2`, each carrying `baseline` and
+    `tag-id` and accepting an optional `tag-role` with the same meaning.
+    Intentional 0.4.0 and 0.4.1 write `contract-2` records and their schema
+    has no `tag-role`, so neither is that release. The templates require
+    Toha 0.4.1 or later, the first release with part selection, document
+    questions and the applied record that this design reads.
 
   credential-route: >-
     A job that needs a credential names its credential environment with
