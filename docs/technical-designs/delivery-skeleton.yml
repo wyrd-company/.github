@@ -417,3 +417,33 @@ proposed-design:
     `RELEASE_SOURCE_SHA` that commit's parent, `RELEASE_UNITS` the deployed
     unit and `RELEASE_JSON` that unit's entry; a deploy job also receives
     `DEPLOY_ENVIRONMENT` and `DEPLOY_TAG`.
+
+  implementation-validation: >-
+    The tests of `scripts/delivery.js` and Airlock's tests of its rung
+    observer run the same rung cases on local repositories whose tag records
+    are annotated tags with the fixed tagger, and expect the same rung; the
+    skeleton's tests also expect, for each tier, the effective ceremony that
+    `delivery-controls` gives at that rung. A primary-key rename after a
+    Stable release: unit `app` releases 1.0.0 under key `primary`, then a
+    commit changes the model so that the unit's primary key is `ship` and
+    `primary` is gone; the head observes Stable, so a Trusted repository's
+    next automatic release start ends with mode `none` and a deploy runs
+    under Stable's ceremony, where classification by the head's model would
+    observe Building and relax both. Older projection tags: a release at
+    1.0.0 under a model that gives key `mirror` the role `projection`, then a
+    model that makes `mirror` the unit's primary key; the 1.0.0 `mirror`
+    record stays a projection and the 1.0.0 `primary` record still counts,
+    so the head observes Stable; and a set whose records at or above 1.0.0
+    are all projection records by their own commit's model, beside primary
+    records below 1.0.0, observes Released. Records made before the release
+    model: release records without `tag-role` on commits that hold no
+    `.intentional/release-model.json`, as in Intentional's own history,
+    count as primary, so such a record at 1.0.0 observes Stable, and one
+    whose `tag-role` is `projection` does not count; a record whose
+    `tag-role` differs from its commit's model takes the model's role.
+    Recovery of a historical release: releases at 0.9.0 and 1.0.0, then the
+    key rename; the governing rung of a recovery of 0.9.0 is Released and
+    that of a recovery of 1.0.0 is Stable, each the rung its recording run
+    computed, so each recovery computes its recording run's ceremony; and a
+    release run whose plan takes the unit to 1.0.0 governs at Stable before
+    its tags exist.
