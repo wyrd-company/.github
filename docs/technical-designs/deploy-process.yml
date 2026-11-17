@@ -118,7 +118,7 @@ proposed-design:
     entry, each validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` and at most 64
     characters, in the order an automatic deploy enters them; the names the
     other templates use, `release-authority`, `package-tags`,
-    `release-approval` and `airlock-audit`, and names starting with
+    `release-approval` and `airlock-safe`, and names starting with
     `publish-` or ending with `-approval`, are refused. Each part's questions
     carry `when` conditions on `targets`.
 

@@ -210,8 +210,9 @@ proposed-design:
     an artifact or another job. To sign as an App, the job runs the token
     action with `vars.<APP>_APP_ID`, `vars.AZURE_KEY_VAULT_URL`,
     `vars.<APP>_KEY_NAME`, `vars.AZURE_TENANT_ID` and `vars.AZURE_CLIENT_ID`,
-    the App's declared owner and repositories, and the exact permissions the
-    job needs, and the token is revoked when the job ends. The names are those
+    `vars.<APP>_INSTALLED_ON` as `installation-repositories`, the App's
+    declared owner and repositories, and the exact permissions the job needs,
+    and the token is revoked when the job ends. The names are those
     of `delivery-environments`.
 
   check-credentials: >-
@@ -220,8 +221,9 @@ proposed-design:
     other permission, and with `deployment: false`, so it creates no GitHub
     deployment. For each declared secret it reads the secret as the
     credential route does and discards the value; for each declared App it
-    runs the token action with the App's declared owner and repositories and
-    `permission-metadata: read`, and lets the post step revoke the token. A
+    runs the token action as the credential route does, with
+    `permission-metadata: read`, so a misplaced installation of the App fails
+    the run before any build, and lets the post step revoke the token. A
     missing variable, a refused sign-in, an absent or disabled secret, a JSON
     secret without a declared member, and a refused signature each fail the
     job with a line naming the environment, the variable, secret or App, and
@@ -339,7 +341,7 @@ proposed-design:
     update. The organization Renovate preset excludes the files the templates
     render, `.github/workflows/release.yml`, `release-rehearsal.yml`,
     `release-authority-smoke.yml`, `intentional.yml`, `deploy.yml`,
-    `deploy-rehearsal.yml`, `airlock-audit.yml`,
+    `deploy-rehearsal.yml`, `airlock-audit.yml`, `airlock-central.yml`,
     `.github/release-artifact-client/**` and `.github/deploy-wrangler/**`,
     through
     `ignorePaths`, and a repository with its own `ignorePaths` keeps them in

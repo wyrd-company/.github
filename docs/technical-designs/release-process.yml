@@ -105,7 +105,9 @@ proposed-design:
     `crates-io`, `npm`, `ghcr`, `homebrew-tap` and `repo-wyrd-foo`.
     `templates/airlock-config/` renders `.github/airlock.yml`,
     `.github/workflows/airlock-audit.yml` and
-    `.github/delivery/airlock-config.json`, as `delivery-controls` states, and
+    `.github/delivery/airlock-config.json`, and in the organization's audit
+    repository also `.github/workflows/airlock-central.yml`, as
+    `delivery-controls` states, and
     `airlock/` holds the organization policy that Airlock resolves.
 
   release-model-acceptance: >-
@@ -655,9 +657,11 @@ proposed-design:
     `release-authority-smoke.yml` runs only on `workflow_dispatch`, with
     `permissions: {}`. Its one job `smoke` enters `release-authority` with
     `contents: read` and `id-token: write`, runs the token action for the
-    calling repository with `permission-contents: read`, requires
-    `GET /installation/repositories` with that token to list exactly the
-    calling repository, runs the rulesets check of `delivery-controls` with
+    calling repository with `permission-contents: read` and
+    `installation-repositories` from `vars.RELEASE_AUTHORITY_INSTALLED_ON`,
+    which checks every repository the App's installation reaches, requires
+    `GET /installation/repositories` with the returned token to list exactly
+    the calling repository, runs the rulesets check of `delivery-controls` with
     `GITHUB_TOKEN`, which proves each ruleset present and `active` with its
     conditions and rules and cannot see its bypass actors, and writes the
     result to the job summary. It changes nothing, and its token is revoked

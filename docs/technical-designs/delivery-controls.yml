@@ -8,7 +8,14 @@ relationships:
   references:
     - delivery-declaration
     - delivery-environments
+    - delivery-apps
     - continuous-integration
+    - release-authority-token
+  assumes:
+    - workflow-token-reads-effective-rulesets
+    - workflow-token-reads-environment-protection
+    - airlock-safe-reads-organization-installations
+    - ruleset-update-time-tracks-bypass-changes
 objective: >-
   Define how a repository answers its tier, how the tier, the controls set
   away from their defaults and their reasons are held in the applied record,
@@ -155,9 +162,15 @@ proposed-design:
     `answers.ci_workflow`, `answers.ci_workflow_name` and
     `answers.release_model`; from the deploy application `commit`, `parts`,
     `answers.deploy_unit` and `answers.environments`; from the Airlock
-    configuration application `commit`; and
+    configuration application `commit` and `answers.central_audit`; and
     from each, `paths`, to find the files it renders. An answer absent from
-    the record is a question that was skipped, and takes its default.
+    the record is a question that was skipped, and takes its default. Both
+    scheduled audits read every one of these fields: the per-repository run
+    for its own repository with the run's token, and the central run for
+    every repository as Airlock Safe. The attended run reads `parts`,
+    `answers.release_model`, `answers.release_authority_app` and
+    `answers.package_tags_app` from the release application, to write the
+    repository rulesets, their bypass actors and the trusted publishers.
 
   floor-placement: >-
     The release commit and the tags created with it are pushed only by the
@@ -171,7 +184,7 @@ proposed-design:
     a tag or update the default branch. Every credential reaches a job through
     its environment, as `delivery-skeleton` defines, and no rendered workflow
     reads a repository or organization secret; the absence of repository
-    secrets is Airlock's audit. Tags are immutable and classified by the
+    secrets is checked by Airlock's central audit. Tags are immutable and classified by the
     rulesets of `rulesets`. Recovery runs from the immutable tags: a release
     dispatched again for its source commit finds its tags, and every job that
     changes state outside the run does only what is missing. No answer removes
@@ -181,46 +194,53 @@ proposed-design:
     Airlock applies three organization rulesets, each with enforcement
     `active`, each targeting the repositories whose organization custom
     property `release` is `true`, which Airlock defines and sets on every
-    repository that holds a release declaration. `delivery-tags-immutable`: target `tag`, ref condition include
-    `~ALL`, rules `update`, `deletion` and `non_fast_forward`, no bypass
-    actor. `delivery-tags-unclassified`: target `tag`, include `~ALL`,
-    exclude `[0-9]*.[0-9]*.[0-9]*` and `**@[0-9]*.[0-9]*.[0-9]*`, rule
-    `creation`, no bypass actor, so every tag outside the organization's two
-    classified forms, bare SemVer and `<name>@<SemVer>`, is refused to
-    everyone. `delivery-default-branch`: target `branch`, include
-    `~DEFAULT_BRANCH`, rules `pull_request`, `required_linear_history`,
-    `non_fast_forward` and `deletion`, with bypass mode `always` for every
-    release authority App in `delivery-apps`; an App acts only on the
-    repositories it is installed on, which `delivery-apps` limits and the
-    audit checks, so each repository's effective bypass is its own release
-    authority App, and `record` can push the release commit. On each
-    repository Airlock applies three repository rulesets whose ref patterns
-    come from the release model's tag templates, with `{version}` written as
-    `[0-9]*.[0-9]*.[0-9]*` and `{id}` as the unit's literal id.
-    `delivery-tags-recorded`: target `tag`, include the patterns of every
-    template with no `require_phase` or with `before-publication`, rule
-    `creation`, bypass the repository's release authority App only.
-    `delivery-tags-published`: target `tag`, include the patterns of every
-    template with `after-publication`, rule `creation`, bypass the
-    repository's package tags App only. `delivery-tags-repository`: target
-    `tag`, include `~ALL`, exclude every pattern of the two others, rule
-    `creation`, no bypass actor, so a classified name that no template of the
-    repository produces is refused too. These are repository rulesets because
-    their patterns belong to one repository and GitHub limits an
+    repository that holds a release declaration. `delivery-tags-immutable`:
+    target `tag`, ref condition include `~ALL`, rules `update`, `deletion`
+    and `non_fast_forward`, no bypass actor. `delivery-tags-unclassified`:
+    target `tag`, include `~ALL`, exclude `[0-9]*.[0-9]*.[0-9]*` and
+    `**@[0-9]*.[0-9]*.[0-9]*`, rule `creation`, no bypass actor, so every tag
+    outside the organization's two classified forms, bare SemVer and
+    `<name>@<SemVer>`, is refused to everyone. `delivery-default-branch`:
+    target `branch`, include `~DEFAULT_BRANCH`, rules
+    `required_linear_history`, `non_fast_forward` and `deletion`, no bypass
+    actor; `record` pushes a fast-forward to a release commit whose one parent
+    is the source commit, so it needs no bypass of these. On each repository
+    Airlock applies four repository rulesets, each naming as a bypass actor,
+    when it names one, an App that `delivery-apps` enrols for that repository.
+    `delivery-default-branch-review`: target `branch`, include
+    `~DEFAULT_BRANCH`, rule `pull_request`, bypass mode `always` for the
+    repository's release authority App only, so `record` can push the release
+    commit and no other App can push there, wherever it is installed. The
+    three tag rulesets take their ref patterns from the release model's tag
+    templates, with `{version}` written as `[0-9]*.[0-9]*.[0-9]*` and `{id}`
+    as the unit's literal id. `delivery-tags-recorded`: target `tag`, include
+    the patterns of every template with no `require_phase` or with
+    `before-publication`, rule `creation`, bypass the repository's release
+    authority App only. `delivery-tags-published`: target `tag`, include the
+    patterns of every template with `after-publication`, rule `creation`,
+    bypass the repository's package tags App only.
+    `delivery-tags-repository`: target `tag`, include `~ALL`, exclude every
+    pattern of the two others, rule `creation`, no bypass actor, so a
+    classified name that no template of the repository produces is refused
+    too. These are repository rulesets because their patterns and their
+    bypass actor belong to one repository, so an App installed where it
+    should not be bypasses nothing there, and because GitHub limits an
     organization to 75 rulesets; a repository administrator can change them,
-    and Airlock's audit reports any difference. A tag name that matches both
-    phases' patterns is refused to both Apps, so Airlock refuses a release
-    model whose patterns of the two phases overlap, `resolve` refuses a plan
-    in which a tag matches a pattern of the other phase, and a template whose
-    tag is not bare SemVer or `<name>@<SemVer>` is refused by `resolve`. The
-    patterns admit some names that are not SemVer; the only writers of
-    matching names are `record` and `tag-after-publication`, which push
-    exactly the tag names of the plan. Bypass actors are visible only with
-    administration access, so the workflow's own check is limited: `resolve`
-    and the smoke workflow read the effective rulesets with `GITHUB_TOKEN` and
-    require each of these to be present and `active` with the conditions and
-    rules above, and Airlock's audit, which reads with administration access,
-    checks the bypass lists.
+    and Airlock's audit reports any difference, as `audit-coverage` states. A
+    tag name that matches both phases' patterns is refused to both Apps, so
+    Airlock refuses a release model whose patterns of the two phases overlap,
+    `resolve` refuses a plan in which a tag matches a pattern of the other
+    phase, and a template whose tag is not bare SemVer or `<name>@<SemVer>` is
+    refused by `resolve`. The patterns admit some names that are not SemVer;
+    the only writers of matching names are `record` and
+    `tag-after-publication`, which push exactly the tag names of the plan.
+    GitHub returns a ruleset's bypass actors only to a reader with write
+    access to it, which for an organization ruleset is organization
+    administration write, so no workflow and no scheduled run sees them:
+    `resolve`, the smoke workflow and both scheduled audits read the effective
+    rulesets and require each of these to be present and `active` with the
+    conditions and rules above, and the attended Airlock run, which writes the
+    bypass actors, reads them back and records them.
 
   assurance-placement: >-
     `rehearsal`: the release template renders
@@ -264,24 +284,12 @@ proposed-design:
     `tier: sensitive` when the effective setting is `person`.
 
   audit: >-
-    The Airlock configuration template renders
-    `.github/workflows/airlock-audit.yml`, which runs on `schedule` once a
-    day, on `workflow_dispatch` and on `push` to the default branch, with
-    `permissions: {}`, and runs the pinned Airlock action, which reads no
-    repository or organization secret. The audit needs a token that reads
-    the repository's settings, rulesets with their bypass actors,
-    environments with their reviewers and its secrets list, and, for the App
-    checks, each enrolled App's installations. Which App signs that token,
-    which repositories hold its key, and whether the privileged part of the
-    audit runs in each repository or centrally await the operator's ruling on
-    the audit's trust boundary; until then no repository's environment is
-    granted an audit key, and the rendered workflow runs the checks that the
-    run's `GITHUB_TOKEN` can make and reports the others as not run. The
-    audit reads the applied record, the three declarations, the release
-    model, the repository's settings, rulesets with their bypass actors,
-    environments with their reviewers, the repository's secrets list, the tag
-    records, the release records with their assets, `delivery-apps` and
-    Elegua's manifest, and reports the tier, the observed rung, and every
+    Airlock's audit reads the applied record, the three declarations, the
+    release model, the repository's settings, its rulesets, its environments
+    with their reviewers and variables, its secrets list, the tag records,
+    the release records with their assets and attestations, the
+    organization's App installations, `delivery-apps`, Elegua's manifest and
+    the attested record, and reports the tier, the observed rung, and every
     deviation with its reason. It fails when the tier ranks below the
     organization's minimum for the repository; when the tier ranks below the
     suggestion of the recorded answers, or below the tier recorded in the
@@ -291,17 +299,91 @@ proposed-design:
     the record lists differs from what its application renders; when a
     control's effective setting needs a job, a file, a ruleset, an
     environment rule or a required reviewer that is absent; when an approval
-    environment has no required reviewer; when immutable releases are off and
-    `evidence` is off; when a release asset differs from its `SHA256SUMS`, its
-    evidence file or its attestation; when a declaration names an App that
-    `delivery-apps` does not allow for the repository, or an App is installed
-    outside its `installed_on`; when a secret that a declaration lists is not
-    a destination of Elegua's manifest in the environment's vault; and when
+    environment has no required reviewer; when an environment carries a
+    variable its declaration does not list; when immutable releases are off
+    and `evidence` is off; when a release asset differs from its
+    `SHA256SUMS`, its evidence file or its attestation; when a declaration
+    names an App that `delivery-apps` does not allow for the repository; when
+    an App's installation differs from `delivery-apps` in the ways that file
+    states; when a ruleset, a bypass actor or an environment variable differs
+    from the attested record; when an npm package's trusted publisher does
+    not name the repository, `.github/workflows/release.yml` and the
+    environment its declaration names; when a secret that a declaration lists is not a
+    destination of Elegua's manifest in the environment's vault; and when
     such a secret's manifest `tier` is not the one its readers' effective
-    `rotation-approval` requires. npm's trusted publishers are readable only
-    with the npm session of a person with write access and two-factor
-    authentication, so an attended Airlock run checks that each package's
-    trusted publisher names the declared workflow and environment, and the
-    scheduled audit reports npm trust as not verified. It reads Elegua's
-    manifest from the repository and path its organization configuration
-    names; the manifest holds names and policies, never values.
+    `rotation-approval` requires. It reads Elegua's manifest from the
+    repository and path its organization configuration names; the manifest
+    holds names and policies, never values. Each check runs in at least one of
+    three kinds of run, `audit-runs`, and a run that cannot make a check
+    reports it as not run, with the run that covers it, never as passed.
+
+  audit-runs: >-
+    The per-repository run. The Airlock configuration template renders
+    `.github/workflows/airlock-audit.yml` in every repository that applies
+    it. It runs on `schedule` once a day, on `workflow_dispatch` and on
+    `push` to the default branch, with `permissions: {}` at the top and one
+    job, `audit`, with `contents: read`, `actions: read` and
+    `attestations: read`. The job enters no environment, reads no secret, and
+    runs the pinned Airlock action in repository mode, which takes the run's
+    `GITHUB_TOKEN` through its `token` input and audits that one repository.
+    The central run. The organization's audit repository, the private
+    repository `organization-audit` of the owner, holds no release, changes
+    its default branch only through pull requests, and is the only signer
+    that `delivery-apps` lists for `airlock-safe`. It applies the Airlock
+    configuration template with the `confirm` question `central_audit`,
+    default false, answered true, which also renders
+    `.github/workflows/airlock-central.yml` and declares the environment
+    `airlock-safe`. That workflow runs on `schedule` once a day and on
+    `workflow_dispatch`, with `permissions: {}` at the top and one job,
+    `audit`, that enters `airlock-safe` with `deployment: false` and only
+    `id-token: write`, and runs the pinned Airlock action in central mode
+    with `vars.AIRLOCK_SAFE_APP_ID`, `vars.AIRLOCK_SAFE_KEY_NAME`,
+    `vars.AIRLOCK_SAFE_INSTALLED_ON`, `vars.AZURE_KEY_VAULT_URL`,
+    `vars.AZURE_TENANT_ID` and `vars.AZURE_CLIENT_ID`. Airlock signs in to
+    Azure with the job's OpenID Connect token, has Key Vault sign Airlock
+    Safe's JSON Web Token as `release-authority-token` describes the
+    sequence, reads `GET /app` and requires the id and slug it is built with
+    and every permission `read`, requires its installation for the owner to
+    have `repository_selection` `all`, and mints an installation token whose
+    minting response lists only `read` permissions. It stores no token. It
+    audits the organization and every repository its installation reaches,
+    uploads one report as an artifact, and fails when any check fails. The
+    attended run. A person runs Airlock's console, signed in as Airlock Admin
+    through GitHub's device flow and, for npm, with their own npm session.
+    After it applies, it reads back the bypass actors of the three
+    organization rulesets and of every repository ruleset it writes, every
+    environment variable it writes, and each npm package's trusted publisher,
+    and ends by writing the attested record: the file `airlock/attested.json`
+    in the audit repository, through a pull request the person merges,
+    holding for each ruleset its owner, its repository when it has one, its
+    id, its `updated_at` and its bypass actors, for each environment variable
+    its repository, environment, name and value, for each npm package its
+    trusted publisher, and the time of the run and the person's login. The
+    decision record `run-the-privileged-audit-centrally-as-airlock-safe`
+    holds the trade-off.
+
+  audit-coverage: >-
+    The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
+    release model, the tag and release records, the effective rulesets
+    without their bypass actors, the environments with their protection
+    rules, the attestations, and `delivery-apps` and the organization's
+    Airlock configuration in the public `.github` repository; the
+    per-repository run makes every check that needs only these and reports
+    the rest as not run. Airlock Safe reads all of these except attestations,
+    and each repository's secrets list, environment variables, immutable
+    releases setting and custom properties, the organization's installations,
+    Elegua's manifest and the attested record; the central run makes every
+    check except four. Attestations: the central run reads each repository's
+    latest run of `airlock-audit.yml` on the default branch and fails when it
+    failed or when no run completed in the last two days. Bypass actors: the
+    attended run reads them, and the central run fails when a ruleset that
+    Airlock applies has no entry in the attested record, or when its
+    `updated_at` or an environment variable differs from its entry, so a
+    change after the attended run is found by the next scheduled run, and
+    the person runs the console again. npm trust: the attended run reads it,
+    and both scheduled runs report it as not verified, with the time the
+    attested record last verified each package. The repositories of an App's
+    selected installation: the token action checks them before every token it
+    returns, as `delivery-apps` states, and the central run checks each
+    installation's selection and permissions; the decision record
+    `check-app-membership-where-the-key-signs` holds the trade-off.

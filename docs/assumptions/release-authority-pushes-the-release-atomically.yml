@@ -4,9 +4,9 @@ relationships:
     - release-process
     - delivery-environments
 description: >-
-  A GitHub App that is a bypass actor of the organization ruleset requiring a
-  pull request on the default branch and of the ruleset restricting tag
-  creation, using an installation token for one repository with
+  A GitHub App that is the bypass actor of the repository ruleset requiring
+  a pull request on the default branch and of the repository ruleset
+  restricting the creation of its release tags, using an installation token for one repository with
   `contents: write`, pushes a fast-forward of the default branch to the
   release commit and creates every release tag in one `git push --atomic`
   over HTTPS, and the push changes nothing when any ref is refused.
