@@ -148,6 +148,11 @@ proposed-design:
     above its default is not a deviation and needs no reason. The skeleton's
     `scripts/delivery.js` and Airlock compute both from the same three inputs:
     the release declaration's `tier` and `controls`, and the observed rung.
+    Both observe the rung as `delivery-skeleton` `ceremony-at-run-time`
+    states: each tag record takes its role from the release model at the
+    commit its tag points at, whichever revision is observed, with the same
+    fallbacks for a commit that holds no model naming the record's key, so a
+    later model never lowers the rung.
     Assurance controls take effect when the release template renders, so a
     change to one is a template update; ceremony controls take effect when a
     run computes them.
@@ -291,6 +296,7 @@ proposed-design:
     Airlock's audit reads the applied record, the three declarations, the
     release model, the repository's settings, its rulesets, its environments
     with their reviewers and variables, its secrets list, the tag records,
+    the release model at the commit each tag record's tag points at,
     the release records with their assets and attestations, the
     organization's App installations, `delivery-apps`, Elegua's manifest and
     the attested record, and reports the tier, the observed rung, and every
@@ -397,8 +403,9 @@ proposed-design:
 
   audit-coverage: >-
     The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
-    release model, the tag and release records, the effective rulesets
-    without their bypass actors, the environments with their protection
+    release model, the tag and release records, the release model at each
+    tag record's commit, the effective rulesets without their bypass actors,
+    the environments with their protection
     rules, the attestations, and `delivery-apps` and the organization's
     Airlock configuration in the public `.github` repository; the
     per-repository run makes every check that needs only these and reports
