@@ -486,13 +486,24 @@ proposed-design:
     `release` or `recover`, when each of them succeeded or was skipped by its
     own condition, as the build stage is in mode `recover`, and when
     `.github/delivery/deploy.json` exists in the release commit and its
-    `unit` is one of the run's released units: with
-    `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
-    that unit's release tag, `from` set to the first environment of the
-    declaration's `chain` and `automatic` set to `true`. A successful
-    recovery therefore requests the automatic deploy that its failed
-    recording run did not, and the deploy changes nothing in an environment
-    that already serves the release. `continue-release` needs every other
+    `unit` is one of the run's released units. It holds `contents: read` and
+    `actions: write` through `GITHUB_TOKEN`. It first fetches the remote tags
+    with their tag objects and looks for a later release of that unit: a tag
+    other than the release's own whose tag record carries the unit's primary
+    `tag-id` with `baseline: false` and which points at a commit that
+    descends from the release commit and is not it. When one exists, it
+    writes a summary naming that release and dispatches nothing; that
+    release's own successful run or recovery requests its deploy. Only
+    `record` pushes release tags and runs of the `release` group never
+    overlap, so no later release appears before the run ends, and in mode
+    `release` the release is always the newest. Otherwise it dispatches
+    `deploy.yml` with that unit's release tag, `from` set to the first
+    environment of the declaration's `chain` and `automatic` set to `true`.
+    An automatic deploy request is therefore always for the newest release
+    of its unit, so it never replaces a pending deploy of a newer release. A
+    successful recovery of the newest release requests the automatic deploy
+    that its failed recording run did not, and the deploy changes nothing in
+    an environment that already serves the release. `continue-release` needs every other
     job and is exempt from the stage gate: its condition is `always()`,
     `!cancelled()`, and a `workflow_dispatch` event without `automatic`, so it
     runs last in every run a person dispatched that was not cancelled,
@@ -759,9 +770,13 @@ proposed-design:
     of `record` that replaced its run's inventory and pushed. A re-run of a
     failed `resolve` fails, and a new dispatch for the same source commit
     then resolves afresh. A
-    recovery run that succeeds requests the automatic deploy, and every run a
-    person dispatched ends by dispatching an automatic run, which releases a
-    head whose pending automatic run the dispatch replaced. The
+    recovery run that succeeds requests the automatic deploy when its release
+    is the newest of the deployed unit, and requests nothing when a later
+    release exists: when a deploy of an older release runs, a deploy of a
+    newer one is pending and the older release's recovery succeeds, the
+    newer release's deploy still runs. Every run a person dispatched ends by
+    dispatching an automatic run, which releases a head whose pending
+    automatic run the dispatch replaced. The
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file; the evidence cases cover
     a second dispatch and a re-run writing the same bytes and a run that

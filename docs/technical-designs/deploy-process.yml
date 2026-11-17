@@ -77,8 +77,8 @@ proposed-design:
     `.github/delivery/deploy.json`. The deploy workflow runs the six skeleton
     stages for one release of the Release Unit `deploy_unit`. It starts only
     by dispatch: a person dispatches it, or the release workflow's
-    `request-deploy` job does after a successful release or recovery, with
-    `automatic: true`. `resolve` decides which release and which
+    `request-deploy` job does after a successful release or recovery of the
+    newest release of `deploy_unit`, with `automatic: true`. `resolve` decides which release and which
     environments from the inputs `release-tag` and `from`, and revalidates
     the release. Check credentials
     enters each deploy environment of the run. Build produces each
@@ -148,8 +148,9 @@ proposed-design:
     environments with the first as default, and the boolean input
     `automatic`, default false. A run deploys the environment `from` and
     every later environment of the chain, in order. The release workflow's
-    `request-deploy` job dispatches it with the tag of the release it made,
-    the first environment and `automatic: true`; a person dispatches it with
+    `request-deploy` job dispatches it with the tag of the release it made
+    or recovered, only while no later release of the unit exists, the first
+    environment and `automatic: true`; a person dispatches it with
     `automatic` false. Whether a run is a person's start or an automatic one
     follows `delivery-skeleton`: a dispatch by an account of type `Bot`,
     `request-deploy`'s included, is an automatic start whatever its inputs.
