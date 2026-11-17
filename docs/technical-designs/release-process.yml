@@ -800,9 +800,21 @@ proposed-design:
     dispatch by `github-actions[bot]` and one by an App, each with
     `automatic` false and a `source-sha`, which release the head as
     automatic starts and end with mode `none` at an effective
-    `release-start` or `release-approval` of `person`, a `workflow_run`
-    start whose `actor` is of type `Bot`, which ends with mode `none` at an
-    effective `release-approval` of `person`, a partial
+    `release-start` or `release-approval` of `person`; `workflow_run`
+    starts, each of which ends with mode `none` at an effective
+    `release-start` of `person` whatever its actors, and, at an effective
+    `release-start` of `automatic` and `release-approval` of `person`, one
+    whose `actor` and `triggering_actor` are both of type `Bot`, one whose
+    `actor` is of type `User` and `triggering_actor` of type `Bot`, and one
+    whose `actor` is of type `Bot` and `triggering_actor` of type `User`,
+    each of which ends with mode `none`, and one whose two fields are both
+    of type `User`, which reaches `approve-release`; a new release run at
+    `run_attempt` 1 that the completion of a re-run of continuous
+    integration starts, which `resolve` judges by its own `actor` and
+    `triggering_actor` as any `workflow_run` start, told apart from a
+    re-run of the release run itself, whose `run_attempt` is 2: `resolve`
+    fails that re-run whatever its actors, and a re-run of only its failed
+    later jobs meets the approval check that the `record` cases cover; a partial
     set of tags, a primary tag with `after-publication`, a plan tag matching
     the other phase's pattern, a missing continuous integration run and a
     missing rehearsal job; two independent constructions of one release
@@ -848,7 +860,9 @@ proposed-design:
     replaces a pending deploy of a unit the configuration no longer deploys.
     Every run a person dispatched ends by
     dispatching an automatic run, which releases a head whose pending
-    automatic run the dispatch replaced. The
+    automatic run the dispatch replaced at an effective `release-start` of
+    `automatic` and `release-approval` of `none`, and ends with mode `none`,
+    leaving the intents pending and unchanged, when either is `person`. The
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file; the evidence cases cover
     a second dispatch and a re-run writing the same bytes and a run that
@@ -879,7 +893,11 @@ proposed-design:
     the same source commit recovers and changes nothing; a publication
     failure followed by a dispatch completes only what was missing, at an
     approval setting of `person` as well; an automatic start follows a
-    successful continuous integration run; a baseline dispatch creates the
+    successful continuous integration run; a re-run of continuous
+    integration on the default branch head, by a person and by an account
+    of type `Bot`, records whether it starts a release run and that run's
+    `run_attempt`, `actor` and `triggering_actor`, which tests
+    `workflow-run-reports-the-ci-run-actors`; a baseline dispatch creates the
     baseline tag; an npm publication attempted from a job outside
     `publish-npm` is refused by npm; and `release-authority-smoke.yml`
     passes.
