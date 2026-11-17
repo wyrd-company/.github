@@ -305,13 +305,18 @@ proposed-design:
     `continue-release`, which dispatches an automatic run; that run, a start
     by `github-actions[bot]`, ends with mode `none` when the effective
     `release-approval` is `person`, and the pending intents then wait,
-    unchanged, for the next start by continuous integration or a person's
-    dispatch; a deploy run
+    unchanged, for a person's dispatch or the next start by continuous
+    integration whose `actor` is of type `User`, because a start whose
+    `actor` is of type `Bot` ends with mode `none` by the same rule; a
+    deploy run
     exists only for a release that was made or recovered, or for a person's
     request, and `request-deploy` requests one only for the newest release
     of the unit the default branch head's deploy configuration deploys, as
     `release-process` states, so its request never replaces a pending deploy
-    of a newer release of that unit; a person's
+    of a newer release of that unit; this ordering holds only for
+    `request-deploy`'s requests, and a dispatch from anywhere else by an
+    account of type `Bot`, which is an automatic start with the
+    `release-tag` its caller chose, has none; a person's
     deploy dispatch that
     replaces a pending automatic deploy stands as the person's choice, such as
     a rollback; the next release or dispatch deploys the newest release. A person's own dispatch replaced while

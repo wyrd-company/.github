@@ -533,7 +533,12 @@ proposed-design:
     job and is exempt from the stage gate: its condition is `always()`,
     `!cancelled()`, and a `workflow_dispatch` event without `automatic`, so it
     runs last in every run a person dispatched that was not cancelled,
-    whatever the other jobs' results, including a failed `resolve`: with `actions: write` through `GITHUB_TOKEN` it
+    whatever the other jobs' results, including a failed `resolve`. The
+    condition reads only the event and its input, because `resolve`'s outputs
+    are absent when `resolve` failed, so it also runs in a dispatch without
+    `automatic` by an account of type `Bot`, which `resolve` treats as an
+    automatic start; that run requests one continuation, whose `automatic`
+    is true, so the chain still ends. With `actions: write` through `GITHUB_TOKEN` it
     dispatches `release.yml` with the input `automatic` set to `true` and no
     `source-sha`, which `resolve` treats as an automatic start on the
     default branch head. Such a dispatch may have replaced a pending
@@ -542,9 +547,10 @@ proposed-design:
     pending. Because `github-actions[bot]` starts it, it also ends with mode
     `none` when the effective `release-approval` is `person`, as
     `delivery-skeleton` states; the pending intents stay on the default
-    branch and the next start by continuous integration or a person's
-    dispatch releases them. An automatic run requests nothing, so the chain
-    ends.
+    branch and the next start by continuous integration whose `actor` is of
+    type `User`, or a person's dispatch, releases them. A run dispatched with
+    `automatic` true, or started by `workflow_run`, requests no
+    continuation, so the chain ends.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
@@ -769,7 +775,9 @@ proposed-design:
     dispatch by `github-actions[bot]` and one by an App, each with
     `automatic` false and a `source-sha`, which release the head as
     automatic starts and end with mode `none` at an effective
-    `release-start` or `release-approval` of `person`, a partial
+    `release-start` or `release-approval` of `person`, a `workflow_run`
+    start whose `actor` is of type `Bot`, which ends with mode `none` at an
+    effective `release-approval` of `person`, a partial
     set of tags, a primary tag with `after-publication`, a plan tag matching
     the other phase's pattern, a missing continuous integration run and a
     missing rehearsal job; two independent constructions of one release
