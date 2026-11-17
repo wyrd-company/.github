@@ -14,6 +14,7 @@ relationships:
     - run-approvals-name-the-environment-reviewer
     - toha-renders-question-defaults
     - workflow-token-reads-effective-rulesets
+    - workflow-run-reports-the-ci-run-actors
 objective: >-
   Define the skeleton that the release template and the deploy template share:
   the six stages every delivery workflow runs, the job graph and gates that
@@ -334,10 +335,13 @@ proposed-design:
     every pending intent of any automatic run it replaced; every run a person
     dispatched, which can replace a pending automatic run and then recover an
     older release, create baseline tags or fail, ends with
-    `continue-release`, which dispatches an automatic run; that run, a start
-    by `github-actions[bot]`, ends with mode `none` when the effective
-    `release-approval` is `person`, and the pending intents then wait,
-    unchanged, for a person's dispatch or the next start by continuous
+    `continue-release`, which dispatches an automatic run; that run, an
+    automatic start by `github-actions[bot]`, ends with mode `none` when the
+    effective `release-start` or `release-approval` is `person`, and the
+    pending intents then wait, unchanged: for a person's dispatch only when
+    the effective `release-start` is `person`, because every start by
+    continuous integration is automatic; and, when only `release-approval`
+    is `person`, for a person's dispatch or the next start by continuous
     integration whose `actor` and `triggering_actor` are both of type
     `User`, because a start with either of type `Bot` ends with mode `none`
     by the same rule; a

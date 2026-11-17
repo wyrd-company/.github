@@ -15,6 +15,7 @@ relationships:
     - continuous-integration
   assumes:
     - release-authority-pushes-the-release-atomically
+    - workflow-run-reports-the-ci-run-actors
 objective: >-
   Define contract `release-process`: the Toha release template in this
   repository that renders a repository's release workflow from its committed
@@ -181,7 +182,9 @@ proposed-design:
     is `release`: the source commit must be the default branch head and the
     run's `github.sha`, and an automatic run whose source is no longer the
     head, or whose `github.sha` differs from it, is mode `none` with the
-    summary that the next completion of continuous integration releases it;
+    summary that the next completion of continuous integration starts a run
+    for the new head, which releases it unless the start rules end that run
+    with mode `none` too, as `verify` states for `continue-release`;
     a person's dispatch fails. When every such tag exists, the mode is `recover`: each
     must be annotated, pass `intentional verify <tag> --json`, and point at
     one commit whose only parent is the source commit and which the default
@@ -557,12 +560,20 @@ proposed-design:
     default branch head. Such a dispatch may have replaced a pending
     automatic run in the `release` group, and the dispatched run releases
     whatever that run would have, or ends with mode `none` when nothing is
-    pending. Because `github-actions[bot]` starts it, it also ends with mode
-    `none` when the effective `release-approval` is `person`, as
-    `delivery-skeleton` states; the pending intents stay on the default
-    branch and the next start by continuous integration whose `actor` and
-    `triggering_actor` are both of type `User`, or a person's dispatch,
-    releases them. A run dispatched with
+    pending. It is an automatic start by `github-actions[bot]`, so it also
+    ends with mode `none` when the effective `release-start` is `person`, or
+    when the effective `release-approval` is `person`, as
+    `delivery-skeleton` states, each read at the governing rung of the
+    release it would make. The pending intents then stay on the default
+    branch, unchanged. When the effective `release-start` is `person`, only
+    a person's dispatch releases them, because every start by continuous
+    integration is automatic. When `release-start` is `automatic` and
+    `release-approval` is `person`, a person's dispatch releases them, and
+    so does the next release run that a completion of continuous
+    integration on the default branch starts with an `actor` and a
+    `triggering_actor` both of type `User`, as GitHub attributes them under
+    the assumption `workflow-run-reports-the-ci-run-actors`; a run with
+    either of type `Bot` ends with mode `none` again. A run dispatched with
     `automatic` true, or started by `workflow_run`, requests no
     continuation, so the chain ends.
 
