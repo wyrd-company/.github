@@ -148,11 +148,14 @@ proposed-design:
     `targets`.
 
   modes: >-
-    `resolve` sets the run's `mode`. With `workflow_dispatch` and the input
-    `automatic` true, the run is an automatic start, as with `workflow_run`.
-    With `workflow_dispatch` otherwise, `resolve` requires the input
-    `source-sha`, which the workflow declares optional so that an automatic
-    dispatch can omit it, to be 40 lowercase hexadecimal characters,
+    `resolve` sets the run's `mode`. A dispatch that is not a person's
+    start, as `delivery-skeleton` defines it, such as one with the input
+    `automatic` true or one by an account of type `Bot`, is an automatic
+    start, as with `workflow_run`, and `resolve` reads neither its
+    `source-sha` nor its `baseline`. With a person's dispatch, `resolve`
+    requires the input `source-sha`, which the workflow declares optional so
+    that an automatic dispatch can omit it, to be 40 lowercase hexadecimal
+    characters,
     `github.ref` must be the default branch, and the boolean input `baseline`
     (default false) chooses the baseline mode. With `workflow_run`, the
     triggering run only wakes the workflow: the source commit is the default
@@ -167,10 +170,10 @@ proposed-design:
     `persist-credentials: false`, reads the default branch head from
     `GET /repos/<owner>/<repository>/git/ref/heads/<default>`, and refuses to
     continue when the rulesets check of `delivery-controls` fails. Mode
-    `baseline` requires a dispatch whose source commit is the default branch
-    head, and `prepare` creates the baseline tags that
+    `baseline` requires a person's dispatch whose source commit is the
+    default branch head, and `prepare` creates the baseline tags that
     `intentional tag --baseline` computes. Otherwise `resolve` runs `intentional plan`. An empty plan is
-    mode `none` for an automatic run and fails a dispatch. A plan whose
+    mode `none` for an automatic run and fails a person's dispatch. A plan whose
     released unit has a primary tag with `require_phase: after-publication`
     fails and names the unit and the tag, and a plan with a tag whose name
     matches a ruleset pattern of the other phase fails and names the tag.
@@ -179,7 +182,7 @@ proposed-design:
     run's `github.sha`, and an automatic run whose source is no longer the
     head, or whose `github.sha` differs from it, is mode `none` with the
     summary that the next completion of continuous integration releases it;
-    a dispatch fails. When every such tag exists, the mode is `recover`: each
+    a person's dispatch fails. When every such tag exists, the mode is `recover`: each
     must be annotated, pass `intentional verify <tag> --json`, and point at
     one commit whose only parent is the source commit and which the default
     branch head contains. Any other combination fails and names the tags.
@@ -192,7 +195,9 @@ proposed-design:
     commit; in mode `release` that is the declaration at the source commit,
     which the release commit carries unchanged because `release-tree`
     refuses any change under `.github/`. An automatic run whose effective
-    `release-start` is `person` is mode `none`.
+    `release-start` is `person` is mode `none`, and so is a run whose `actor`
+    or `triggering_actor` is not of type `User` when the effective
+    `release-approval` is `person`, as `delivery-skeleton` states.
 
   release-commit: >-
     `resolve` runs no repository or dependency code: it runs Git, the
@@ -480,8 +485,7 @@ proposed-design:
     `unit` is one of the run's released units: with
     `actions: write` through `GITHUB_TOKEN` it dispatches `deploy.yml` with
     that unit's release tag, `from` set to the first environment of the
-    declaration's `chain`, `automatic` set to `true` and `requested-by-run`
-    set to the run's id. A successful
+    declaration's `chain` and `automatic` set to `true`. A successful
     recovery therefore requests the automatic deploy that its failed
     recording run did not, and the deploy changes nothing in an environment
     that already serves the release. `continue-release` needs every other
@@ -489,12 +493,17 @@ proposed-design:
     `!cancelled()`, and a `workflow_dispatch` event without `automatic`, so it
     runs last in every run a person dispatched that was not cancelled,
     whatever the other jobs' results, including a failed `resolve`: with `actions: write` through `GITHUB_TOKEN` it
-    dispatches `release.yml` with the input `automatic` set to `true`,
-    `requested-by-run` set to the run's id and no `source-sha`, which `resolve` treats as an automatic start on the default
-    branch head. Such a dispatch may have replaced a pending automatic run in
-    the `release` group, and the dispatched run releases whatever that run
-    would have, or ends with mode `none` when nothing is pending. An
-    automatic run requests nothing, so the chain ends.
+    dispatches `release.yml` with the input `automatic` set to `true` and no
+    `source-sha`, which `resolve` treats as an automatic start on the
+    default branch head. Such a dispatch may have replaced a pending
+    automatic run in the `release` group, and the dispatched run releases
+    whatever that run would have, or ends with mode `none` when nothing is
+    pending. Because `github-actions[bot]` starts it, it also ends with mode
+    `none` when the effective `release-approval` is `person`, as
+    `delivery-skeleton` states; the pending intents stay on the default
+    branch and the next start by continuous integration or a person's
+    dispatch releases them. An automatic run requests nothing, so the chain
+    ends.
 
   evidence-file: >-
     `release-evidence.json` is canonical JSON, keys sorted by code point, two
@@ -715,7 +724,11 @@ proposed-design:
     released units. Tests of `resolve` against local repositories with a
     local bare remote cover modes `release`, `recover`, `baseline` and
     `none`, a superseded source commit, an automatic run started by an older
-    commit's continuous integration that releases the current head, a partial
+    commit's continuous integration that releases the current head, a
+    dispatch by `github-actions[bot]` and one by an App, each with
+    `automatic` false and a `source-sha`, which release the head as
+    automatic starts and end with mode `none` at an effective
+    `release-start` or `release-approval` of `person`, a partial
     set of tags, a primary tag with `after-publication`, a plan tag matching
     the other phase's pattern, a missing continuous integration run and a
     missing rehearsal job; two independent constructions of one release
@@ -728,7 +741,8 @@ proposed-design:
     dependency. Tests of `record` push to
     a local bare remote and cover a moved default branch, a bundle whose tag
     points elsewhere or whose tag names differ from the plan's, a plan digest
-    mismatch, and a recovery that pushes nothing and needs no approval. The
+    mismatch, a recovery that pushes nothing and needs no approval, and an
+    approval check after a re-run by an App, which fails. The
     recovery cases reuse the recording run's artifacts by the ids and digests
     of its `release-inventory`, without building; they fail, naming the runs,
     when no run holds an inventory, ignore a run on another branch and a

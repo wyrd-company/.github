@@ -276,7 +276,9 @@ proposed-design:
     approval environment required reviewers with self-review prevented, and
     the approval check refuses an approval by the run's `actor` or its
     `triggering_actor`, so the person who approves is never a person who
-    started or re-ran the run; a
+    started or re-ran the run, and refuses a run that an account of type
+    `Bot` started or re-ran, whose starter no approval could exclude, as
+    `delivery-skeleton` states; a
     Custodial repository with one maintainer cannot release or deploy at the
     Stable rung, as the standard states. `update-review`: the session that
     applies a template update reads the release declaration and leaves the

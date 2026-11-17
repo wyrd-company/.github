@@ -146,13 +146,14 @@ proposed-design:
     `deploy.yml` has only `workflow_dispatch`, with the required input
     `release-tag`, the `choice` input `from`, whose options are the answered
     environments with the first as default, and the boolean input
-    `automatic`, default false, and the optional input `requested-by-run`,
-    which `request-deploy` sets to its run's id for the approval check. A
-    run deploys the environment `from` and
+    `automatic`, default false. A run deploys the environment `from` and
     every later environment of the chain, in order. The release workflow's
     `request-deploy` job dispatches it with the tag of the release it made,
     the first environment and `automatic: true`; a person dispatches it with
-    `automatic` false. `resolve` installs the pinned Intentional and requires
+    `automatic` false. Whether a run is a person's start or an automatic one
+    follows `delivery-skeleton`: a dispatch by an account of type `Bot`,
+    `request-deploy`'s included, is an automatic start whatever its inputs.
+    `resolve` installs the pinned Intentional and requires
     the tag to be annotated, to pass `intentional verify <tag> --json`, and to
     carry the record `tag-id` `release-unit/<deploy_unit>/<primary tag key>`
     with `baseline: false`; the commit it points at to be contained in the
@@ -161,9 +162,11 @@ proposed-design:
     reads the release declaration at the commit its workflow file came from,
     observes the rung from the tag records reachable from the default branch
     head, and computes the effective ceremony at that rung, as
-    `delivery-skeleton` fixes for a deploy; a run with `automatic: true` whose
-    effective `deploy-start` is `person` ends with mode `none`. Otherwise the
-    mode is `deploy`. Beyond the skeleton's outputs it exposes `tag`,
+    `delivery-skeleton` fixes for a deploy. An automatic start whose
+    effective `deploy-start` is `person` ends with mode `none`, and so does a
+    run whose `actor` or `triggering_actor` is not of type `User` when the
+    effective `deploy-approval` is `person`; a person then dispatches the
+    deploy. Otherwise the mode is `deploy`. Beyond the skeleton's outputs it exposes `tag`,
     `version` and `environments`, a JSON array of the selected environments in
     chain order.
 
@@ -303,7 +306,9 @@ proposed-design:
     per-environment gates and the approval jobs for success, failure, skip and
     cancellation. Tests of `resolve` cover a person's dispatch, a dispatch
     with `automatic: true` at an effective `deploy-start` of `person` and of
-    `automatic`, a dispatch `from` each environment, a baseline tag, a tag of
+    `automatic`, a dispatch by `github-actions[bot]` with `automatic` false,
+    which is an automatic start, and one at an effective `deploy-approval`
+    of `person`, which ends with mode `none`, a dispatch `from` each environment, a baseline tag, a tag of
     another unit, a tag outside the default branch and a missing release
     record. Tests of the configuration check refuse a top-level route, an
     environment route, a custom domain, a build command, and an assets
