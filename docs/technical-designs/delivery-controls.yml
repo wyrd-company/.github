@@ -328,6 +328,10 @@ proposed-design:
     `attestations: read`. The job enters no environment, reads no secret, and
     runs the pinned Airlock action in repository mode, which takes the run's
     `GITHUB_TOKEN` through its `token` input and audits that one repository.
+    GitHub offers no way to list an installation token's permissions, so
+    Airlock accepts that token only in repository mode, inside Actions, and
+    only after it reads the job's `permissions` from the workflow file at
+    `GITHUB_WORKFLOW_SHA` and finds each one `read`.
     The central run. The organization's audit repository, the private
     repository `organization-audit` of the owner, holds no release, changes
     its default branch only through pull requests, and is the only signer
@@ -361,7 +365,8 @@ proposed-design:
     id, its `updated_at` and its bypass actors, for each environment variable
     its repository, environment, name and value, for each npm package its
     trusted publisher, and the time of the run and the person's login. The
-    decision record `run-the-privileged-audit-centrally-as-airlock-safe`
+    record is as trustworthy as the audit repository's default branch, which
+    is also the only route to Airlock Safe's key. The decision record `run-the-privileged-audit-centrally-as-airlock-safe`
     holds the trade-off.
 
   audit-coverage: >-
@@ -375,9 +380,10 @@ proposed-design:
     and each repository's secrets list, environment variables, immutable
     releases setting and custom properties, the organization's installations,
     Elegua's manifest and the attested record; the central run makes every
-    check except four. Attestations: the central run reads each repository's
-    latest run of `airlock-audit.yml` on the default branch and fails when it
-    failed or when no run completed in the last two days. Bypass actors: the
+    check except four. Attestations: for each repository whose applied
+    record renders `airlock-audit.yml`, the central run reads its latest run
+    of that workflow on the default branch and fails when it failed or when
+    no run completed in the last two days. Bypass actors: the
     attended run reads them, and the central run fails when a ruleset that
     Airlock applies has no entry in the attested record, or when its
     `updated_at` or an environment variable differs from its entry, so a
