@@ -65,7 +65,10 @@ description: >-
   the source commit, which the release commit carries unchanged because
   `release-process` refuses a release commit that changes a path under
   `.github/`. The deploy workflow, and a release workflow run that releases
-  nothing, read it at the commit their workflow file came from. Airlock
+  nothing, read it at the commit their workflow file came from. The release
+  workflow's `request-deploy` reads `.github/delivery/deploy.json` at the
+  default branch head, the deploy configuration that a deploy dispatched
+  then runs with, as `release-process` states. Airlock
   reads both declarations to know which environments,
   variables and protection rules to apply and audit, and which secrets
   Elegua's manifest must declare. A repository with a deploy declaration and no

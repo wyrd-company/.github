@@ -518,8 +518,9 @@ proposed-design:
     mode `release` the release is always the newest. Otherwise it dispatches
     `deploy.yml` with the release's tag of the current target, `from` set to
     the first environment of the head declaration's `chain` and `automatic`
-    set to `true`. A configuration change that lands between this read and
-    the deploy's own `resolve` makes that deploy fail its tag check. A
+    set to `true`. A change of the target or its primary identity that lands
+    between this read and the deploy's own `resolve` makes that deploy fail
+    its tag check. A
     request from `request-deploy` is therefore always for the newest release
     of the current target, which carries the current primary identity, and
     it never replaces a pending deploy of a newer release of that target. A pending
