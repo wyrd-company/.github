@@ -289,7 +289,7 @@ proposed-design:
     person dispatches it,
     and the release workflow's `request-deploy` job dispatches it with
     `automatic: true` after a successful run in mode `release` or `recover`
-    for the deployed unit. An automatic release start, a `workflow_run` event
+    of the unit the default branch head's deploy configuration deploys. An automatic release start, a `workflow_run` event
     or a dispatch that is not a person's start, only wakes the workflow: `resolve`
     releases the default branch head, ends with mode `none` while the head's
     push run has not completed, and fails when the head's push run concluded

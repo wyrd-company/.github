@@ -161,8 +161,8 @@ proposed-design:
     the tag to be annotated, to pass `intentional verify <tag> --json`, and to
     carry the record `tag-id` `release-unit/<deploy_unit>/<primary tag key>`
     with `baseline: false`, where the primary tag key is that of the unit's
-    tag whose `role` is `primary` in the release model at the commit its
-    workflow file came from; the commit it points at to be contained in the
+    tag whose `role` is `primary` in `.intentional/release-model.json` at
+    the commit its workflow file came from; the commit it points at to be contained in the
     default branch head and to have one parent; and, when the unit's
     `release_record` is `required`, a published GitHub Release on the tag. It
     reads the release declaration at the commit its workflow file came from,
