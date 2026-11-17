@@ -32,7 +32,12 @@ description: >-
   input per GitHub App permission, named as GitHub names it with underscores
   written as dashes, such as `permission-contents`): `read`, `write` or
   `admin`; the token carries exactly the permissions given, and the
-  installation's permissions when none is given. `skip-token-revoke`
+  installation's permissions when none is given.
+  `installation-repositories` (optional): every repository the App's
+  installation may reach, each `<owner>/<repository>`, separated by commas
+  or newlines, or the single entry `<owner>/*` when it may reach every
+  repository of the owner; when given, the action refuses to return a token
+  from an installation that reaches any other. `skip-token-revoke`
   (optional): `true` leaves the token valid after the job; `false` when absent.
   `github-api-url` (optional): the REST API root; the calling run's
   `github.api_url` when absent.
@@ -61,7 +66,15 @@ description: >-
   finds the installation through `GET /repos/<owner>/<repository>/installation`
   when it names one repository, and otherwise through
   `GET /orgs/<owner>/installation`, falling back to
-  `GET /users/<owner>/installation` when the owner is a user. It requests the
+  `GET /users/<owner>/installation` when the owner is a user. When
+  `installation-repositories` is given, it then checks the installation's
+  scope: an installation whose `repository_selection` is `all` passes only
+  when the input is `<owner>/*`; otherwise it requests a token for the whole
+  installation with only `metadata: read`, lists
+  `GET /installation/repositories` across every page, revokes that token,
+  and fails when a listed repository is not in the input. A repository in
+  the input that the installation does not reach is not a failure. It
+  requests the
   installation token through `POST /app/installations/<id>/access_tokens` with
   `repositories` and `permissions` as given. Its post step revokes the token
   through `DELETE /installation/token` unless `skip-token-revoke` is `true`.
@@ -69,10 +82,13 @@ description: >-
 
   Failures. Each failure stops the action with a message that names the step
   that failed, one of `azure-sign-in`, `key-vault-sign`, `installation-lookup`,
-  `token-request` and `token-revoke`, together with the HTTP status and the
+  `installation-scope`, `token-request` and `token-revoke`, together with the HTTP status and the
   service's error code when there is one. An App not installed for the owner
   or repository is a 404 at `installation-lookup`; a repository or a
-  permission the installation does not grant is a 422 at `token-request`. No message contains a token, an
+  permission the installation does not grant is a 422 at `token-request`. A
+  failure at `installation-scope` names each repository the installation
+  reaches outside `installation-repositories`, or the `all` selection. No
+  message contains a token, an
   assertion, a signature or a request body.
 
 
@@ -89,7 +105,8 @@ validation-criteria: >-
   `permission-contents: read`, uses it for one API call that succeeds, shows a
   call to another repository of the installation refused, and shows a call
   after the post step refused with 401. A run with a wrong key name fails at
-  `key-vault-sign`, and a run whose environment has no federated credential
-  fails at `azure-sign-in`; neither log contains a token, an assertion or a
-  signature. The README states every input, every output, the role on the
+  `key-vault-sign`, a run whose environment has no federated credential
+  fails at `azure-sign-in`, and a run whose `installation-repositories` omits
+  a repository the installation reaches fails at `installation-scope`
+  naming it; no log contains a token, an assertion or a signature. The README states every input, every output, the role on the
   key, and the import command.

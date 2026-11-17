@@ -42,12 +42,12 @@ description: >-
   environment that the `cloudflare-worker` part deploys.
 
 
-  Credential environment of the Airlock configuration template.
-  `airlock-audit` is the audit's environment as the Airlock configuration
-  template renders it; which App it signs with, and whether a repository
-  holds it at all, await the operator's ruling on the audit's trust
-  boundary, and no repository's environment is granted an audit key until
-  then.
+  Credential environment of the central audit. `airlock-safe` exists only
+  in the organization's audit repository, is entered only by the `audit` job
+  of its `.github/workflows/airlock-central.yml`, signs with Airlock Safe's
+  key and reads no secret. Every other repository's Airlock configuration
+  declares no environment: its `airlock-audit.yml` holds only the run's
+  `GITHUB_TOKEN`, as `delivery-controls` states.
 
 
   Approval environments. `release-approval` is entered by the release
@@ -69,17 +69,19 @@ description: >-
   declare no secret and no key carries none of the three.
 
 
-  An App credential is two variables in the environment that signs with it:
-  `<APP>_APP_ID`, the App's numeric id, and `<APP>_KEY_NAME`, the name of the
-  Key Vault key that holds the App's private key. The key's name is the App's
-  slug. So `release-authority` carries `RELEASE_AUTHORITY_APP_ID` and
-  `RELEASE_AUTHORITY_KEY_NAME`, `package-tags` carries `PACKAGE_TAGS_APP_ID`
-  and `PACKAGE_TAGS_KEY_NAME`, `publish-repo-wyrd-foo` carries
-  `REPO_WYRD_FOO_PUBLISHER_APP_ID` and `REPO_WYRD_FOO_PUBLISHER_KEY_NAME`, and
-  an audit environment carries `AIRLOCK_AUDIT_APP_ID` and
-  `AIRLOCK_AUDIT_KEY_NAME`. Every App and its key's vault are listed in the
-  organization's App authorization file, `delivery-apps`, and an environment
-  signs with an App only where that file allows it. The key is imported once
+  An App credential is three variables in the environment that signs with
+  it: `<APP>_APP_ID`, the App's numeric id; `<APP>_KEY_NAME`, the name of the
+  Key Vault key that holds the App's private key, which is the App's slug;
+  and `<APP>_INSTALLED_ON`, the repositories the App's installation may
+  reach, each `<owner>/<repository>`, joined by commas, or `<owner>/*` for
+  Airlock Safe. So `release-authority` carries `RELEASE_AUTHORITY_APP_ID`,
+  `RELEASE_AUTHORITY_KEY_NAME` and `RELEASE_AUTHORITY_INSTALLED_ON`,
+  `package-tags` carries the three `PACKAGE_TAGS_` variables,
+  `publish-repo-wyrd-foo` the three `REPO_WYRD_FOO_PUBLISHER_` variables, and
+  `airlock-safe` the three `AIRLOCK_SAFE_` variables. Every App and its key's
+  vault are listed in the organization's App authorization file,
+  `delivery-apps`, and an environment signs with an App only where that file
+  allows it. The key is imported once
   by a person from the PEM that GitHub generates, with key operations `sign`
   only, into the vault the file names.
 
@@ -125,7 +127,8 @@ description: >-
   authorization file, through the GitHub provider's `github_repository_file`
   data source, changing nothing in GitHub. It takes from the declarations the
   credential environments and which of them read secrets, and from the App
-  file each enrolment it allows, with the App's id and key vault; it takes as
+  file each enrolment it allows, with the App's id, installations and key
+  vault; it takes as
   inputs the subscription, the tenant and each variable it does not create,
   such as `CLOUDFLARE_ACCOUNT_ID`. For each credential environment that reads
   a secret or signs, it creates a user-assigned managed identity with one
@@ -144,8 +147,11 @@ description: >-
   value and creates no secret.
 
 
-  Airlock. For each environment that a repository's delivery declarations
-  name, Airlock creates the environment, restricts its deployments to the
+  Airlock. Airlock writes GitHub settings only in an attended run of its
+  console, which a person starts and signs in to as Airlock Admin through
+  GitHub's device flow; no workflow and no scheduled run holds a credential
+  that writes GitHub settings. For each environment that a repository's
+  delivery declarations name, Airlock creates the environment, restricts its deployments to the
   default branch through a custom branch policy, and writes exactly the
   variables the declaration lists, with the values from `github_environments`
   for that repository and environment. It gives each approval environment
@@ -158,15 +164,17 @@ description: >-
   authentication, through `npm trust github`, `npm trust list` and
   `npm trust revoke`, so Airlock writes and reads npm trust only in an
   attended run that uses the npm session of the person running it; Airlock
-  holds no npm credential, and its scheduled audit reports npm trust as not
+  holds no npm credential, and its scheduled audits report npm trust as not
   verified in that run. Airlock defines the organization custom property
   `release`, a boolean, and sets it to `true` on every repository that holds
   a release declaration, which selects the repository for the rulesets of
   `delivery-controls`. It keeps GitHub's immutable
   releases on unless the repository's effective `evidence` control is `on`,
   as the decision record `keep-release-assets-mutable-for-evidence` states.
-  Airlock writes no environment secret, no repository secret and no
-  organization secret.
+  Airlock writes the bypass actors of every ruleset that `delivery-controls`
+  names, and at the end of each attended run the attested record that
+  `delivery-controls` defines. Airlock writes no environment secret, no
+  repository secret and no organization secret.
 
 
   Elegua. Every secret a delivery declaration lists is a secret of Elegua's
@@ -175,12 +183,16 @@ description: >-
   equals the secret name. Its manifest `tier` is `sensitive` when the
   effective `rotation-approval` of any repository whose environment reads it
   is `person`, and `routine` otherwise. App keys are Key Vault keys, not
-  secrets, and are outside Elegua's manifest.
+  secrets, and are outside Elegua's manifest: GitHub offers no API that
+  generates an App's private key, so a person generates it in the App's
+  settings and imports it once, and Elegua has nothing to mint.
 validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
   fields and variable names to the forms above, refuses an approval
   environment that carries a variable, a secret, a key or trusted publishing,
-  and refuses an environment that carries both secrets and keys. Each
+  refuses an environment that carries both secrets and keys, and refuses an
+  Airlock configuration declaration with any environment other than
+  `airlock-safe`. Each
   template's tests render every part and compare the environments, secrets,
   keys, trusted publishing and variables in the rendered declaration with the
   lists above. A test of each rendered workflow finds no `secrets.` expression

@@ -31,7 +31,8 @@ description: >-
   deploy declaration holds `unit`, the Release Unit it deploys; `chain`, the
   deploy environments in the order an automatic deploy enters them; and
   `environments`. The Airlock configuration declaration holds only
-  `environments`.
+  `environments`, which is empty in every repository except the
+  organization's audit repository, where it holds `airlock-safe`.
 
 
   `environments` maps each GitHub environment that a rendered workflow of the
@@ -40,8 +41,9 @@ description: >-
   its Key Vault `name`, either the `env` name the reading steps receive it as
   or, for a JSON secret, `fields` mapping each member to such a name, and its
   `purpose`; `keys`, each App whose Key Vault key a job signs with there, with
-  its `slug`, the names of the variables that hold its App id and its key
-  name, and the `owner` and `repositories` its token is for when they are not
+  its `slug`, the names of the variables that hold its App id, its key name
+  and the repositories its installation may reach, and the `owner` and
+  `repositories` its token is for when they are not
   the declaring repository; and, on an approval environment only,
   `approval`, the ceremony control whose effective setting decides whether a
   job of the run enters it; and `trusted_publishing`, the registries whose

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/declaration/1",
   "title": "Delivery declaration",
-  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, its audit; for each, every environment the rendered workflows enter and what each environment carries.",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, the central audit's environment in the organization's audit repository and none elsewhere; for each, every environment the rendered workflows enter and what each environment carries.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -174,6 +174,14 @@
         }
       },
       "then": {
+        "properties": {
+          "environments": {
+            "description": "A repository's Airlock configuration declares no environment; only the organization's audit repository declares `airlock-safe`.",
+            "propertyNames": {
+              "const": "airlock-safe"
+            }
+          }
+        },
         "not": {
           "anyOf": [
             {
@@ -515,7 +523,8 @@
       "required": [
         "slug",
         "app_id_variable",
-        "key_name_variable"
+        "key_name_variable",
+        "installed_on_variable"
       ],
       "properties": {
         "slug": {
@@ -530,6 +539,11 @@
         "key_name_variable": {
           "type": "string",
           "pattern": "^[A-Z][A-Z0-9_]*_KEY_NAME$"
+        },
+        "installed_on_variable": {
+          "description": "The variable that holds the repositories the App's installation may reach, which the token action requires the installation not to exceed.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*_INSTALLED_ON$"
         },
         "owner": {
           "description": "The account the App is installed on, when it is not the repository's owner.",

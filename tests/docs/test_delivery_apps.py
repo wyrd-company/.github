@@ -13,6 +13,11 @@ INVALID = {
     'custodial-app-serving-two-repositories': (['apps', 'example-service-release', 'installed_on'], 'maxItems'),
     'app-without-installation-targets': (['apps', 'example-package-publisher'], 'required'),
     'release-authority-without-a-tier': (['apps', 'example-intentional-standard'], 'required'),
+    'app-without-registered-permissions': (['apps', 'example-package-publisher'], 'required'),
+    'delivery-app-installed-on-every-repository': (['apps', 'example-intentional-standard', 'installed_on', 0], 'not'),
+    'airlock-safe-with-a-write-permission': (['apps', 'airlock-safe', 'permissions', 'contents'], 'const'),
+    'airlock-safe-on-selected-repositories': (['apps', 'airlock-safe', 'installed_on', 0], 'pattern'),
+    'airlock-safe-with-two-signers': (['apps', 'airlock-safe', 'signers'], 'maxItems'),
 }
 
 

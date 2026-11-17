@@ -1,0 +1,84 @@
+{
+  "$schema": "https://wyrd.foo/delivery/apps/1",
+  "apps": {
+    "airlock-safe": {
+      "app_id": 4409712,
+      "installed_on": [
+        "example-org/*"
+      ],
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "permissions": {
+        "actions": "read",
+        "actions_variables": "read",
+        "administration": "read",
+        "contents": "write",
+        "custom_properties_for_organizations": "read",
+        "environments": "read",
+        "metadata": "read",
+        "organization_actions_variables": "read",
+        "organization_administration": "read",
+        "organization_custom_properties": "read",
+        "organization_private_registries": "read",
+        "organization_secrets": "read",
+        "packages": "read",
+        "pages": "read",
+        "repository_custom_properties": "read",
+        "secrets": "read"
+      },
+      "role": "airlock-safe",
+      "signers": [
+        "example-org/organization-audit"
+      ]
+    },
+    "example-intentional-standard": {
+      "app_id": 1000001,
+      "installed_on": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ],
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "permissions": {
+        "contents": "write",
+        "metadata": "read"
+      },
+      "role": "release-authority",
+      "signers": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ],
+      "tier": "standard"
+    },
+    "example-package-publisher": {
+      "app_id": 1000004,
+      "installed_on": [
+        "example-org/package-inbox"
+      ],
+      "key_vault_url": "https://example-apps.vault.azure.net",
+      "permissions": {
+        "contents": "write",
+        "metadata": "read"
+      },
+      "role": "repo-wyrd-foo-publisher",
+      "signers": [
+        "example-org/tool-a",
+        "example-org/tool-b"
+      ]
+    },
+    "example-service-release": {
+      "app_id": 1000002,
+      "installed_on": [
+        "example-org/example-service"
+      ],
+      "key_vault_url": "https://example-service-release.vault.azure.net",
+      "permissions": {
+        "contents": "write",
+        "metadata": "read"
+      },
+      "role": "release-authority",
+      "signers": [
+        "example-org/example-service"
+      ],
+      "tier": "custodial"
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/apps/1",
   "title": "Delivery App authorization",
-  "description": "The organization's list of GitHub Apps whose keys delivery workflows sign with, the role each plays, and the repositories each may serve. Terraform grants a key's sign role, and Airlock names a ruleset bypass actor, only for an enrolment this file allows.",
+  "description": "The organization's list of GitHub Apps whose keys a workflow signs with, the role each plays, the permissions each is registered with, and the repositories each may serve. Terraform grants a key's sign role, and Airlock names a ruleset bypass actor, only for an enrolment this file allows.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,6 +34,7 @@
         "role",
         "app_id",
         "key_vault_url",
+        "permissions",
         "signers",
         "installed_on"
       ],
@@ -43,7 +44,7 @@
             "release-authority",
             "package-tags",
             "repo-wyrd-foo-publisher",
-            "airlock-audit"
+            "airlock-safe"
           ]
         },
         "tier": {
@@ -61,6 +62,22 @@
           "type": "string",
           "pattern": "^https://[a-z0-9-]+\\.vault\\.azure\\.net$"
         },
+        "permissions": {
+          "description": "The permissions the App is registered with, named as GitHub names them. Airlock's central audit requires the App's installation to carry exactly these.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z_]*[a-z]$"
+          },
+          "additionalProperties": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ]
+          }
+        },
         "signers": {
           "type": "array",
           "minItems": 1,
@@ -77,9 +94,9 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$"
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/([A-Za-z0-9_.-]+|\\*)$"
           },
-          "description": "The repositories the App may be installed on, and so the only repositories a token signed with its key can reach."
+          "description": "The repositories the App may be installed on, and so the only repositories a token signed with its key can reach; `<owner>/*`, every repository of the owner, only for `airlock-safe`."
         }
       },
       "allOf": [
@@ -125,6 +142,45 @@
               },
               "installed_on": {
                 "maxItems": 1
+              }
+            }
+          }
+        },
+        {
+          "description": "Airlock Safe is read-only, installed on every repository of its owner, and signed with by one repository.",
+          "if": {
+            "properties": {
+              "role": {
+                "const": "airlock-safe"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "signers": {
+                "maxItems": 1
+              },
+              "installed_on": {
+                "maxItems": 1,
+                "items": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/\\*$"
+                }
+              },
+              "permissions": {
+                "additionalProperties": {
+                  "const": "read"
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "installed_on": {
+                "items": {
+                  "not": {
+                    "pattern": "/\\*$"
+                  }
+                }
               }
             }
           }

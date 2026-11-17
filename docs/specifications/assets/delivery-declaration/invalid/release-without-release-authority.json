@@ -34,6 +34,7 @@
       "keys": [
         {
           "app_id_variable": "RELEASE_AUTHORITY_APP_ID",
+          "installed_on_variable": "RELEASE_AUTHORITY_INSTALLED_ON",
           "key_name_variable": "RELEASE_AUTHORITY_KEY_NAME",
           "slug": "example-release-authority"
         }
@@ -45,6 +46,7 @@
         "AZURE_KEY_VAULT_URL",
         "AZURE_TENANT_ID",
         "RELEASE_AUTHORITY_APP_ID",
+        "RELEASE_AUTHORITY_INSTALLED_ON",
         "RELEASE_AUTHORITY_KEY_NAME"
       ]
     }
