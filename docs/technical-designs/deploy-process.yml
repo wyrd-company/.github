@@ -78,7 +78,8 @@ proposed-design:
     stages for one release of the Release Unit `deploy_unit`. It starts only
     by dispatch: a person dispatches it, or the release workflow's
     `request-deploy` job does after a successful release or recovery of the
-    newest release of `deploy_unit`, with `automatic: true`. `resolve` decides which release and which
+    newest release of the unit that the default branch head's deploy
+    configuration deploys, with `automatic: true`. `resolve` decides which release and which
     environments from the inputs `release-tag` and `from`, and revalidates
     the release. Check credentials
     enters each deploy environment of the run. Build produces each
@@ -149,15 +150,19 @@ proposed-design:
     `automatic`, default false. A run deploys the environment `from` and
     every later environment of the chain, in order. The release workflow's
     `request-deploy` job dispatches it with the tag of the release it made
-    or recovered, only while no later release of the unit exists, the first
-    environment and `automatic: true`; a person dispatches it with
+    or recovered, only when the default branch head's deploy configuration
+    deploys that release's unit under that tag's primary identity and no
+    later release of the unit exists, with the first environment and
+    `automatic: true`; a person dispatches it with
     `automatic` false. Whether a run is a person's start or an automatic one
     follows `delivery-skeleton`: a dispatch by an account of type `Bot`,
     `request-deploy`'s included, is an automatic start whatever its inputs.
     `resolve` installs the pinned Intentional and requires
     the tag to be annotated, to pass `intentional verify <tag> --json`, and to
     carry the record `tag-id` `release-unit/<deploy_unit>/<primary tag key>`
-    with `baseline: false`; the commit it points at to be contained in the
+    with `baseline: false`, where the primary tag key is that of the unit's
+    tag whose `role` is `primary` in the release model at the commit its
+    workflow file came from; the commit it points at to be contained in the
     default branch head and to have one parent; and, when the unit's
     `release_record` is `required`, a published GitHub Release on the tag. It
     reads the release declaration at the commit its workflow file came from,
@@ -310,8 +315,9 @@ proposed-design:
     `automatic`, a dispatch by `github-actions[bot]` with `automatic` false,
     which is an automatic start, and one at an effective `deploy-approval`
     of `person`, which ends with mode `none`, a dispatch `from` each environment, a baseline tag, a tag of
-    another unit, a tag outside the default branch and a missing release
-    record. Tests of the configuration check refuse a top-level route, an
+    another unit, a tag whose `tag-id` names a key that is not the primary
+    key of the model at the workflow's commit, a tag outside the default
+    branch and a missing release record. Tests of the configuration check refuse a top-level route, an
     environment route, a custom domain, a build command, and an assets
     directory that holds the configuration, a migrations directory or an
     environment file. Tests of the deploy job run against a fake Wrangler on
