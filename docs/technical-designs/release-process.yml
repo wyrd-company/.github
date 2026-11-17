@@ -392,8 +392,7 @@ proposed-design:
     jobs would produce. A re-run of a `resolve` that failed is such an
     attempt and fails too, so a run whose `resolve` failed is retried only
     by a new run, which resolves afresh: a person's dispatch for the same
-    source commit, or, for an automatic run, the next start by continuous
-    integration or by `continue-release`.
+    source commit, or, for an automatic run, the next automatic start.
 
   deliver: >-
     A part that declares a secret, an App or trusted publishing runs its
