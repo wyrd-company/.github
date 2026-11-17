@@ -75,8 +75,10 @@ proposed-design:
     request that re-answers the interview, and every change to a lower tier
     than the recorded one carries a new `tier_reason`, whether or not the
     re-answered questions suggest the lower tier, as the operator ruled and
-    the standard states. Toha cannot show the interview the recorded tier, so
-    the release template's rendered pull request check, the `delivery` job of
+    the standard states. The rule holds where every change arrives, the pull
+    request, because `.github/delivery/release.json` and the applied record
+    can change without the interview, so the release template's rendered pull
+    request check, the `delivery` job of
     `intentional.yml`, compares `.github/delivery/release.json` at the pull
     request's base and head, and fails when the head's tier ranks below the
     base's and the head's `tier_reason` is absent or equals the base's.

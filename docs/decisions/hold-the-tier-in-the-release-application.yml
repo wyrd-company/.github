@@ -27,6 +27,12 @@ considered-options:
     Add a third template that holds only the tier and the controls. Every
     repository then applies three templates, and the release template still
     needs the tier to render its assurance jobs.
+  5: >-
+    Ask Toha for a feature that gives one application the answers of another,
+    so the deploy template renders from the release application's tier. Every
+    deploy control is ceremony, which depends on the rung and is computed when
+    the workflow runs, so rendering would gain nothing, and a change of tier
+    would then need both applications updated together.
 decision-outcome:
   chosen-option: 3
   justification: >-

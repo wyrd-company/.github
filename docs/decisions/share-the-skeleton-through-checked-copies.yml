@@ -28,13 +28,18 @@ considered-options:
     difference with a test.
   4: >-
     Extend Toha so that a template can include files from a sibling root in
-    the same source repository. That changes Toha's template format and its
-    path confinement, which this work does not own.
+    the same source repository. Toha confines every include to one template
+    root so that an applied record names everything its files came from; an
+    include from a sibling root makes each record depend on files outside its
+    own template, and each update merge on two roots that change on their
+    own.
 decision-outcome:
   chosen-option: 3
   justification: >-
     One edited source, a mechanical copy and a failing test give the
-    templates one skeleton with Toha as it is. Each template stays a
+    templates one skeleton without weakening the confinement that makes an
+    applied record complete, so no Toha change would make this better. Each
+    template stays a
     self-contained root that Toha loads, records and updates on its own, and
     a reviewer sees a skeleton change once in `templates/skeleton/` and again
     in each copy in the same commit.
