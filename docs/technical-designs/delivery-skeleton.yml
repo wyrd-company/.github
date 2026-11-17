@@ -187,7 +187,9 @@ proposed-design:
     `https://intentional.foo/schemas/release-model/1` with the commands
     `plan`, `apply`, `tag --plan [--phase]`, `tag --baseline`,
     `verify <tag> --json`, `check` and `status --json`, and the tag record
-    contract `contract-1`. The templates require Toha 0.4.1 or later, the
+    contracts `contract-1` and `contract-2`, which carry the same `baseline`,
+    `tag-id` and optional `tag-role` fields. The templates require Toha
+    0.4.1 or later, the
     first release with part selection, document questions and the applied
     record that this design reads.
 
