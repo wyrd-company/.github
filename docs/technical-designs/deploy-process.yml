@@ -158,8 +158,10 @@ proposed-design:
     with `baseline: false`; the commit it points at to be contained in the
     default branch head and to have one parent; and, when the unit's
     `release_record` is `required`, a published GitHub Release on the tag. It
-    reads the release declaration, observes the rung, and computes the
-    effective ceremony at that rung; a run with `automatic: true` whose
+    reads the release declaration at the commit its workflow file came from,
+    observes the rung from the tag records reachable from the default branch
+    head, and computes the effective ceremony at that rung, as
+    `delivery-skeleton` fixes for a deploy; a run with `automatic: true` whose
     effective `deploy-start` is `person` ends with mode `none`. Otherwise the
     mode is `deploy`. Beyond the skeleton's outputs it exposes `tag`,
     `version` and `environments`, a JSON array of the selected environments in

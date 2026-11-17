@@ -57,9 +57,16 @@ description: >-
 
 
   Readers. The release and deploy workflows read `tier` and `controls` from
-  `.github/delivery/release.json` at the commit their workflow file came from,
-  and compute each control's effective setting as `delivery-controls`
-  defines. Airlock reads both declarations to know which environments,
+  `.github/delivery/release.json` and compute each control's effective
+  setting as `delivery-controls` defines, at the revision
+  `delivery-skeleton` fixes for the run's governing rung. A release workflow
+  run that concerns one release, in mode `release` or `recover`, reads the
+  file at that release's release commit: in mode `release` it reads it at
+  the source commit, which the release commit carries unchanged because
+  `release-process` refuses a release commit that changes a path under
+  `.github/`. The deploy workflow, and a release workflow run that releases
+  nothing, read it at the commit their workflow file came from. Airlock
+  reads both declarations to know which environments,
   variables and protection rules to apply and audit, and which secrets
   Elegua's manifest must declare. A repository with a deploy declaration and no
   release declaration fails the deploy workflow's `resolve` job and Airlock's

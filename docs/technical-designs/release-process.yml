@@ -188,7 +188,10 @@ proposed-design:
     computes the effective ceremony at the release's governing rung, observed
     from the tag records reachable from the source commit together with the
     plan's tags, which are exactly the records reachable from the release
-    commit once it exists, and an automatic run whose effective
+    commit once it exists, with the release declaration at the release
+    commit; in mode `release` that is the declaration at the source commit,
+    which the release commit carries unchanged because `release-tree`
+    refuses any change under `.github/`. An automatic run whose effective
     `release-start` is `person` is mode `none`.
 
   release-commit: >-
