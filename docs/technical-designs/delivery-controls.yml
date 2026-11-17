@@ -357,10 +357,11 @@ proposed-design:
     the job's OpenID Connect token, has Key Vault sign Airlock Safe's JSON
     Web Token as `release-authority-token` describes the sequence, reads
     `GET /app` and requires the id and slug it is built with and every
-    permission `read`, requires its installation for the owner to pass the
-    token action's `installation-repositories` rule with
-    `AIRLOCK_SAFE_INSTALLED_ON`, which is `<owner>/*` and so requires
-    `repository_selection` `all`, and mints an installation token whose
+    permission `read`, requires its installation for the owner to have
+    `repository_selection` `all`, as `delivery-apps` requires of Airlock
+    Safe, and to pass the token action's `installation-repositories` rule
+    with `AIRLOCK_SAFE_INSTALLED_ON`, which is `<owner>/*` and so bounds
+    membership to the owner's repositories without implying a selection, and mints an installation token whose
     minting response lists only `read` permissions. It stores no token. It
     audits the organization and every repository its installation reaches,
     uploads one report as an artifact, and fails when any check fails.
