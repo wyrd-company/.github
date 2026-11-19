@@ -1,0 +1,34 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-environments
+    - delivery-skeleton
+description: >-
+  On a private repository on GitHub Free, a repository administrator sets the
+  OpenID Connect subject template with
+  `PUT /repos/<owner>/<repository>/actions/oidc/customization/sub` and the
+  body `{"use_default": false, "include_claim_keys": ["repo", "ref",
+  "job_workflow_ref"]}`. A job of the reusable workflow
+  `.github/workflows/delivery-<environment>.yml`, called with a local `./`
+  path by a workflow run on the default branch, then receives the subject
+  `<prefix>:ref:refs/heads/<default>:job_workflow_ref:<owner>/<repository>/.github/workflows/delivery-<environment>.yml@refs/heads/<default>`,
+  where `<prefix>` is the `sub_claim_prefix` that
+  `GET /repos/<owner>/<repository>/actions/oidc/customization/sub` returns,
+  whether or not the job names an environment. A run on any other ref
+  receives a subject with that ref in both claims.
+end-descendant-type: spike
+evidence:
+  - GitHub's OpenID Connect reference documents `include_claim_keys`, the
+    `job_workflow_ref` claim of a reusable workflow, the replacement of `:`
+    by `%3A` inside a claim value, and the immutable subject prefix of
+    repositories created after 2026-07-15; it states no plan or visibility
+    limit on customization.
+  - The read of `truename-idp`'s template, a private repository on Free,
+    answered 200 with `use_default` true and `sub_claim_prefix`
+    `repo:wyrd-company/truename-idp` on 2026-11-19. No write was made.
+  - Unproven are the write on a private repository on Free, the `ref` claim
+    key in the template, and the value of `job_workflow_ref` in a local
+    call, and that npm matches a trusted publisher's workflow file against
+    the calling workflow, `release.yml`, for a job of a called workflow. A
+    spike on the testbed proves them by decoding the token of a called job
+    and publishing a test package from one.

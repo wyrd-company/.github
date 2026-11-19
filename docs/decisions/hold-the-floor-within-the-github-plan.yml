@@ -1,0 +1,87 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Hold the floor within the GitHub plan, and switch when the plan changes
+relationships:
+  contextualizes:
+    - delivery-standard
+    - delivery-controls
+    - delivery-environments
+    - delivery-skeleton
+description: >-
+  The floor relies on rulesets, on environments that admit only the default
+  branch, and on environment variables. The operator decided on 2026-11-19
+  to keep the organization on GitHub Free, for its cost, and expects a paid
+  plan later. GitHub's documentation gives a private repository on GitHub
+  Free no rulesets, no protected branches, no deployment branch policies,
+  no environment variables and no environment secrets, and gives a public
+  repository on Free all of them. It gives private repositories rulesets,
+  deployment branches and environment variables on GitHub Team. Its pages
+  disagree on organization rulesets: one names GitHub Team or Enterprise,
+  another Enterprise only. GitHub's API answers HTTP 403, "Upgrade to
+  GitHub Pro or make this repository public to enable this feature", to
+  reads of `truename-idp`'s rulesets, its branch rules and its branch
+  protection, and answers 200 to reads of its repository variables, its
+  secrets list, its OpenID Connect subject template and its immutable
+  releases setting, measured on 2026-11-19. It still lists an environment
+  with variables and branch policies, which GitHub's documentation says a
+  private repository on Free ignores. Airlock Safe cannot read the
+  organization's plan, which `GET /orgs/<owner>` shows only to owners.
+considered-options:
+  1: >-
+    Keep the design as it is and let Airlock fail on every private
+    repository. Every audit of a private repository fails for a setting no
+    one can apply, so a failure stops telling anyone anything.
+  2: >-
+    Make every repository on the standard public. Free then gives every
+    control, but each product's source, history and runbooks become readable
+    by anyone, which cannot be undone, and the operator keeps them private.
+  3: >-
+    Have Airlock and the workflows detect each setting's availability from
+    GitHub's answers alone. Rulesets answer 403 on a private repository on
+    Free, but environments answer 200 with policies and variables that GitHub
+    ignores, so the answers cannot show that an environment protects
+    nothing.
+  4: >-
+    The organization's Airlock configuration declares its plan, and one
+    table in `delivery-controls` gives each control's availability by plan
+    and visibility. Airlock applies and audits what the plan gives, reports
+    the rest as known limits that name their risk, and fails when GitHub's
+    answers disagree with the declared plan. Every ruleset is a repository
+    ruleset, and the workflows name each value by one variable name that
+    resolves the same way at repository and at environment level, so a
+    change of plan changes no rendered file and no cloud resource.
+decision-outcome:
+  chosen-option: 4
+  justification: >-
+    It records only rules that a system checks, and names each gap as a
+    risk instead of a rule. The plan is a fact the operator holds and the
+    App cannot read, so it is declared once, and the probe of rulesets that
+    GitHub does answer differently by plan keeps the declaration honest.
+    Repository rulesets are available wherever any ruleset is, so the design
+    needs no organization ruleset on any plan the documentation names. The
+    upgrade to GitHub Team is a change of the declared plan followed by an
+    attended Airlock run.
+expected-outcomes:
+  positive:
+    - >-
+      An audit of a private repository on Free passes when every control the
+      plan gives holds, and lists each control it does not give as a known
+      limit with its risk.
+    - >-
+      Moving to GitHub Team needs a one-line change of the declared plan and
+      an attended Airlock run, which writes the rulesets and branch
+      policies and moves the variables into their environments; no template,
+      workflow, Terraform resource or federated credential changes.
+    - >-
+      A public repository carries the full floor on Free.
+  negative:
+    - >-
+      A repository administrator can change a repository ruleset, which an
+      organization ruleset would prevent; the scheduled audits report the
+      change.
+    - >-
+      On a private repository on Free, any writer can push to the default
+      branch and its tags, and so reach every credential its delivery
+      workflows reach; the risks of `delivery-controls` record each gap.
+    - >-
+      A declared plan that is wrong is found only by the probe of rulesets,
+      on the next scheduled audit.

@@ -1,0 +1,45 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-controls
+    - delivery-environments
+    - hold-the-floor-within-the-github-plan
+    - scope-federation-to-the-workflow-of-each-environment
+slug: writers-change-the-default-branch-of-a-private-repository
+title: A writer of a private repository changes its default branch and reaches its credentials
+description: >-
+  On a private repository of an organization on GitHub Free, the rulesets
+  `delivery-default-branch` and `delivery-default-branch-review` cannot be
+  applied, because GitHub gives such a repository no rulesets and no
+  protected branches; for the organization's audit repository the same
+  holds for `audit-default-branch`. Any account with write access, or an
+  agent that pushes with such an account's key, can push any commit
+  straight to the default branch, force-push it, delete it, or write a
+  release commit there without the release authority. Every identity of the
+  repository trusts the default branch and its own environment's workflow
+  file, so whoever changes that file on the default branch signs in as that
+  identity and reads its secrets or signs with its App key. In the audit
+  repository, whose writers are the organization's owners, that reaches
+  Airlock Safe's read of every repository and the attested record.
+categories:
+  - security
+  - integrity
+likelihood: 2
+impact: 4
+response: >-
+  Accepted by the operator on 2026-11-19, who keeps the organization on
+  GitHub Free for its cost. What holds without rulesets: Entra's federated
+  credentials refuse every sign-in from another branch, a pull request
+  included, and from another environment's workflow; the release authority
+  App's key never leaves Key Vault; `record` refuses a default branch head
+  that moved during the run; and Airlock's per-repository and central
+  audits report a rendered workflow that differs from what its applied
+  record renders, at the next scheduled run, which detects and does not
+  prevent the change. Airlock reports both rulesets on each such
+  repository as known limits naming this risk. Moving the organization to
+  GitHub Team restores both rulesets, and `audit-default-branch` in the
+  audit repository: the default branch then takes no force-push, no
+  deletion and no merge commit, and accepts a change only through a pull
+  request, which only the repository's release authority App bypasses.
+  Making a repository public restores the same for that repository on Free.
+status: open

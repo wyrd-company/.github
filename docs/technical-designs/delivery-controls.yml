@@ -16,6 +16,7 @@ relationships:
     - workflow-token-reads-environment-protection
     - airlock-safe-reads-organization-installations
     - ruleset-update-time-tracks-bypass-changes
+    - immutable-releases-hold-on-a-private-free-repository
 objective: >-
   Define how a repository answers its tier, how the tier, the controls set
   away from their defaults and their reasons are held in the applied record,
@@ -188,32 +189,40 @@ proposed-design:
     token from the package tags App. `release-record` and `evidence` hold the
     run's `GITHUB_TOKEN` with `contents: write`, which can change releases and
     their assets but, under the rulesets below, cannot create, move or delete
-    a tag or update the default branch. Every credential reaches a job through
-    its environment, as `delivery-skeleton` defines, and no rendered workflow
-    reads a repository or organization secret; the absence of repository
-    secrets is checked by Airlock's central audit. Tags are immutable and classified by the
-    rulesets of `rulesets`. Recovery runs from the immutable tags: a release
-    dispatched again for its source commit finds its tags, and every job that
-    changes state outside the run does only what is missing. No answer removes
-    any of these.
+    a tag or update the default branch. Every credential reaches a job
+    through its environment's workflow file and federated identity, as
+    `delivery-skeleton` and `delivery-environments` define, and no rendered
+    workflow reads a repository or organization secret; the absence of
+    repository secrets is checked by Airlock's central audit. Tags are
+    immutable and classified by the rulesets of `rulesets`. Recovery runs
+    from the immutable tags: a release dispatched again for its source
+    commit finds its tags, and every job that changes state outside the run
+    does only what is missing. No answer removes any of these. On a
+    repository that `plan-limits` gives no rulesets, the federated
+    credentials, the absence of repository secrets and recovery hold as
+    stated; the rulesets do not exist, so the delivery workflows are the
+    only writers of release commits and tags by their own construction and
+    not against another writer, and a tag is fixed only once a published
+    release with immutable releases on locks it. The risks
+    `writers-change-the-default-branch-of-a-private-repository` and
+    `writers-change-the-tags-of-a-private-repository` record those limits.
 
   rulesets: >-
-    Airlock applies three organization rulesets, each with enforcement
-    `active`, each targeting the repositories whose organization custom
-    property `release` is `true`, which Airlock defines and sets on every
-    repository that holds a release declaration. `delivery-tags-immutable`:
+    On each repository that holds a release declaration, Airlock applies
+    seven repository rulesets, each with enforcement `active`, wherever
+    `plan-limits` gives the repository rulesets. Three carry no bypass actor
+    and the same rules in every repository. `delivery-tags-immutable`:
     target `tag`, ref condition include `~ALL`, rules `update`, `deletion`
-    and `non_fast_forward`, no bypass actor. `delivery-tags-unclassified`:
-    target `tag`, include `~ALL`, exclude `[0-9]*.[0-9]*.[0-9]*` and
-    `**@[0-9]*.[0-9]*.[0-9]*`, rule `creation`, no bypass actor, so every tag
-    outside the organization's two classified forms, bare SemVer and
-    `<name>@<SemVer>`, is refused to everyone. `delivery-default-branch`:
-    target `branch`, include `~DEFAULT_BRANCH`, rules
-    `required_linear_history`, `non_fast_forward` and `deletion`, no bypass
-    actor; `record` pushes a fast-forward to a release commit whose one parent
-    is the source commit, so it needs no bypass of these. On each repository
-    Airlock applies four repository rulesets, each naming as a bypass actor,
-    when it names one, an App that `delivery-apps` enrols for that repository.
+    and `non_fast_forward`. `delivery-tags-unclassified`: target `tag`,
+    include `~ALL`, exclude `[0-9]*.[0-9]*.[0-9]*` and
+    `**@[0-9]*.[0-9]*.[0-9]*`, rule `creation`, so every tag outside the
+    organization's two classified forms, bare SemVer and `<name>@<SemVer>`,
+    is refused to everyone. `delivery-default-branch`: target `branch`,
+    include `~DEFAULT_BRANCH`, rules `required_linear_history`,
+    `non_fast_forward` and `deletion`; `record` pushes a fast-forward to a
+    release commit whose one parent is the source commit, so it needs no
+    bypass of these. Four name as a bypass actor, when they name one, an App
+    that `delivery-apps` enrols for that repository.
     `delivery-default-branch-review`: target `branch`, include
     `~DEFAULT_BRANCH`, rule `pull_request`, bypass mode `always` for the
     repository's release authority App only, so `record` can push the release
@@ -229,11 +238,13 @@ proposed-design:
     `delivery-tags-repository`: target `tag`, include `~ALL`, exclude every
     pattern of the two others, rule `creation`, no bypass actor, so a
     classified name that no template of the repository produces is refused
-    too. These are repository rulesets because their patterns and their
-    bypass actor belong to one repository, so an App installed where it
-    should not be bypasses nothing there, and because GitHub limits an
-    organization to 75 rulesets; a repository administrator can change them,
-    and Airlock's audit reports any difference, as `audit-coverage` states. A
+    too. Every ruleset is a repository ruleset because repository rulesets
+    exist on every plan and visibility that has rulesets, and because the
+    patterns and the bypass actor of four of them belong to one repository,
+    so an App installed where it should not be bypasses nothing there; the
+    decision record `hold-the-floor-within-the-github-plan` holds the
+    trade-off. A repository administrator can change them, and Airlock's
+    audit reports any difference, as `audit-coverage` states. A
     tag name that matches both phases' patterns is refused to both Apps, so
     Airlock refuses a release model whose patterns of the two phases overlap,
     `resolve` refuses a plan in which a tag matches a pattern of the other
@@ -242,12 +253,59 @@ proposed-design:
     the only writers of matching names are `record` and
     `tag-after-publication`, which push exactly the tag names of the plan.
     GitHub returns a ruleset's bypass actors only to a reader with write
-    access to it, which for an organization ruleset is organization
-    administration write, so no workflow and no scheduled run sees them:
-    `resolve`, the smoke workflow and both scheduled audits read the effective
-    rulesets and require each of these to be present and `active` with the
-    conditions and rules above, and the attended Airlock run, which writes the
-    bypass actors, reads them back and records them.
+    access to it, which for a repository ruleset is repository
+    administration write, so no workflow and no scheduled run sees them.
+    The rulesets check is the one `resolve`, the smoke workflow and both
+    scheduled audits run: it reads the effective rulesets and requires each
+    of these to be present and `active` with the conditions and rules above.
+    When GitHub answers the read with HTTP 403 and the message `Upgrade to
+    GitHub Pro or make this repository public to enable this feature` for a
+    private repository, the check passes, names each ruleset as a known
+    limit, and links the risks of `plan-limits`; every other failure to
+    read fails it. The attended Airlock run, which writes the bypass actors,
+    reads them back and records them.
+
+  plan-limits: >-
+    The organization's Airlock configuration declares the organization's
+    GitHub plan as `github-plan`, one of `free`, `team` and `enterprise`,
+    because no App can read it. From the declared plan and a repository's
+    visibility, as GitHub's documentation gives them, Airlock takes which
+    settings the repository can hold. A public repository holds every
+    setting below on every plan. A private repository holds repository
+    rulesets, deployment branch policies and environment variables on
+    `team` and `enterprise`, and none of them on `free`. Repository
+    variables, the secrets list, the OpenID Connect subject template and
+    immutable releases are held on every plan and visibility. A control
+    that needs a setting the repository cannot hold is plan-limited:
+    Airlock's attended run does not write it, and every audit run reports
+    it as a known limit with the risk it names, never as passed and never as
+    failed. The plan-limited controls of a private repository on `free`, and
+    their risks, are: `delivery-default-branch` and
+    `delivery-default-branch-review`, and in the audit repository
+    `audit-default-branch`, with
+    `writers-change-the-default-branch-of-a-private-repository`;
+    the five tag rulesets, with
+    `writers-change-the-tags-of-a-private-repository`; the branch policy of
+    each environment that declares `trusted_publishing`, with
+    `trusted-publishing-admits-any-branch-of-a-private-repository`; and
+    environment-level variables, with
+    `writers-change-the-delivery-variables-of-a-private-repository`. Every
+    other environment loses its branch policy too, and what the policy did
+    holds by another mechanism, which Airlock reports as such: each
+    identity's federated credential names the default branch and the
+    environment's workflow file, as `delivery-environments` states, and
+    Entra checks it at every sign-in. Both scheduled audits check the declared
+    plan against GitHub: they read each audited private repository's
+    rulesets, and fail when the plan is `free` and GitHub serves them, or
+    when the plan is `team` or `enterprise` and GitHub answers the plan's
+    HTTP 403. A change of plan is a change of `github-plan` followed by an
+    attended Airlock run, which writes the rulesets and branch policies the
+    new plan gives and moves each repository's delivery variables into
+    their environments; no rendered file, Terraform resource or federated
+    credential changes. Until that run, the rulesets check of `resolve`
+    fails, because GitHub serves rulesets that are absent, so no release
+    runs without the controls the plan gives. The decision record
+    `hold-the-floor-within-the-github-plan` holds the trade-off.
 
   assurance-placement: >-
     `rehearsal`: the release template renders
@@ -281,13 +339,16 @@ proposed-design:
 
   audit: >-
     Airlock's audit reads the applied record, the three declarations, the
-    release model, the repository's settings, its rulesets, its environments
-    with their branch policies and variables, its secrets list, the tag records,
+    release model, the repository's settings and visibility, its rulesets,
+    its environments with their branch policies, its repository and
+    environment variables, its OpenID Connect subject template, its secrets
+    list, the organization's declared plan, the tag records,
     the release model at the commit each tag record's tag points at,
     the release records with their assets and attestations, the
     organization's App installations, `delivery-apps`, Elegua's manifest and
     the attested record, and reports the tier, the observed rung, and every
-    deviation with its reason. It fails when the tier ranks below the
+    deviation with its reason, and every plan-limited control of
+    `plan-limits` as a known limit with its risk. It fails when the tier ranks below the
     organization's minimum for the repository; when the tier ranks below the
     suggestion of the recorded answers, or below the tier recorded in the
     base of a pull request or in the first parent of the commit that changed
@@ -295,8 +356,13 @@ proposed-design:
     reason; when the repository holds a repository-level secret; when a file
     the record lists differs from what its application renders; when a
     control's effective setting needs a job, a file, a ruleset or an
-    environment's branch policy that is absent; when an environment carries a
-    variable its declaration does not list; when immutable releases are off
+    environment's branch policy that is absent and that `plan-limits` gives
+    the repository; when the declared plan disagrees with GitHub as
+    `plan-limits` states; when the subject template is not the one
+    `delivery-environments` names; when a variable that a declaration lists
+    is missing, or a variable named for a declared environment is one the
+    declaration does not list, at the level `delivery-environments` names
+    for the plan; when immutable releases are off
     and `evidence` is off; when a release asset differs from its
     `SHA256SUMS`, its evidence file or its attestation; when a declaration
     names an App that `delivery-apps` does not allow for the repository; when
@@ -332,18 +398,28 @@ proposed-design:
     applies to it the repository ruleset `audit-default-branch`: target
     `branch`, include `~DEFAULT_BRANCH`, rules `pull_request`,
     `required_linear_history`, `non_fast_forward` and `deletion`, no bypass
-    actor; and it restricts `airlock-safe`, like every environment, to the
-    default branch. The audit repository's writers are the organization's owners. It applies
+    actor; it restricts `airlock-safe`, like every environment, to the
+    default branch; and it sets the subject template that
+    `delivery-environments` names; the ruleset and the branch policy are
+    plan-limited on Free, as `plan-limits` states. The audit repository's
+    writers are the organization's owners. It applies
     the Airlock configuration template with the `confirm` question
     `central_audit`, default false, answered true, which also renders
-    `.github/workflows/airlock-central.yml` and declares the environment
-    `airlock-safe`. That workflow runs on `schedule` once a day and on
-    `workflow_dispatch`, with `permissions: {}` at the top and one job,
-    `audit`, that enters `airlock-safe` with `deployment: false` and only
-    `id-token: write`, and runs the pinned Airlock action in central mode
-    with `vars.AIRLOCK_SAFE_APP_ID`, `vars.AIRLOCK_SAFE_KEY_NAME`,
-    `vars.AIRLOCK_SAFE_INSTALLED_ON`, `vars.AZURE_KEY_VAULT_URL`,
-    `vars.AZURE_TENANT_ID` and `vars.AZURE_CLIENT_ID`. It is not a skeleton
+    `.github/workflows/airlock-central.yml` and
+    `.github/workflows/delivery-airlock-safe.yml`, and declares the
+    environment `airlock-safe`. `airlock-central.yml` runs on `schedule`
+    once a day and on `workflow_dispatch`, with `permissions: {}` at the top
+    and one job, `audit`, which calls `delivery-airlock-safe.yml` with
+    `id-token: write` and nothing else. That workflow runs only on
+    `workflow_call` and holds one job, `audit`, that enters `airlock-safe`
+    with `deployment: false` and only `id-token: write`, and runs the pinned
+    Airlock action in central mode with
+    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_APP_ID`,
+    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_KEY_NAME`,
+    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_INSTALLED_ON`,
+    `vars.AIRLOCK_SAFE__AZURE_KEY_VAULT_URL`,
+    `vars.AIRLOCK_SAFE__AZURE_TENANT_ID` and
+    `vars.AIRLOCK_SAFE__AZURE_CLIENT_ID`. It is not a skeleton
     job: Airlock signs, not the token action. Airlock signs in to Azure with
     the job's OpenID Connect token, has Key Vault sign Airlock Safe's JSON
     Web Token as `release-authority-token` describes the sequence, reads
@@ -358,45 +434,56 @@ proposed-design:
     uploads one report as an artifact, and fails when any check fails.
     The attended run. A person runs Airlock's console, signed in as Airlock
     Admin through GitHub's device flow and, for npm, with their own npm
-    session. After it applies, it reads back the bypass actors of the three
-    organization rulesets and of every repository ruleset it writes, every
-    environment variable it writes, and each npm package's trusted publisher,
-    and compares each with what this design names: no bypass actor on the
-    organization rulesets, `delivery-tags-repository` and
+    session. It writes what `plan-limits` gives each repository and skips
+    each plan-limited control, which it lists in its report as a known limit
+    with its risk. After it applies, it reads back the bypass actors of every
+    ruleset it writes, every delivery variable it writes, each subject
+    template, and each npm package's trusted publisher, and compares each
+    with what this design names: no bypass actor on
+    `delivery-tags-immutable`, `delivery-tags-unclassified`,
+    `delivery-default-branch`, `delivery-tags-repository` and
     `audit-default-branch`; only the repository's release authority App on
     `delivery-default-branch-review` and `delivery-tags-recorded`; only its
     package tags App on `delivery-tags-published`; the values of
-    `github_environments`; and the trusted publishers the declarations name.
+    `github_environments`; the subject template of
+    `delivery-environments`; and the trusted publishers the declarations
+    name.
     A difference fails the run, which records nothing for what differs. It
     ends by writing the attested record as repository variables of the audit
     repository, which Airlock Admin writes and Airlock Safe reads:
-    `AIRLOCK_ATTESTED_ORGANIZATION` for the organization rulesets, and
     `AIRLOCK_ATTESTED_<id>` for each repository, where `<id>` is its numeric
     repository id. Each value is JSON with `$schema`
     `https://wyrd.foo/airlock/attested/1`, which Airlock defines,
     `attested_at`, `attested_by`, the person's login, `rulesets`, each with
     its `id`, `updated_at` and `bypass_actors` as GitHub returns them,
-    `variables`, keyed by environment and then by variable name, and `npm`,
+    `variables`, keyed by environment and then by the variable name a
+    declaration lists, whatever level GitHub holds it at, and `npm`,
     keyed by package, each with its trusted publisher's repository, workflow
-    and environment. GitHub allows a repository 500 variables, which bounds
-    the organization at 499 audited repositories. A central run between an
+    and environment. GitHub allows a repository 500 variables, and the audit
+    repository's own six `AIRLOCK_SAFE__` variables are repository variables
+    on Free, which bounds the organization at 494 audited repositories. A
+    central run between an
     apply and the end of the same session reports the difference, and the
     next run clears it. The record is as trustworthy as the audit
     repository's settings and default branch, which are also the only route
-    to Airlock Safe's key. The decision record
+    to Airlock Safe's key, and on Free that default branch takes any
+    owner's push, as the risk
+    `writers-change-the-default-branch-of-a-private-repository` records.
+    The decision record
     `run-the-privileged-audit-centrally-as-airlock-safe` holds the trade-off.
 
   audit-coverage: >-
     The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
     release model, the tag and release records, the release model at each
-    tag record's commit, the effective rulesets without their bypass actors,
-    the environments with their protection
-    rules, the attestations, and `delivery-apps` and the organization's
+    tag record's commit, the repository's visibility, the effective
+    rulesets without their bypass actors, the environments with their
+    protection rules, the attestations, and `delivery-apps` and the organization's
     Airlock configuration in the public `.github` repository; the
     per-repository run makes every check that needs only these and reports
     the rest as not run. Airlock Safe reads all of these except attestations,
-    and each repository's secrets list, environment variables, immutable
-    releases setting and custom properties, the organization's installations,
+    and each repository's secrets list, repository and environment
+    variables, subject template and immutable releases setting, the
+    organization's installations,
     Elegua's manifest and the attested record; the central run makes every
     check except four: attestations, bypass actors, npm trust, and the
     repositories of an App's selected installation. It fails when a
@@ -407,7 +494,7 @@ proposed-design:
     when it failed or when no run completed in the last two days. Bypass actors: the
     attended run reads them, and the central run fails when a ruleset that
     Airlock applies has no entry in the attested record, or when its
-    `updated_at` or an environment variable differs from its entry, so a
+    `updated_at` or a delivery variable differs from its entry, so a
     change after the attended run is found by the next scheduled run, and
     the person runs the console again. npm trust: the attended run reads it,
     and both scheduled runs report it as not verified, with the time the
