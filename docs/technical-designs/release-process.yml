@@ -15,7 +15,6 @@ relationships:
     - continuous-integration
   assumes:
     - release-authority-pushes-the-release-atomically
-    - workflow-run-reports-the-ci-run-actors
 objective: >-
   Define contract `release-process`: the Toha release template in this
   repository that renders a repository's release workflow from its committed
@@ -198,9 +197,8 @@ proposed-design:
     commit; in mode `release` that is the declaration at the source commit,
     which the release commit carries unchanged because `release-tree`
     refuses any change under `.github/`. An automatic run whose effective
-    `release-start` is `person` is mode `none`, and so is a run whose `actor`
-    or `triggering_actor` is not of type `User` when the effective
-    `release-approval` is `person`, as `delivery-skeleton` states.
+    `release-start` is `person` is mode `none`, as `delivery-skeleton`
+    states.
 
   release-commit: >-
     `resolve` runs no repository or dependency code: it runs Git, the
@@ -271,15 +269,9 @@ proposed-design:
     version once the recipe is fixed.
 
   record: >-
-    `approve-release` runs after the build stage in modes `release` and
-    `baseline`, the modes in which `record` pushes, when the effective
-    `release-approval` is `person`; it enters `release-approval` with no
-    permission and does nothing else, so GitHub holds it until a person other
-    than the run's starter approves. `record` then enters `release-authority`
-    with `contents: read`, `actions: read` and `id-token: write`, and runs
-    only Git, the token action and the skeleton's checks. In the modes that
-    push, when the effective `release-approval` is `person`, it runs the
-    approval check first. In mode `release` it checks out the source commit,
+    `record` enters `release-authority` with `contents: read`,
+    `actions: read` and `id-token: write`, and runs only Git, the token
+    action and the skeleton's checks. In mode `release` it checks out the source commit,
     downloads `release-plan` and `release-candidate`, requires the plan's
     `digest` to be `resolve`'s `plan_digest`, runs `git bundle verify`,
     fetches the bundle, and checks with Git alone that the release commit's
@@ -304,10 +296,9 @@ proposed-design:
     replaces the inventory its run already holds, so a run holds at most
     one. It outputs `release_sha`, the
     commit it pushed or found, which every later job reads. In mode `recover`
-    it mints no token, needs no approval, requires every tag
-    the release commit carries to exist on the remote and point at the
-    release commit, and pushes nothing: a recovery delivers only what the
-    approved release recorded. In mode `baseline` it pushes the baseline tags
+    it mints no token, requires every tag the release commit carries to exist
+    on the remote and point at the release commit, and pushes nothing: a
+    recovery delivers only what the release recorded. In mode `baseline` it pushes the baseline tags
     atomically and updates no branch.
 
   release-records: >-
@@ -564,19 +555,11 @@ proposed-design:
     automatic run in the `release` group, and the dispatched run releases
     whatever that run would have, or ends with mode `none` when nothing is
     pending. It is an automatic start by `github-actions[bot]`, so it also
-    ends with mode `none` when the effective `release-start` is `person`, or
-    when the effective `release-approval` is `person`, as
-    `delivery-skeleton` states, each read at the governing rung of the
-    release it would make. The pending intents then stay on the default
-    branch, unchanged. When the effective `release-start` is `person`, only
-    a person's dispatch releases them, because every start by continuous
-    integration is automatic. When `release-start` is `automatic` and
-    `release-approval` is `person`, a person's dispatch releases them, and
-    so does the next release run that a completion of continuous
-    integration on the default branch starts with an `actor` and a
-    `triggering_actor` both of type `User`, as GitHub attributes them under
-    the assumption `workflow-run-reports-the-ci-run-actors`; a run with
-    either of type `Bot` ends with mode `none` again. A run dispatched with
+    ends with mode `none` when the effective `release-start` is `person`, as
+    `delivery-skeleton` states, read at the governing rung of the release it
+    would make. The pending intents then stay on the default branch,
+    unchanged, and only a person's dispatch releases them, because every
+    start by continuous integration is automatic. A run dispatched with
     `automatic` true, or started by `workflow_run`, requests no
     continuation, so the chain ends.
 
@@ -803,21 +786,12 @@ proposed-design:
     dispatch by `github-actions[bot]` and one by an App, each with
     `automatic` false and a `source-sha`, which release the head as
     automatic starts and end with mode `none` at an effective
-    `release-start` or `release-approval` of `person`; `workflow_run`
-    starts, each of which ends with mode `none` at an effective
-    `release-start` of `person` whatever its actors, and, at an effective
-    `release-start` of `automatic` and `release-approval` of `person`, one
-    whose `actor` and `triggering_actor` are both of type `Bot`, one whose
-    `actor` is of type `User` and `triggering_actor` of type `Bot`, and one
-    whose `actor` is of type `Bot` and `triggering_actor` of type `User`,
-    each of which ends with mode `none`, and one whose two fields are both
-    of type `User`, which reaches `approve-release`; a new release run at
-    `run_attempt` 1 that the completion of a re-run of continuous
-    integration starts, which `resolve` judges by its own `actor` and
-    `triggering_actor` as any `workflow_run` start, told apart from a
-    re-run of the release run itself, whose `run_attempt` is 2: `resolve`
-    fails that re-run whatever its actors, and a re-run of only its failed
-    later jobs meets the approval check that the `record` cases cover; a partial
+    `release-start` of `person`; a `workflow_run` start, which ends with
+    mode `none` at an effective `release-start` of `person` whatever its
+    actors; a new release run at `run_attempt` 1 that the completion of a
+    re-run of continuous integration starts, told apart from a re-run of
+    the release run itself, whose `run_attempt` is 2 and which `resolve`
+    fails; a partial
     set of tags, a primary tag with `after-publication`, a plan tag matching
     the other phase's pattern, a missing continuous integration run and a
     missing rehearsal job; two independent constructions of one release
@@ -830,9 +804,7 @@ proposed-design:
     dependency. Tests of `record` push to
     a local bare remote and cover a moved default branch, a bundle whose tag
     points elsewhere or whose tag names differ from the plan's, a plan digest
-    mismatch, a recovery that pushes nothing and needs no approval, and an
-    approval check after a re-run by an App, of a person's dispatch and of a
-    `workflow_run` start, which fails. The
+    mismatch, and a recovery that pushes nothing. The
     recovery cases reuse the recording run's artifacts by the ids and digests
     of its `release-inventory`, without building; they fail, naming the runs,
     when no run holds an inventory, ignore a run on another branch and a
@@ -864,8 +836,8 @@ proposed-design:
     Every run a person dispatched ends by
     dispatching an automatic run, which releases a head whose pending
     automatic run the dispatch replaced at an effective `release-start` of
-    `automatic` and `release-approval` of `none`, and ends with mode `none`,
-    leaving the intents pending and unchanged, when either is `person`. The
+    `automatic`, and ends with mode `none`, leaving the intents pending and
+    unchanged, at `person`. The
     release record cases cover each retry state, on a unit with build assets
     and one without, and an attached evidence file; the evidence cases cover
     a second dispatch and a re-run writing the same bytes and a run that
@@ -885,7 +857,7 @@ proposed-design:
     repository `.npmrc`, `.cargo/config.toml` and Docker configuration that
     name another registry, and npm refusing a tarball whose `publishConfig`
     names a registry. Named mutation controls remove each
-    gate conjunct, each mode check, the approval check, the plan digest
+    gate conjunct, each mode check, the plan digest
     check, the tag name check and the commit identity, and each must fail a
     test. The suite runs as `tests/release/README.md` states, with `TOHA_BIN`
     naming a Toha 0.4.1 release build, `INTENTIONAL_DIR`,
@@ -894,13 +866,9 @@ proposed-design:
     `wyrd-company/release-process-testbed` with the test App: a dispatched
     release creates the release commit and its tags; a second dispatch for
     the same source commit recovers and changes nothing; a publication
-    failure followed by a dispatch completes only what was missing, at an
-    approval setting of `person` as well; an automatic start follows a
-    successful continuous integration run; a re-run of continuous
-    integration on the default branch head, by a person and by an account
-    of type `Bot`, records whether it starts a release run and that run's
-    `run_attempt`, `actor` and `triggering_actor`, which tests
-    `workflow-run-reports-the-ci-run-actors`; a baseline dispatch creates the
+    failure followed by a dispatch completes only what was missing; an
+    automatic start follows a successful continuous integration run; a
+    baseline dispatch creates the
     baseline tag; an npm publication attempted from a job outside
     `publish-npm` is refused by npm; and `release-authority-smoke.yml`
     passes.
