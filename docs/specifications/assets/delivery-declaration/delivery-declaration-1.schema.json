@@ -262,20 +262,14 @@
         "release-start": {
           "$ref": "#/$defs/start"
         },
-        "release-approval": {
-          "$ref": "#/$defs/approval"
-        },
         "deploy-start": {
           "$ref": "#/$defs/start"
         },
-        "deploy-approval": {
-          "$ref": "#/$defs/approval"
-        },
         "update-review": {
-          "$ref": "#/$defs/approval"
+          "$ref": "#/$defs/attended"
         },
         "rotation-approval": {
-          "$ref": "#/$defs/approval"
+          "$ref": "#/$defs/attended"
         }
       }
     },
@@ -315,7 +309,7 @@
         }
       }
     },
-    "approval": {
+    "attended": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -399,13 +393,6 @@
             "$ref": "#/$defs/key"
           }
         },
-        "approval": {
-          "description": "Set only on an approval environment: the ceremony control whose effective setting decides whether a job of the run enters it. An approval environment carries no variable, secret or key.",
-          "enum": [
-            "release-approval",
-            "deploy-approval"
-          ]
-        },
         "trusted_publishing": {
           "description": "Registries whose trusted publishing names this environment, so that only a job entering it can publish through federation.",
           "type": "array",
@@ -422,31 +409,6 @@
         }
       },
       "allOf": [
-        {
-          "if": {
-            "required": [
-              "approval"
-            ]
-          },
-          "then": {
-            "properties": {
-              "variables": {
-                "maxItems": 0
-              },
-              "secrets": {
-                "maxItems": 0
-              },
-              "keys": {
-                "maxItems": 0
-              }
-            },
-            "not": {
-              "required": [
-                "trusted_publishing"
-              ]
-            }
-          }
-        },
         {
           "description": "An environment reads secrets from its own vault or signs with App keys in the vault that holds them, never both.",
           "not": {
