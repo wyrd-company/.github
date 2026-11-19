@@ -106,8 +106,9 @@ proposed-design:
     `templates/airlock-config/` renders `.github/airlock.yml`,
     `.github/workflows/airlock-audit.yml` and
     `.github/delivery/airlock-config.json`, and in the organization's audit
-    repository also `.github/workflows/airlock-central.yml`, as
-    `delivery-controls` states, and
+    repository also `.github/workflows/airlock-central.yml` and
+    `.github/workflows/delivery-airlock-safe.yml`, the reusable workflow it
+    calls, as `delivery-controls` `audit-runs` states, and
     `airlock/` holds the organization policy that Airlock resolves.
 
   release-model-acceptance: >-
