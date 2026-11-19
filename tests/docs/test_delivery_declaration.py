@@ -18,7 +18,6 @@ INVALID = {
     'release-without-release-authority': ([], 'required'),
     'secret-name-in-staging-form': (['environments', 'publish-homebrew-tap', 'secrets', 0, 'name'], 'not'),
     'variable-name-starts-with-github': (['environments', 'release-authority', 'variables', 6], 'not'),
-    'approval-environment-with-a-variable': (['environments', 'release-approval', 'variables'], 'maxItems'),
     'secret-with-env-and-fields': (['environments', 'publish-homebrew-tap', 'secrets', 0], 'oneOf'),
     'environment-with-secrets-and-keys': (['environments', 'publish-homebrew-tap'], 'not'),
     'airlock-config-declares-a-tier': ([], 'not'),

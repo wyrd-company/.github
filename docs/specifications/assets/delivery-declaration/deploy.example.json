@@ -22,13 +22,6 @@
         "CLOUDFLARE_ACCOUNT_ID"
       ]
     },
-    "production-approval": {
-      "approval": "deploy-approval",
-      "keys": [],
-      "purpose": "Hold the deploy to production for a person's approval",
-      "secrets": [],
-      "variables": []
-    },
     "staging": {
       "keys": [],
       "purpose": "Deploy the Cloudflare Worker to staging",
@@ -45,13 +38,6 @@
         "AZURE_TENANT_ID",
         "CLOUDFLARE_ACCOUNT_ID"
       ]
-    },
-    "staging-approval": {
-      "approval": "deploy-approval",
-      "keys": [],
-      "purpose": "Hold the deploy to staging for a person's approval",
-      "secrets": [],
-      "variables": []
     }
   },
   "template": "deploy",

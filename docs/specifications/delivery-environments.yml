@@ -50,15 +50,6 @@ description: >-
   `GITHUB_TOKEN`, as `delivery-controls` states.
 
 
-  Approval environments. `release-approval` is entered by the release
-  workflow's `approve-release` job, and `<environment>-approval` by the
-  deploy workflow's `approve-<environment>` job for each deploy environment,
-  only in a run whose effective `release-approval` or `deploy-approval` is
-  `person`. An approval environment carries no variable, no secret, no key
-  and no trusted publishing; its required reviewers hold the job until a
-  person other than the one who started the run approves.
-
-
   Variables in every credential environment that reads a secret or signs
   with a key. `AZURE_TENANT_ID` is the Entra tenant. `AZURE_CLIENT_ID` is the
   client id of the user-assigned managed identity whose federated credential
@@ -154,9 +145,8 @@ description: >-
   delivery declarations name, Airlock creates the environment, restricts its deployments to the
   default branch through a custom branch policy, and writes exactly the
   variables the declaration lists, with the values from `github_environments`
-  for that repository and environment. It gives each approval environment
-  required reviewers, with self-review prevented, from Airlock's repository
-  configuration, and gives no credential environment required reviewers. For
+  for that repository and environment. The branch policy is the
+  environment's only protection rule. For
   each environment that declares `trusted_publishing`, it sets each listed
   registry's trusted publisher for the repository's packages to that
   repository, workflow file and environment. npm manages trusted publishers
@@ -188,9 +178,8 @@ description: >-
   settings and imports it once, and Elegua has nothing to mint.
 validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
-  fields and variable names to the forms above, refuses an approval
-  environment that carries a variable, a secret, a key or trusted publishing,
-  refuses an environment that carries both secrets and keys, and refuses an
+  fields and variable names to the forms above, refuses an environment that
+  carries both secrets and keys, and refuses an
   Airlock configuration declaration with any environment other than
   `airlock-safe`. Each
   template's tests render every part and compare the environments, secrets,
@@ -203,5 +192,5 @@ validation-criteria: >-
   the parent's `attest` job. Terraform's module tests plan one repository from
   a declaration and an App file and compare `github_environments` with the
   variable names the declaration lists for each environment. Airlock's apply
-  tests compare the environments, variables, reviewers and trusted publishers
-  it writes for a repository with that repository's declarations.
+  tests compare the environments, branch policies, variables and trusted
+  publishers it writes for a repository with that repository's declarations.

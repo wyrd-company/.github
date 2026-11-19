@@ -32,13 +32,6 @@
       ],
       "variables": []
     },
-    "release-approval": {
-      "approval": "release-approval",
-      "keys": [],
-      "purpose": "Hold the release commit for a person's approval",
-      "secrets": [],
-      "variables": []
-    },
     "release-authority": {
       "keys": [
         {
