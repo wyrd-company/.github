@@ -20,6 +20,14 @@ CENTRAL = SOURCE / 'workflows/{% if central_audit %}airlock-central.yml{% endif 
 SAFE = SOURCE / 'workflows/{% if central_audit %}delivery-airlock-safe.yml{% endif %}'
 
 
+STEP = '      - name: Audit this repository\n'
+
+
+def probe(expression):
+    """Give the audit step an environment variable that reads the expression."""
+    return STEP, STEP + '        env:\n          SYNTHETIC_PROBE: {% raw %}${{ ' + expression + ' }}{% endraw %}\n'
+
+
 def run(report):
     receipt = {'status': 'INCOMPLETE', 'head': subprocess.check_output(
         ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'rows': []}
@@ -61,6 +69,20 @@ def run(report):
              ('audit-secret', AUDIT, ('github.token', 'secrets.AIRLOCK_TOKEN'), 'test_delivery_environments'),
              ('central-no-deployment', SAFE, ('      deployment: false\n', ''), 'test_central_workflows'),
              ('central-variable-names', SAFE, ('vars.AIRLOCK_SAFE__AZURE_CLIENT_ID', 'vars.AZURE_CLIENT_ID'),
+              'test_delivery_environments'),
+             # Whole-context reads and inherited secrets, each refused by the delivery-environments check.
+             ('audit-whole-secrets', AUDIT, probe('toJSON(secrets)'), 'test_delivery_environments'),
+             ('audit-bare-secrets', AUDIT, probe('secrets'), 'test_delivery_environments'),
+             ('audit-computed-secret-index', AUDIT, probe('secrets[github.actor]'), 'test_delivery_environments'),
+             ('audit-whole-vars', AUDIT, probe('toJSON(vars)'), 'test_delivery_environments'),
+             ('audit-secrets-in-condition', AUDIT, ('    runs-on: ubuntu-latest\n',
+              "    runs-on: ubuntu-latest\n    if: contains(toJSON(secrets), 'x')\n"), 'test_delivery_environments'),
+             ('audit-top-level-secrets', AUDIT, ('permissions: {}\njobs:',
+              'permissions: {}\nenv:\n  SYNTHETIC_PROBE: {% raw %}${{ toJSON(secrets) }}{% endraw %}\njobs:'),
+              'test_delivery_environments'),
+             ('central-inherit-secrets', CENTRAL, ('uses: ./.github/workflows/delivery-airlock-safe.yml',
+              'uses: ./.github/workflows/delivery-airlock-safe.yml\n    secrets: inherit'), 'test_delivery_environments'),
+             ('central-whole-vars', SAFE, ('vars.AIRLOCK_SAFE__AZURE_CLIENT_ID', 'toJSON(vars)'),
               'test_delivery_environments'),
              ('central-caller-id-token', CENTRAL, ('uses: ./.github/workflows/delivery-airlock-safe.yml',
               'runs-on: ubuntu-latest\n    steps: [{run: "true"}]'), 'test_delivery_environments')]
