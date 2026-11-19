@@ -44,3 +44,20 @@ generic rule-parameter question. Operators add reasoned exceptions by hand;
 Airlock applies them under organization override authority. Classification is
 not a repository input. The template is adopted beside `release`, not through
 its part selection.
+
+The audit workflows and the declaration have their own tests.
+`test_per_repository_files` and `test_central_audit_renders_central_files`
+compare the rendered file set for each `central_audit` answer.
+`test_declaration_validates` validates both declarations against the
+specification's schema and compares the central one with
+`airlock-config.example.json`. `test_audit_workflow` and
+`test_central_workflows` check triggers, permissions, environment and action
+inputs. `test_delivery_environments` runs `delivery_environments.py`, the
+check that `delivery-environments` states in its validation criteria, on each
+render; `test_delivery_environments.py` proves the check refuses each breach it
+names. `test_actionlint` lints the rendered workflows, `test_action_pins`
+requires every external action to be pinned by commit with a comment, and
+`test_renovate_reads_the_pins` checks that `renovate.json` reads the template's
+workflow sources, whose conditional names do not end in `.yml`.
+`test_applied_record_holds_central_audit` reads `answers.central_audit` from
+`.toha.json`. These tests need `actionlint` on `PATH`.
