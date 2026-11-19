@@ -13,6 +13,11 @@ from ruamel.yaml import YAML
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / 'templates/airlock-config/template.yml'
 TEMPLATE = ROOT / 'templates/airlock-config/template/.github/airlock.yml'
+SOURCE = ROOT / 'templates/airlock-config/template/.github'
+DECLARATION = SOURCE / 'delivery/airlock-config.json'
+AUDIT = SOURCE / 'workflows/airlock-audit.yml'
+CENTRAL = SOURCE / 'workflows/{% if central_audit %}airlock-central.yml{% endif %}'
+SAFE = SOURCE / 'workflows/{% if central_audit %}delivery-airlock-safe.yml{% endif %}'
 
 
 def run(report):
@@ -25,7 +30,7 @@ def run(report):
     report.write_text(json.dumps(receipt, indent=2))
     if baseline.returncode:
         return False
-    original = {path: path.read_bytes() for path in (CONFIG, TEMPLATE)}
+    original = {path: path.read_bytes() for path in (CONFIG, TEMPLATE, DECLARATION, AUDIT, CENTRAL, SAFE)}
     config = YAML(typ='safe').load(original[CONFIG].decode())
     rows = []
     for question in config['interview']:
@@ -34,7 +39,7 @@ def run(report):
             if guard in question:
                 test = ('test_contract' if guard == 'when' else
                         {'accepted_generation': 'test_generation', 'description': 'test_description',
-                         'topics': 'test_topics'}[key] + ('_required' if guard == 'required' else '_guard'))
+                         'topics': 'test_topics', 'default_branch': 'test_default_branch'}[key] + ('_required' if guard == 'required' else '_guard'))
                 rows.append((key + '-' + guard, CONFIG, (key, guard), test))
     rows += [('declarations-opt-in', TEMPLATE, ('{% if declare_repository -%}', '{% if true -%}'),
               'test_declarations_are_opt_in'),
@@ -44,7 +49,21 @@ def run(report):
               ('''topics: ["{{ topics | split(' ') | join('", "') }}"]''',
                '''topics: {{ topics | split(' ') | tojson }}'''),
               'test_rendered_config_has_exactly_one_final_newline'),
-             ('description-quoted', TEMPLATE, ('description | tojson', 'description'), 'test_all_optional_answers')]
+             ('description-quoted', TEMPLATE, ('description | tojson', 'description'), 'test_all_optional_answers'),
+             ('central-workflow-opt-in', CENTRAL, ('rename', 'airlock-central.yml'), 'test_central_audit_is_opt_in'),
+             ('central-environment-workflow-opt-in', SAFE, ('rename', 'delivery-airlock-safe.yml'),
+              'test_central_audit_is_opt_in'),
+             ('declaration-opt-in', DECLARATION, ('{%- if central_audit %}', '{%- if true %}'),
+              'test_central_audit_is_opt_in'),
+             ('audit-push-branch', AUDIT, ('[{{ default_branch | tojson }}]', '["main"]'), 'test_audit_workflow'),
+             ('audit-top-permissions', AUDIT, ('permissions: {}\n', ''), 'test_audit_workflow'),
+             ('audit-read-only', AUDIT, ('attestations: read', 'attestations: write'), 'test_audit_workflow'),
+             ('audit-secret', AUDIT, ('github.token', 'secrets.AIRLOCK_TOKEN'), 'test_delivery_environments'),
+             ('central-no-deployment', SAFE, ('      deployment: false\n', ''), 'test_central_workflows'),
+             ('central-variable-names', SAFE, ('vars.AIRLOCK_SAFE__AZURE_CLIENT_ID', 'vars.AZURE_CLIENT_ID'),
+              'test_delivery_environments'),
+             ('central-caller-id-token', CENTRAL, ('uses: ./.github/workflows/delivery-airlock-safe.yml',
+              'runs-on: ubuntu-latest\n    steps: [{run: "true"}]'), 'test_delivery_environments')]
     try:
         for name, path, change, test in rows:
             if path == CONFIG:
@@ -53,15 +72,20 @@ def run(report):
                 del question[change[1]]
                 with path.open('w') as stream:
                     YAML().dump(altered, stream)
+            elif change[0] == 'rename':
+                path.rename(path.with_name(change[1]))
             else:
                 source = original[path].decode()
                 assert source.count(change[0]) == 1, name
                 path.write_text(source.replace(*change))
-            mutated = path.read_bytes()
+            moved = path.with_name(change[1]) if change[0] == 'rename' else path
+            mutated = moved.read_bytes() if change[0] != 'rename' else ('rename:' + change[1]).encode()
             assert mutated != original[path], name
             result = subprocess.run([sys.executable, '-m', 'unittest',
                 'test_template.AirlockTemplate.' + test, '-v'], cwd=ROOT / 'tests/airlock-config',
                 text=True, capture_output=True)
+            if moved != path:
+                moved.unlink()
             path.write_bytes(original[path])
             output = result.stdout + result.stderr
             row = dict(name=name, file=str(path.relative_to(ROOT)), test=test, exit=result.returncode,
@@ -79,6 +103,9 @@ def run(report):
             receipt['status'] = 'PASS'
     finally:
         for path, content in original.items():
+            for stray in (path.with_name('airlock-central.yml'), path.with_name('delivery-airlock-safe.yml')):
+                if stray.parent == AUDIT.parent and stray.exists():
+                    stray.unlink()
             path.write_bytes(content)
         report.write_text(json.dumps(receipt, indent=2))
     return receipt['status'] == 'PASS'

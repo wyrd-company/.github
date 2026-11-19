@@ -1,7 +1,7 @@
 # relationships:
 #   implements: release-process
 name: airlock-config
-description: Repository Airlock accepted generation and optional declarations
+description: Repository Airlock configuration, its scheduled audit, and the organization's central audit
 interview:
   # required rejects empty answers; regex guards validate nonempty answers.
   - id: accepted_generation
@@ -66,4 +66,15 @@ interview:
     type: confirm
     prompt: Enable discussions?
     when: declare_repository
+    default: false
+  - id: default_branch
+    type: text
+    prompt: Default branch, whose pushes start the repository's audit
+    default: main
+    required: true
+    validate:
+      regex: ^$|^[A-Za-z0-9._/-]+$
+  - id: central_audit
+    type: confirm
+    prompt: Is this the organization's audit repository, which runs the central audit as Airlock Safe?
     default: false

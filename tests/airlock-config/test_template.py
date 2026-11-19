@@ -2,18 +2,36 @@
 """Exercise the real Toha renderer and Airlock repository config loader."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import shutil
 import tempfile
 import unittest
 
+from jsonschema import Draft202012Validator
 from ruamel.yaml import YAML
+
+from delivery_environments import violations
 
 ROOT = Path(__file__).resolve().parents[2]
 FIELDS = dict(description='Sample utility: "quoted"\nsecond line', topics='cli rust',
               squash=False, rebase=False, merge_commit=True, delete_branch_on_merge=False,
               wiki=True, projects=True, discussions=True)
+
+
+PER_REPOSITORY = {'.github/airlock.yml', '.github/workflows/airlock-audit.yml', '.github/delivery/airlock-config.json'}
+CENTRAL = {'.github/workflows/airlock-central.yml', '.github/workflows/delivery-airlock-safe.yml'}
+DECLARATIONS = ROOT / 'docs/specifications/assets/delivery-declaration'
+SCHEMA = json.loads((DECLARATIONS / 'delivery-declaration-1.schema.json').read_text())
+EXAMPLE = json.loads((DECLARATIONS / 'airlock-config.example.json').read_text())
+POLICY = '${{ github.repository_owner }}/.github:airlock/policy.yml'
+CENTRAL_INPUTS = {'app-id': 'AIRLOCK_SAFE_APP_ID', 'key-name': 'AIRLOCK_SAFE_KEY_NAME',
+                  'installation-repositories': 'AIRLOCK_SAFE_INSTALLED_ON',
+                  'vault-url': 'AZURE_KEY_VAULT_URL', 'azure-tenant-id': 'AZURE_TENANT_ID',
+                  'azure-client-id': 'AZURE_CLIENT_ID'}
+PIN = re.compile(r'^ *(?:- )?uses: (?P<ref>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[^@\s]+)?)@(?P<sha>[0-9a-f]{40}) # \S.*$')
+DAILY = re.compile(r'^[0-9]{1,2} [0-9]{1,2} \* \* \*$')
 
 
 def expected_declared_bytes(version, topics):
@@ -163,10 +181,15 @@ class AirlockTemplate(unittest.TestCase):
         self.assertNotIn('hooks', config)
         self.assertNotIn('schemas', config)
         self.assertFalse(any(q.get('type') == 'document' for q in config['interview']))
-        for question in config['interview'][2:]:
-            self.assertEqual(question.get('when'), 'declare_repository', question['id'])
-        self.assertEqual({q['id'] for q in config['interview']},
-                         {'accepted_generation', 'declare_repository', *FIELDS})
+        questions = {q['id']: q for q in config['interview']}
+        for key in FIELDS:
+            self.assertEqual(questions[key].get('when'), 'declare_repository', key)
+        self.assertEqual(set(questions), {'accepted_generation', 'declare_repository', *FIELDS,
+                                          'default_branch', 'central_audit'})
+        self.assertEqual({key: questions['central_audit'].get(key) for key in ('type', 'default', 'when')},
+                         {'type': 'confirm', 'default': False, 'when': None})
+        self.assertEqual({key: questions['default_branch'].get(key) for key in ('type', 'default', 'when')},
+                         {'type': 'text', 'default': 'main', 'when': None})
 
     def assert_refused(self, answers):
         result = self.apply(answers)
@@ -192,6 +215,158 @@ class AirlockTemplate(unittest.TestCase):
 
     def test_topics_guard(self):
         self.assert_refused(dict(declare_repository=True, **dict(FIELDS, topics='cli\nclassification: tool')))
+
+
+    # Audit workflows and the delivery declaration.
+
+    def rendered_files(self):
+        return {path.relative_to(self.target).as_posix() for path in self.target.rglob('*')
+                if path.is_file() and '.git' not in path.relative_to(self.target).parts}
+
+    def rendered_workflows(self):
+        return {path.name: path.read_text() for path in sorted((self.target / '.github/workflows').glob('*.yml'))}
+
+    def declaration(self):
+        return json.loads((self.target / '.github/delivery/airlock-config.json').read_text())
+
+    def workflow(self, name):
+        return YAML(typ='safe').load((self.target / '.github/workflows' / name).read_text())
+
+    def only_step(self, job):
+        self.assertEqual(len(job['steps']), 1, job['steps'])
+        return job['steps'][0]
+
+    def test_per_repository_files(self):
+        self.render()
+        self.assertEqual(self.rendered_files(), PER_REPOSITORY)
+
+    def test_central_audit_renders_central_files(self):
+        self.render({'central_audit': True})
+        self.assertEqual(self.rendered_files(), PER_REPOSITORY | CENTRAL)
+
+    def test_central_audit_is_opt_in(self):
+        self.render(dict(declare_repository=True, central_audit=False, **FIELDS))
+        self.assertEqual(self.rendered_files(), PER_REPOSITORY)
+        self.assertEqual(self.declaration()['environments'], {})
+
+    def test_declaration_validates(self):
+        expected = {False: dict(EXAMPLE, environments={}), True: EXAMPLE}
+        for central in (False, True):
+            with self.subTest(central_audit=central):
+                shutil.rmtree(self.target)
+                self.target.mkdir()
+                self.render({'central_audit': central})
+                rendered = (self.target / '.github/delivery/airlock-config.json').read_text()
+                declaration = json.loads(rendered)
+                self.assertEqual(list(Draft202012Validator(SCHEMA).iter_errors(declaration)), [])
+                self.assertEqual(declaration, expected[central])
+                self.assertEqual(rendered, json.dumps(declaration, indent=2, sort_keys=True, ensure_ascii=False) + '\n')
+
+    def test_audit_workflow(self):
+        for branch in ('main', 'release/1.x'):
+            with self.subTest(default_branch=branch):
+                shutil.rmtree(self.target)
+                self.target.mkdir()
+                self.render({'default_branch': branch})
+                workflow = self.workflow('airlock-audit.yml')
+                self.assertEqual(set(workflow['on']), {'schedule', 'workflow_dispatch', 'push'})
+                self.assertEqual(len(workflow['on']['schedule']), 1)
+                self.assertRegex(workflow['on']['schedule'][0]['cron'], DAILY)
+                self.assertIsNone(workflow['on']['workflow_dispatch'])
+                self.assertEqual(workflow['on']['push'], {'branches': [branch]})
+                self.assertEqual(workflow.get('permissions', 'absent'), {})
+                self.assertEqual(set(workflow['jobs']), {'audit'})
+                job = workflow['jobs']['audit']
+                self.assertEqual(job['permissions'], {'contents': 'read', 'actions': 'read', 'attestations': 'read'})
+                self.assertNotIn('environment', job)
+                self.assertNotIn('env', job)
+                step = self.only_step(job)
+                self.assertTrue(step['uses'].startswith('wyrd-company/airlock@'), step)
+                self.assertEqual(step['with'], {'mode': 'repository', 'token': '${{ github.token }}', 'policy': POLICY})
+
+    def test_central_workflows(self):
+        self.render({'central_audit': True})
+        central = self.workflow('airlock-central.yml')
+        self.assertEqual(set(central['on']), {'schedule', 'workflow_dispatch'})
+        self.assertEqual(len(central['on']['schedule']), 1)
+        self.assertRegex(central['on']['schedule'][0]['cron'], DAILY)
+        self.assertEqual(central.get('permissions', 'absent'), {})
+        self.assertEqual(central['jobs'], {'audit': {'permissions': {'id-token': 'write'},
+                                                     'uses': './.github/workflows/delivery-airlock-safe.yml'}})
+        called = self.workflow('delivery-airlock-safe.yml')
+        self.assertEqual(called['on'], {'workflow_call': None})
+        self.assertEqual(called.get('permissions', 'absent'), {})
+        self.assertEqual(set(called['jobs']), {'audit'})
+        job = called['jobs']['audit']
+        self.assertEqual(job['environment'], {'name': 'airlock-safe', 'deployment': False})
+        self.assertEqual(job['permissions'], {'id-token': 'write'})
+        self.assertNotIn('env', job)
+        step = self.only_step(job)
+        self.assertTrue(step['uses'].startswith('wyrd-company/airlock@'), step)
+        expected = {key: '${{ vars.AIRLOCK_SAFE__' + name + ' }}' for key, name in CENTRAL_INPUTS.items()}
+        self.assertEqual(step['with'], dict(expected, mode='central', policy=POLICY))
+        self.assertEqual(set(CENTRAL_INPUTS.values()), set(EXAMPLE['environments']['airlock-safe']['variables']))
+
+    def test_delivery_environments(self):
+        for central in (False, True):
+            with self.subTest(central_audit=central):
+                shutil.rmtree(self.target)
+                self.target.mkdir()
+                self.render({'central_audit': central})
+                self.assertEqual(violations(self.rendered_workflows(), self.declaration()), [])
+
+    def test_actionlint(self):
+        self.render({'central_audit': True})
+        # actionlint resolves ./ reusable workflows from the repository root.
+        subprocess.run(['git', '-C', str(self.target), 'init', '-q'], check=True)
+        result = subprocess.run(['actionlint', *sorted(str(p) for p in (self.target / '.github/workflows').glob('*.yml'))],
+                                cwd=self.target, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_action_pins(self):
+        self.render({'central_audit': True})
+        pins = set()
+        for name, text in self.rendered_workflows().items():
+            for line in text.splitlines():
+                if re.match(r'^ *(?:- )?uses: ', line) and 'uses: ./' not in line:
+                    match = PIN.match(line)
+                    self.assertIsNotNone(match, f'{name}: {line}')
+                    pins.add(match.group('ref', 'sha'))
+        self.assertEqual(len(pins), 1, pins)
+        self.assertEqual(next(iter(pins))[0], 'wyrd-company/airlock')
+
+    def test_renovate_reads_the_pins(self):
+        config = json.loads((ROOT / 'renovate.json').read_text())
+        patterns = [re.compile(pattern.strip('/')) for pattern in config['github-actions']['managerFilePatterns']]
+        sources = sorted(path.relative_to(ROOT).as_posix()
+                         for path in (ROOT / 'templates/airlock-config/template/.github/workflows').iterdir())
+        self.assertEqual(len(sources), 3)
+        for source in sources:
+            with self.subTest(source):
+                self.assertTrue(any(pattern.search(source) for pattern in patterns), source)
+                for ignored in config.get('ignorePaths', []):
+                    literal = re.split(r'[*?{}!()\[\]]', ignored)[0]
+                    self.assertFalse(source.startswith(literal) or ignored in source, ignored)
+
+    def test_applied_record_holds_central_audit(self):
+        for central in (False, True):
+            with self.subTest(central_audit=central):
+                shutil.rmtree(self.target)
+                self.target.mkdir()
+                subprocess.run(['git', '-C', str(self.target), 'init', '-q', '-b', 'main'], check=True)
+                self.render({'central_audit': central})
+                record = json.loads((self.target / '.toha.json').read_text())
+                applications = [a for a in record['applications'] if 'answers' in a]
+                self.assertEqual(len(applications), 1)
+                self.assertIs(applications[0]['answers']['central_audit'], central)
+
+    def test_default_branch_required(self):
+        self.assert_refused({'default_branch': ''})
+
+    def test_default_branch_guard(self):
+        for value in ('main branch', 'main\non: push', 'main]', '"main"'):
+            with self.subTest(value=value):
+                self.assert_refused({'default_branch': value})
 
 
 if __name__ == '__main__':
