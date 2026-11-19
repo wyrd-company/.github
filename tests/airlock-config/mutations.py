@@ -84,6 +84,15 @@ def run(report):
               'uses: ./.github/workflows/delivery-airlock-safe.yml\n    secrets: inherit'), 'test_delivery_environments'),
              ('central-whole-vars', SAFE, ('vars.AIRLOCK_SAFE__AZURE_CLIENT_ID', 'toJSON(vars)'),
               'test_delivery_environments'),
+             # A `}}` inside a quoted literal must not end the expression before the read.
+             ('audit-quoted-delimiter-secrets', AUDIT, probe("'}}' && toJSON(secrets)"), 'test_delivery_environments'),
+             ('audit-quoted-delimiter-vars', AUDIT, probe("'}}' && toJSON(vars)"), 'test_delivery_environments'),
+             ('audit-format-delimiter-secrets', AUDIT, probe("format('}}{0}', toJSON(secrets))"),
+              'test_delivery_environments'),
+             ('audit-escaped-quote-delimiter-secrets', AUDIT, probe("format('it''s }}', toJSON(secrets))"),
+              'test_delivery_environments'),
+             ('central-quoted-delimiter-vars', SAFE, ('vars.AIRLOCK_SAFE__AZURE_CLIENT_ID', "'}}' && toJSON(vars)"),
+              'test_delivery_environments'),
              ('central-caller-id-token', CENTRAL, ('uses: ./.github/workflows/delivery-airlock-safe.yml',
               'runs-on: ubuntu-latest\n    steps: [{run: "true"}]'), 'test_delivery_environments')]
     try:
