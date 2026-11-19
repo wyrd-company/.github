@@ -4,6 +4,7 @@ relationships:
     - delivery-standard
     - delivery-controls
     - delivery-skeleton
+    - writers-change-the-default-branch-of-a-private-repository
 slug: releases-and-deploys-run-without-approval
 title: A release or deploy runs without a second person's approval
 description: >-
@@ -13,10 +14,12 @@ description: >-
   it ships, so a maintainer's mistake, or a maintainer account that someone
   else controls, releases and deploys with no second person looking. The
   organization is on GitHub Free. There, environment required reviewers work
-  only on public repositories, and a private repository cannot require a
-  pull request review, so no GitHub setting can hold a run of a private
-  repository for a person, and a rule that no system checks protects
-  nothing.
+  only on public repositories, and a private repository has no rulesets and
+  no protected branches, so it can neither require a pull request review
+  nor keep a writer from pushing straight to the default branch, as the
+  risk `writers-change-the-default-branch-of-a-private-repository` records.
+  No GitHub setting can hold a run of a private repository for a person, and
+  a rule that no system checks protects nothing.
 categories:
   - security
 likelihood: 2
@@ -28,5 +31,12 @@ response: >-
   organization's in-house service for asynchronous delivery workflows, held
   in its backlog, which separates publishing from verifying the publish
   target and checks the approval itself rather than through a GitHub plan
-  feature.
+  feature. Moving the organization to GitHub Team does not restore an
+  approval of a run, because GitHub documents environment required
+  reviewers and wait timers on Team for public repositories only. It
+  restores `delivery-default-branch-review` on private repositories, so a
+  change reaches the default branch, and with it each release and deploy,
+  only through a pull request, and it gives rulesets the means to require a
+  person's approving review of that pull request, which this design does
+  not set.
 status: open

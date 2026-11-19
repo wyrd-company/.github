@@ -15,3 +15,8 @@ evidence:
     environment variables under the separate permission Environments, which
     a workflow token cannot hold.
   - Proven by the per-repository audit's run on the testbed.
+  - On a private repository on GitHub Free the read answers 200 and lists
+    branch policies that GitHub's documentation says it ignores, as
+    `truename-idp` showed on 2026-11-19, so the audit takes a branch
+    policy's effect from the declared plan of `delivery-controls`
+    `plan-limits`, not from this read.

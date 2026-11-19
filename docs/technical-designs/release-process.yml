@@ -638,8 +638,10 @@ proposed-design:
     `actions: read`, `id-token: write` and `attestations: write` and no
     environment. It downloads every `release-asset+<unit>+<name>` artifact of
     the run, runs no repository or dependency code, and attests each file
-    with `actions/attest-build-provenance`. It is the only job without an
-    environment that holds `id-token: write`, and since every registry's
+    with `actions/attest-build-provenance`. It is the only job with steps
+    outside a credential environment's workflow file that holds
+    `id-token: write`, so no identity's federated credential admits its
+    token, and since every registry's
     trusted publishing names a `publish-<part>` environment, its token
     publishes nothing.
 
@@ -732,10 +734,13 @@ proposed-design:
 
   authority-smoke: >-
     `release-authority-smoke.yml` runs only on `workflow_dispatch`, with
-    `permissions: {}`. Its one job `smoke` enters `release-authority` with
+    `permissions: {}`. Its one job `smoke` calls
+    `delivery-release-authority.yml` with `stage: smoke`, whose one job of
+    that stage, `smoke`, enters `release-authority` with
     `contents: read` and `id-token: write`, runs the token action for the
     calling repository with `permission-contents: read` and
-    `installation-repositories` from `vars.RELEASE_AUTHORITY_INSTALLED_ON`,
+    `installation-repositories` from
+    `vars.RELEASE_AUTHORITY__RELEASE_AUTHORITY_INSTALLED_ON`,
     which checks every repository the App's installation reaches, requires
     `GET /installation/repositories` with the returned token to list exactly
     the calling repository, runs the rulesets check of `delivery-controls` with
@@ -889,16 +894,21 @@ proposed-design:
     `record`, with a token for the one repository, after validation in jobs
     that hold no credential; after-publication tags only by
     `tag-after-publication`; the rulesets of `delivery-controls` refuse every
-    other tag creation and every tag change. Part jobs hold `contents: read`,
+    other tag creation and every tag change wherever the organization's plan
+    gives the repository rulesets, and elsewhere the risk
+    `writers-change-the-tags-of-a-private-repository` records the limit. Part jobs hold `contents: read`,
     `actions: read` and `packages: read`; only deliver jobs add
     `packages: write` or `id-token: write`, and one that adds
-    `id-token: write` runs inside `publish-<part>`; `attest` is
-    the one job without an environment that holds `id-token: write`, and it
-    runs no repository code. `contents: write` belongs to `release-record`
+    `id-token: write` runs inside `publish-<part>`, in
+    `delivery-publish-<part>.yml`; `attest` is the one job outside a
+    credential environment's workflow file that holds `id-token: write`
+    apart from the calling jobs, which pass it on, and it runs no repository
+    code. `contents: write` belongs to `release-record`
     and `evidence` through `GITHUB_TOKEN`, which can change releases and their
     assets and nothing the rulesets protect. Credentials are Key Vault
     secrets and keys, or registry federation, reached through environments
-    and checked by preflight jobs that never print a value. No job that holds
+    and their workflow files, whose federated credentials admit only the
+    default branch, and checked by preflight jobs that never print a value. No job that holds
     one runs Intentional, a repository recipe, a build, a package step or a
     lifecycle script: credentialed jobs publish bytes built without
     credentials, and a secret reaches only the steps whose `env` names it.

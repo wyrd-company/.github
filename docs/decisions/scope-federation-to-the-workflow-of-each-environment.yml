@@ -1,0 +1,79 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Scope federation to the default branch and the workflow of each environment
+relationships:
+  contextualizes:
+    - delivery-environments
+    - delivery-skeleton
+    - deploy-process
+    - release-process
+description: >-
+  Each credential environment has its own Azure identity. GitHub's default
+  subject for a job that names an environment is
+  `repo:<owner>/<repository>:environment:<environment>`, and an identity
+  federated to it is reached only from the default branch where the
+  environment admits jobs from the default branch alone. A private
+  repository on GitHub Free has no deployment branch policy, so any
+  branch's job can name any environment. Under GitHub's default subject
+  template, a job that names no environment presents
+  `repo:<owner>/<repository>:ref:refs/heads/<branch>`, the same subject for
+  every job of every workflow on that branch, as `truename-idp` uses today.
+  Federating each identity to the default branch's subject would let the
+  staging and production jobs of one `deploy.yml`, and the publish and
+  `record` jobs of one `release.yml`, each sign in as the other's identity
+  and read its secrets or sign with its key. GitHub lets a repository
+  administrator set the claims its subject is made of through
+  `PUT /repos/<owner>/<repository>/actions/oidc/customization/sub`, and
+  documents no plan limit on it; `job_workflow_ref` names the workflow file
+  that holds the job and the ref it was read at.
+considered-options:
+  1: >-
+    Keep the environment subject. On a private repository on Free a
+    workflow on any branch then signs in as any environment's identity.
+  2: >-
+    Federate each identity to `ref:refs/heads/<default>`. Only the default
+    branch signs in, but every job of the default branch signs in as every
+    identity of the repository.
+  3: >-
+    Render the jobs of each credential environment into their own reusable
+    workflow, `delivery-<environment>.yml`, and have Airlock set each
+    repository's subject template to the claims `repo`, `ref` and
+    `job_workflow_ref`. Each identity trusts the subject of the default
+    branch and its own environment's file, so a job signs in as an identity
+    only from the default branch and only inside that environment's
+    workflow.
+  4: >-
+    Use Entra's flexible federated identity credentials, which match claims
+    by expression. They are in preview, and they match the same claims that
+    option 3 puts in the subject.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    Entra compares the subject at every sign-in, so the boundary is checked
+    by the system on every plan and visibility, and it keeps one identity
+    per environment. The subject names no environment, so it does not change
+    when the organization moves to GitHub Team and the environments gain
+    their branch policies; those then add GitHub's own check in front of
+    Entra's.
+expected-outcomes:
+  positive:
+    - >-
+      A staging job cannot sign in as production's identity, and a publish
+      job cannot sign as the release authority, on any plan.
+    - >-
+      A run of any branch other than the default branch, a pull request
+      included, signs in as no identity.
+  negative:
+    - >-
+      Every credential environment adds a workflow file to what the
+      templates render, and every call to one costs a job in the run's
+      graph.
+    - >-
+      The subject template applies to every job of the repository, so any
+      other workflow of the repository that federates elsewhere matches the
+      new subject format.
+    - >-
+      A writer who can push to the default branch can change an
+      environment's workflow file and sign in as its identity. Only
+      rulesets, on a public repository or a paid plan, stop that push, as
+      the risk `writers-change-the-default-branch-of-a-private-repository`
+      records.

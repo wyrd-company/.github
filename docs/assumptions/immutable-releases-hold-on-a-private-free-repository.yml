@@ -1,0 +1,20 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+    - keep-release-assets-mutable-for-evidence
+description: >-
+  GitHub's immutable releases are available to a private repository on
+  GitHub Free: a repository administrator enables them through
+  `PUT /repos/<owner>/<repository>/immutable-releases`, and once a release is
+  published its tag cannot be moved or deleted and its assets cannot change.
+end-descendant-type: spike
+evidence:
+  - The read of `truename-idp`'s setting, a private repository on Free,
+    answered 200 with `enabled` false on 2026-11-19. No write was made.
+  - GitHub's immutable releases documentation states no plan or visibility
+    limit.
+  - >-
+    A spike on the testbed, made private, enables the setting, publishes a
+    release, and tries to delete its tag with a token that holds
+    `contents: write`.

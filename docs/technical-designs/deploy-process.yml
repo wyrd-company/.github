@@ -12,6 +12,7 @@ relationships:
   assumes:
     - wrangler-deploys-a-prebuilt-bundle
     - cloudflare-deploy-token-permissions
+    - private-free-jobs-run-in-named-environments
     - worker-version-tag-holds-the-release-tag
 objective: >-
   Define contract `deploy-process`: the Toha deploy template in this
@@ -203,8 +204,11 @@ proposed-design:
     digest. Nothing else of the build's working tree leaves the job.
 
   cloudflare-worker-deploy: >-
-    `deploy-<environment>` enters the environment with `contents: read`,
-    `actions: read` and `id-token: write`. It reads
+    `deploy-<environment>` is the calling job of
+    `delivery-<environment>.yml`, whose deploy job enters the environment
+    with `contents: read`, `actions: read` and `id-token: write`, so the
+    staging and production jobs sign in only as their own environment's
+    identity, as `delivery-environments` states. It reads
     `cloudflare-api-token` through the credential route. It checks out the
     release commit itself, with `persist-credentials: false`, repeats the
     configuration check on that checkout, and requires that no control file,
@@ -228,7 +232,8 @@ proposed-design:
     in that directory with `HOME`, `XDG_CONFIG_HOME` and
     `WRANGLER_LOG_PATH` set to fresh directories in the runner's temporary
     storage, with `CLOUDFLARE_API_TOKEN` from the credential step and
-    `CLOUDFLARE_ACCOUNT_ID` from the environment's variable as the only
+    `CLOUDFLARE_ACCOUNT_ID` from the environment's variable
+    `<ENVIRONMENT>__CLOUDFLARE_ACCOUNT_ID` as the only
     `CLOUDFLARE_` variables, and with no other `WRANGLER_` variable. It reads
     the deployed state with `wrangler deployments status --env <environment>
     --json`; a Worker with no deployment is not deployed, and otherwise

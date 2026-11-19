@@ -1,0 +1,45 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-controls
+    - release-process
+    - hold-the-floor-within-the-github-plan
+    - keep-release-assets-mutable-for-evidence
+slug: writers-change-the-tags-of-a-private-repository
+title: A writer of a private repository creates, moves or deletes a release tag
+description: >-
+  On a private repository of an organization on GitHub Free, the tag
+  rulesets `delivery-tags-immutable`, `delivery-tags-unclassified`,
+  `delivery-tags-recorded`, `delivery-tags-published` and
+  `delivery-tags-repository` cannot be applied, because GitHub gives such
+  a repository no rulesets. Any account with write access, or an agent that
+  pushes with such an account's key, can create a release tag outside the
+  release authority, create a tag of an unclassified form, or move or
+  delete a release tag. A moved tag points a release record at other bytes,
+  a forged tag record can raise the observed rung, and recovery, which
+  reads the tags as the record of what was released, finishes whatever the
+  tags now say.
+categories:
+  - security
+  - integrity
+likelihood: 2
+impact: 3
+response: >-
+  Accepted by the operator on 2026-11-19, who keeps the organization on
+  GitHub Free for its cost. What holds without rulesets: GitHub's immutable
+  releases, which Airlock keeps on wherever the effective `evidence` is
+  `off`, lock the tag of each published release; `record` in mode
+  `recover` requires every tag the release commit carries to point at that
+  commit, and pushes nothing otherwise; and the build provenance attestations bind each
+  release asset to the run that built it, so a consumer that verifies
+  provenance refuses bytes a moved tag points at. Where `evidence` is `on`,
+  nothing stops a tag change, and Airlock's comparison of each release
+  record's assets with its `SHA256SUMS`, evidence file and attestations
+  detects a changed release, not a changed tag. Airlock reports the five
+  rulesets on each such repository as known limits naming this risk.
+  Moving the organization to GitHub Team restores all five: tags matching
+  the release model's templates are created only by the release authority
+  App or the package tags App, every other tag is refused, and no tag is
+  moved or deleted by anyone. Making a repository public restores the same
+  for that repository on Free.
+status: open

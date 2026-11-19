@@ -5,11 +5,11 @@ relationships:
     - release-process
 description: >-
   A job's `GITHUB_TOKEN` with `contents: read` lists the repository's
-  effective rulesets, organization rulesets included, through
+  effective rulesets through
   `GET /repos/<owner>/<repository>/rulesets?includes_parents=true`, and reads
   each one's target, enforcement, conditions and rules through
   `GET /repos/<owner>/<repository>/rulesets/<id>`, so `resolve` and the smoke
-  workflow can require the organization and repository rulesets of
+  workflow can require the repository rulesets of
   `delivery-controls` to be present and `active` with their conditions and
   rules; bypass actors stay hidden from it.
 end-descendant-type: spike
@@ -21,3 +21,8 @@ evidence:
     with the workflow token; no run of it has been examined.
   - The release template's live cases run `resolve` and the smoke workflow on
     the testbed.
+  - On a private repository on GitHub Free both reads answer HTTP 403 with
+    the message `Upgrade to GitHub Pro or make this repository public to
+    enable this feature`, measured on `truename-idp` on 2026-11-19 with the
+    an installation token of a GitHub App; the rulesets check of
+    `delivery-controls` reads that answer as plan-limited.

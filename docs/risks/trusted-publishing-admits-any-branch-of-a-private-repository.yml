@@ -1,0 +1,39 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-environments
+    - release-process
+    - hold-the-floor-within-the-github-plan
+slug: trusted-publishing-admits-any-branch-of-a-private-repository
+title: A workflow on any branch of a private repository publishes through trusted publishing
+description: >-
+  A registry's trusted publisher names the repository, the workflow file
+  `.github/workflows/release.yml` and the environment `publish-<part>`, and
+  no branch: the environment's deployment branch policy was what kept every
+  other branch out. On a private repository of an organization on GitHub
+  Free, GitHub gives environments no deployment branch policy, so a writer
+  who pushes a changed `release.yml` to any branch can run a job that names
+  `publish-<part>` and publish to the registry under the repository's name.
+  Azure sign-in is not affected, because each identity's federated
+  credential names the default branch.
+categories:
+  - security
+  - integrity
+likelihood: 2
+impact: 4
+response: >-
+  Accepted by the operator on 2026-11-19, who keeps the organization on
+  GitHub Free for its cost. What holds: the registry publishes only to the
+  packages whose trusted publisher names this repository, workflow and
+  environment, and its provenance names the branch and commit that
+  published, so a consumer that verifies provenance against the default
+  branch refuses the package. A repository that needs more answers
+  `npm_trusted_publishing` false on such a repository, so that `publish-npm`
+  reads `npm-token` from Key Vault, which only the default branch's
+  workflow reaches. Airlock reports each environment that declares
+  `trusted_publishing` on such a repository as a known limit naming this
+  risk. Moving the organization to GitHub Team restores the deployment
+  branch policy that admits only the default branch, so a job of any other
+  branch cannot enter `publish-<part>`. Making a repository public restores
+  the same for that repository on Free.
+status: open
