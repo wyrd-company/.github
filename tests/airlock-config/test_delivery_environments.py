@@ -155,6 +155,55 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
         self.assert_one({'caller.yml': CALLER.replace('delivery-airlock-safe.yml', 'other.yml')},
                         DECLARATION, 'id-token: write')
 
+    # Span boundaries: a `}}` inside a single-quoted literal does not end the expression.
+
+    def env_step(self, expression):
+        return job('    steps:\n      - run: echo "$P"\n        env:\n          P: ' + expression + '\n')
+
+    def test_quoted_delimiter_before_whole_secrets(self):
+        self.assert_one({'plain.yml': self.env_step("${{ '}}' && toJSON(secrets) }}")},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_quoted_delimiter_before_whole_vars(self):
+        self.assert_one({'plain.yml': self.env_step("${{ '}}' && toJSON(vars) }}")},
+                        DECLARATION, 'the whole vars context')
+
+    def test_quoted_delimiter_in_a_format_string(self):
+        self.assert_one({'plain.yml': self.env_step("${{ format('}}{0}', toJSON(secrets)) }}")},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_escaped_quote_next_to_a_quoted_delimiter(self):
+        for expression in ("${{ format('it''s }}', toJSON(secrets)) }}",
+                           "${{ format('''}}''', toJSON(secrets)) }}",
+                           "${{ format('}}''', toJSON(secrets)) }}"):
+            with self.subTest(expression):
+                self.assert_one({'plain.yml': self.env_step(expression)}, DECLARATION, 'the whole secrets context')
+
+    def test_escaped_quotes_around_a_delimiter_are_one_literal(self):
+        self.assertEqual(violations({'plain.yml': self.env_step("${{ 'a''}}''b' }}")}, DECLARATION), [])
+
+    def test_unterminated_quote_still_reads_what_follows(self):
+        self.assert_one({'plain.yml': self.env_step("${{ 'open toJSON(secrets) }}")},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_context_names_inside_literals_are_not_reads(self):
+        for expression in ("${{ format('literal }} ${{ secrets.SYNTHETIC_PLACEHOLDER {0}', github.sha) }}",
+                           "${{ 'toJSON(secrets)' }}",
+                           "${{ format('{0} secrets vars', 'toJSON(vars)') }}",
+                           "${{ 'it''s toJSON(secrets)' }}"):
+            with self.subTest(expression):
+                self.assertEqual(violations({'plain.yml': self.env_step(expression)}, DECLARATION), [])
+
+    def test_several_spans_on_one_line(self):
+        self.assert_one({'plain.yml': self.env_step("${{ github.sha }} ${{ '}}' }} ${{ toJSON(secrets) }}")},
+                        DECLARATION, 'the whole secrets context')
+        found = violations({'plain.yml': self.env_step("${{ 'x' }}${{ secrets.NPM_TOKEN }} ${{ vars.SOME_NAME }}")},
+                           DECLARATION)
+        self.assertEqual(len(found), 2, found)
+        self.assertIn('secrets.NPM_TOKEN', found[0])
+        self.assertIn('vars.SOME_NAME outside a credential environment workflow', found[1])
+        self.assertEqual(violations({'plain.yml': self.env_step(
+            "${{ github.sha }}-${{ 'secrets }}' }}-${{ github.run_id }}")}, DECLARATION), [])
 
 if __name__ == '__main__':
     unittest.main()
