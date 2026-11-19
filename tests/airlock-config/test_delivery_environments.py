@@ -63,7 +63,57 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
 
     def test_secret_by_index(self):
         self.assert_one({'plain.yml': job("    if: secrets['NPM_TOKEN'] != ''\n    steps: []\n")},
-                        DECLARATION, "secrets.['NPM_TOKEN']")
+                        DECLARATION, 'secrets.NPM_TOKEN')
+
+    def test_secret_in_another_case(self):
+        self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ SECRETS.npm_token }}\n')},
+                        DECLARATION, 'secrets.NPM_TOKEN')
+
+    def test_run_token_by_index_or_case_passes(self):
+        self.assertEqual(violations({'plain.yml': job(
+            "    steps:\n      - run: echo \"${{ secrets['GITHUB_TOKEN'] }} ${{ secrets.github_token }}\"\n")},
+            DECLARATION), [])
+
+    def test_whole_secrets_context_through_to_json(self):
+        self.assert_one({'plain.yml': job('    steps:\n      - run: echo "$S"\n        env:\n'
+                                          '          S: ${{ toJSON(secrets) }}\n')},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_whole_secrets_context_alone(self):
+        self.assert_one({'plain.yml': job('    steps:\n      - uses: example/action@'
+                                          '0000000000000000000000000000000000000000 # 1.0.0\n'
+                                          '        with:\n          all: ${{ secrets }}\n')},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_secret_by_computed_index(self):
+        self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ secrets[inputs.name] }}\n')},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_whole_secrets_context_in_a_bare_condition(self):
+        self.assert_one({'plain.yml': job("    if: contains(toJSON(secrets), 'x')\n    steps: []\n")},
+                        DECLARATION, 'the whole secrets context')
+
+    def test_whole_secrets_context_outside_any_job(self):
+        self.assert_one({'plain.yml': 'env:\n  S: ${{ toJSON(secrets) }}\n' + job('    steps: []\n')},
+                        DECLARATION, 'the whole secrets context outside a job')
+
+    def test_inherited_secrets(self):
+        self.assert_one({'caller.yml': CALLER + '    secrets: inherit\n'}, DECLARATION, 'secrets: inherit')
+
+    def test_whole_vars_context_even_in_its_credential_workflow(self):
+        self.assert_one({'delivery-airlock-safe.yml': CALLED.replace(
+            '${{ vars.AIRLOCK_SAFE__AZURE_CLIENT_ID }}', '${{ toJSON(vars) }}')},
+            DECLARATION, 'the whole vars context')
+
+    def test_whole_vars_context_elsewhere(self):
+        self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ toJSON(vars) }}\n')},
+                        DECLARATION, 'the whole vars context')
+
+    def test_names_in_prose_and_literals_are_not_reads(self):
+        self.assertEqual(violations({'plain.yml': job(
+            "    steps:\n      - name: Read no secrets and no vars\n"
+            "        run: echo \"${{ format('secrets {0} vars', github.sha) }} ${{ github.event.secrets }}\"\n")},
+            DECLARATION), [])
 
     def test_variable_outside_a_credential_workflow(self):
         self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ vars.AIRLOCK_SAFE__AZURE_CLIENT_ID }}\n')},

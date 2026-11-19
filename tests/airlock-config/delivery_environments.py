@@ -5,7 +5,11 @@
 file name, and the rendered delivery declaration, and returns one line for each
 breach; an empty list passes. A breach is:
 
-- a `secrets.` reference other than `secrets.GITHUB_TOKEN`;
+- a read of the `secrets` context other than `secrets.GITHUB_TOKEN`,
+  including a read of the whole context, such as `toJSON(secrets)`, or an index
+  that is not a string literal;
+- `secrets: inherit` on a job that calls a reusable workflow;
+- a read of the whole `vars` context, anywhere;
 - a `vars.` reference outside a job of a credential environment's workflow
   file, `delivery-<E>.yml` for an environment `<E>` that the declaration lists;
 - a `vars.` name in such a job other than `<ENVIRONMENT>__<NAME>` for a name
@@ -14,33 +18,70 @@ breach; an empty list passes. A breach is:
 - `id-token: write` anywhere but in a job of a credential environment's
   workflow file, a job that calls one, and a job named `attest`.
 
-Every string value is searched, not only `${{ }}` spans, because a job
-condition is a bare expression.
+Expressions are every `${{ }}` span in any string, and every `if:` value,
+which GitHub reads as an expression without `${{ }}`. Context names and
+property names are compared without case, as GitHub compares them.
 """
 import re
 
 from ruamel.yaml import YAML
 
-REFERENCE = re.compile(r'\b(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_-]*)|(\[))')
+SPAN = re.compile(r'\$\{\{(.*?)\}\}', re.DOTALL)
+LITERAL = re.compile(r"'(?:[^']|'')*'")
+IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_-]*')
+PROPERTY = re.compile(r'\s*\.\s*([A-Za-z_][A-Za-z0-9_-]*)')
+INDEX = re.compile(r"\s*\[\s*'((?:[^']|'')*)'\s*\]")
+WHOLE = '*'
 WORKFLOW = re.compile(r'^delivery-([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\.ya?ml$')
 CALL = re.compile(r'^\./\.github/workflows/(delivery-[a-z][a-z0-9-]*\.ya?ml)$')
 
 
-def strings(value):
+def expressions(value, key=None):
     if isinstance(value, dict):
-        for item in value.values():
-            yield from strings(item)
+        for name, item in value.items():
+            yield from expressions(item, name)
     elif isinstance(value, list):
         for item in value:
-            yield from strings(item)
+            yield from expressions(item)
     elif isinstance(value, str):
-        yield value
+        spans = SPAN.findall(value)
+        yield from spans
+        if key == 'if' and not spans:
+            yield value
+
+
+def context_reads(expression):
+    """Yield (context, name) for each read of `secrets` or `vars`; name is WHOLE for the whole context."""
+    position = 0
+    while position < len(expression):
+        literal = LITERAL.match(expression, position)
+        if literal:
+            position = literal.end()
+            continue
+        word = IDENTIFIER.match(expression, position)
+        if not word:
+            position += 1
+            continue
+        position = word.end()
+        before = expression[:word.start()].rstrip()
+        context = word.group().lower()
+        if context not in ('secrets', 'vars') or before.endswith('.'):
+            continue
+        named = PROPERTY.match(expression, position) or INDEX.match(expression, position)
+        if named:
+            position = named.end()
+            yield context, named.group(1).replace("''", "'").upper()
+        else:
+            yield context, WHOLE
 
 
 def references(value):
-    for text in strings(value):
-        for match in REFERENCE.finditer(text):
-            yield match.group(1), match.group(2) or '[' + text[match.end():].split(']')[0] + ']'
+    for expression in expressions(value):
+        yield from context_reads(expression)
+
+
+def describe(kind, ref):
+    return f'the whole {kind} context' if ref == WHOLE else f'{kind}.{ref}'
 
 
 def grants_id_token(permissions):
@@ -70,17 +111,19 @@ def violations(workflows, declaration):
         jobs = workflow.get('jobs') or {}
         outside = {key: value for key, value in workflow.items() if key != 'jobs'}
         for kind, ref in references(outside):
-            if kind == 'secrets' and ref != 'GITHUB_TOKEN':
-                found.append(f'{name}: secrets.{ref} outside a job')
-            if kind == 'vars':
-                found.append(f'{name}: vars.{ref} outside a job')
+            if kind == 'secrets' and ref != 'GITHUB_TOKEN' or kind == 'vars':
+                found.append(f'{name}: {describe(kind, ref)} outside a job')
         if grants_id_token(workflow.get('permissions')):
             found.append(f'{name}: id-token: write at the top level')
         for job_id, job in jobs.items():
             where = f'{name} job {job_id}'
+            if isinstance(job.get('secrets'), str):
+                found.append(f'{where}: secrets: {job["secrets"]} passes every secret to the called workflow')
             for kind, ref in references(job):
                 if kind == 'secrets' and ref != 'GITHUB_TOKEN':
-                    found.append(f'{where}: secrets.{ref}')
+                    found.append(f'{where}: {describe(kind, ref)}')
+                elif kind == 'vars' and ref == WHOLE:
+                    found.append(f'{where}: the whole vars context')
                 elif kind == 'vars':
                     if own is None:
                         found.append(f'{where}: vars.{ref} outside a credential environment workflow')
