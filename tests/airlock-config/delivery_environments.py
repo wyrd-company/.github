@@ -19,14 +19,17 @@ breach; an empty list passes. A breach is:
   workflow file, a job that calls one, and a job named `attest`.
 
 Expressions are every `${{ }}` span in any string, and every `if:` value,
-which GitHub reads as an expression without `${{ }}`. Context names and
-property names are compared without case, as GitHub compares them.
+which GitHub reads as an expression without `${{ }}`. A span ends at the first
+`}}` outside a string literal; a literal is single-quoted, with `''` for a
+quote, so neither a `}}` nor a context name inside one counts. An unterminated
+span runs to the end of the string, and the text after an unterminated quote
+is still read, so neither hides a read. Context names and property names are compared without case, as GitHub
+compares them.
 """
 import re
 
 from ruamel.yaml import YAML
 
-SPAN = re.compile(r'\$\{\{(.*?)\}\}', re.DOTALL)
 LITERAL = re.compile(r"'(?:[^']|'')*'")
 IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_-]*')
 PROPERTY = re.compile(r'\s*\.\s*([A-Za-z_][A-Za-z0-9_-]*)')
@@ -44,10 +47,34 @@ def expressions(value, key=None):
         for item in value:
             yield from expressions(item)
     elif isinstance(value, str):
-        spans = SPAN.findall(value)
+        spans = list(spans_of(value))
         yield from spans
         if key == 'if' and not spans:
             yield value
+
+
+def literal_end(text, start):
+    """Return the index after the literal that opens at text[start], or len(text) when it never closes."""
+    position = start + 1
+    while position < len(text):
+        if text[position] == "'":
+            if text.startswith("''", position):
+                position += 2
+                continue
+            return position + 1
+        position += 1
+    return len(text)
+
+
+def spans_of(text):
+    """Yield the body of each `${{ }}` span, ending each at the first `}}` outside a string literal."""
+    position = text.find('${{')
+    while position != -1:
+        start = cursor = position + 3
+        while cursor < len(text) and not text.startswith('}}', cursor):
+            cursor = literal_end(text, cursor) if text[cursor] == "'" else cursor + 1
+        yield text[start:cursor]
+        position = text.find('${{', cursor + 2)
 
 
 def context_reads(expression):
