@@ -86,9 +86,7 @@ proposed-design:
     environment's bundle without credentials. Record is the GitHub deployment
     that each deploy job creates when it enters its environment, and the
     Worker version annotations that name the release. Deliver and verify run
-    once per environment in chain order: `approve-<environment>` waits for a
-    person when the run's effective `deploy-approval` is `person`;
-    `deploy-<environment>` reads back what is deployed, applies pending
+    once per environment in chain order: `deploy-<environment>` reads back what is deployed, applies pending
     migrations and deploys the bundle; `verify-<environment>` runs the
     repository's verification recipe against it. Deploy targets are parts
     inside this parent; `cloudflare-worker` is the first.
@@ -118,9 +116,8 @@ proposed-design:
     primary tag. `environments` is a looped `text` question, at least one
     entry, each validated by `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` and at most 64
     characters, in the order an automatic deploy enters them; the names the
-    other templates use, `release-authority`, `package-tags`,
-    `release-approval` and `airlock-safe`, and names starting with
-    `publish-` or ending with `-approval`, are refused. Each part's questions
+    other templates use, `release-authority`, `package-tags` and
+    `airlock-safe`, and every name starting with `publish-` are refused. Each part's questions
     carry `when` conditions on `targets`.
 
   part-interface: >-
@@ -136,8 +133,7 @@ proposed-design:
     parent renders the deploy steps and the verify body once per environment
     with the template variable `environment` set. The parent writes every
     job's id, `needs`, condition and `environment`, the `DEPLOY_` and
-    `RELEASE_` values, and the deploy job's first steps: the approval check,
-    the credential steps of `delivery-skeleton`, and the download and digest
+    `RELEASE_` values, and the deploy job's first steps: the credential steps of `delivery-skeleton`, and the download and digest
     check of the build's artifact. The build and verify bodies validate
     against the skeleton's `schemas/part-job.schema.json`, and the deploy
     steps validate as the `steps` of such a job whose permissions are
@@ -169,10 +165,8 @@ proposed-design:
     observes the rung from the tag records reachable from the default branch
     head, and computes the effective ceremony at that rung, as
     `delivery-skeleton` fixes for a deploy. An automatic start whose
-    effective `deploy-start` is `person` ends with mode `none`, and so does a
-    run whose `actor` or `triggering_actor` is not of type `User` when the
-    effective `deploy-approval` is `person`; a person then dispatches the
-    deploy. Otherwise the mode is `deploy`. Beyond the skeleton's outputs it exposes `tag`,
+    effective `deploy-start` is `person` ends with mode `none`; a person then
+    dispatches the deploy. Otherwise the mode is `deploy`. Beyond the skeleton's outputs it exposes `tag`,
     `version` and `environments`, a JSON array of the selected environments in
     chain order.
 
@@ -183,9 +177,8 @@ proposed-design:
     GitHub deployment, and the part writes the release tag and a message on
     the Worker version it creates. Deliver and verify repeat per environment:
     the jobs for an environment run only when it is in `environments`, and
-    `approve-<environment>`, which enters `<environment>-approval` only when
-    the effective `deploy-approval` is `person`, and `deploy-<environment>` need
-    `verify-<previous environment>` in chain order. Every job follows the
+    `deploy-<environment>` needs `verify-<previous environment>` in chain
+    order. Every job follows the
     skeleton's stage gate, so a failure in one environment stops every later
     one.
 
@@ -211,8 +204,7 @@ proposed-design:
 
   cloudflare-worker-deploy: >-
     `deploy-<environment>` enters the environment with `contents: read`,
-    `actions: read` and `id-token: write`. When the effective
-    `deploy-approval` is `person` it runs the approval check first. It reads
+    `actions: read` and `id-token: write`. It reads
     `cloudflare-api-token` through the credential route. It checks out the
     release commit itself, with `persist-credentials: false`, repeats the
     configuration check on that checkout, and requires that no control file,
@@ -309,12 +301,11 @@ proposed-design:
     of two, an empty migration list, and a build recipe, and validate the
     rendered declaration against the declaration schema; they find no trigger
     other than `workflow_dispatch`. A condition table checks the
-    per-environment gates and the approval jobs for success, failure, skip and
+    per-environment gates for success, failure, skip and
     cancellation. Tests of `resolve` cover a person's dispatch, a dispatch
     with `automatic: true` at an effective `deploy-start` of `person` and of
     `automatic`, a dispatch by `github-actions[bot]` with `automatic` false,
-    which is an automatic start, and one at an effective `deploy-approval`
-    of `person`, which ends with mode `none`, a dispatch `from` each environment, a baseline tag, a tag of
+    which is an automatic start, a dispatch `from` each environment, a baseline tag, a tag of
     another unit, a tag whose `tag-id` names a key that is not the primary
     key of the model at the workflow's commit, a tag outside the default
     branch and a missing release record. Tests of the configuration check refuse a top-level route, an
@@ -332,8 +323,8 @@ proposed-design:
     the release tag. Selection tests cover a dispatch `from` the failed
     middle environment of three, which deploys it and the last, with the
     earlier one's preflight skipped. Named mutation controls remove the
-    read-back, the digest checks, the overlap check, the migration order and
-    the approval check, and each fails a test. `actionlint` passes on every
+    read-back, the digest checks, the overlap check and the migration order,
+    and each fails a test. `actionlint` passes on every
     rendered workflow. Live cases deploy a release of a test Worker with a D1
     database to two environments in order, deploy the same release again with
     no change, and deploy after a new migration.

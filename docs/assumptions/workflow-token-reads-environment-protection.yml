@@ -5,10 +5,9 @@ relationships:
 description: >-
   A job's `GITHUB_TOKEN` with `actions: read` lists the repository's
   environments through `GET /repos/<owner>/<repository>/environments`, with
-  each environment's protection rules, required reviewers included, and its
-  deployment branch policy, so the per-repository audit can check that each
-  declared environment exists, admits the default branch only, and, for an
-  approval environment, has a required reviewer.
+  each environment's protection rules and its deployment branch policy, so
+  the per-repository audit can check that each declared environment exists
+  and admits the default branch only.
 end-descendant-type: spike
 evidence:
   - GitHub's list of permissions required for GitHub Apps places listing

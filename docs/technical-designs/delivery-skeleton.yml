@@ -11,10 +11,8 @@ relationships:
     - release-authority-token
     - continuous-integration
   assumes:
-    - run-approvals-name-the-environment-reviewer
     - toha-renders-question-defaults
     - workflow-token-reads-effective-rulesets
-    - workflow-run-reports-the-ci-run-actors
 objective: >-
   Define the skeleton that the release template and the deploy template share:
   the six stages every delivery workflow runs, the job graph and gates that
@@ -39,8 +37,8 @@ background:
       route and ceremony, and Toha gives two template roots no shared file.
     - >-
       Ceremony depends on the rung the repository holds once a release
-      exists, while a rendered workflow and an environment's protection rules
-      change only when a template is updated or Airlock applies.
+      exists, while a rendered workflow changes only when a template is
+      updated.
 design-challenges:
   one-source-for-two-roots: >-
     The skeleton lives once in `templates/skeleton/`, and each template root
@@ -52,19 +50,9 @@ design-challenges:
     Assurance depends only on the tier, which the release template knows when
     it renders, so assurance controls are rendered as jobs that exist or do
     not. Ceremony depends on the rung, which only the tags of the moment show,
-    so every workflow renders both the automatic trigger and the approval jobs,
-    and its `resolve` job computes the effective ceremony for the run from the
-    release declaration and the tag records.
-  approval-in-its-own-environment: >-
-    Whether a person approves depends on the run, while GitHub's required
-    reviewers belong to an environment and hold every job that enters it. An
-    approval is therefore a job that enters an approval environment, which
-    carries reviewers and no credential, and which the run enters only when
-    its effective approval setting is `person`. Credential environments carry
-    no reviewers, so their preflight jobs never wait for a person, and the job
-    that holds the credential checks that the run's approval exists before it
-    acts. The decision record `gate-approval-in-its-own-environment` holds the
-    trade-off.
+    so every workflow renders the automatic trigger, and its `resolve` job
+    computes the effective ceremony for the run from the release declaration
+    and the tag records.
   credentials-only-through-environments: >-
     A rendered workflow contains no `secrets.` expression other than
     `secrets.GITHUB_TOKEN`. Every credential value enters a job through a
@@ -110,12 +98,12 @@ proposed-design:
     which builds the release commit and which the release part jobs prefixed
     `build-`, `assemble-` and `consume-` need, the release parent's `attest`,
     and the deploy part's job prefixed `build-`. Record holds the release workflow's
-    `approve-release`, `record`, `release-record` and, at `revalidation` on,
+    `record`, `release-record` and, at `revalidation` on,
     `revalidate`; the deploy workflow's record is the GitHub deployment that
     each deploy job creates by entering its environment, together with the
     version annotations the Worker part writes. Deliver holds release part
-    jobs prefixed `publish-` and the deploy workflow's `approve-<environment>`
-    and `deploy-<environment>`. Verify holds release part jobs prefixed
+    jobs prefixed `publish-` and the deploy workflow's
+    `deploy-<environment>`. Verify holds release part jobs prefixed
     `verify-`, the parent's `verify-provenance`,
     `prepare-after-publication-tags`, `tag-after-publication`, `evidence`,
     `request-deploy` and `continue-release`, and deploy jobs
@@ -140,12 +128,9 @@ proposed-design:
     job adds `&& (<unit test>)`, one clause per Release Unit it serves joined
     with `||`, and, when the part job has `if`, `&& (<if>)`; the parent writes
     every `needs` and every condition, and a part can only narrow its own
-    condition. An approval job adds
-    `&& fromJSON(needs.resolve.outputs.ceremony)['<approval control>'] == 'person'`,
-    and the job it gates needs it and accepts its `result` of `success` or
-    `skipped`. In the deploy workflow the deliver and verify stages repeat per
-    environment in chain order: `approve-<environment>` and
-    `deploy-<environment>` need every earlier job, including
+    condition. In the deploy workflow the deliver and verify stages repeat per
+    environment in chain order: `deploy-<environment>` needs every earlier
+    job, including
     `verify-<previous environment>`, so one environment is delivered and
     verified before the next is entered. A failed job stops every later job.
     The workflow sets `permissions: {}` at the top level and every job
@@ -161,12 +146,12 @@ proposed-design:
     emitted. The skeleton holds: `partials/gates.jinja`, the macros that write
     `needs` lists and stage conditions; `partials/resolve-steps.yml`, the
     trigger checks, tag fetch, Intentional install and declaration read;
-    `partials/preflight-job.yml`; `partials/approval-job.yml`;
+    `partials/preflight-job.yml`;
     `partials/key-vault-read.yml`, the federated sign-in and secret read
     steps; `partials/app-token.yml`, the token action step;
-    `partials/approval-check.yml`; `scripts/delivery.js`, which reads tag
-    records, observes the rung, computes effective controls, reads continuous
-    integration evidence and checks run approvals, and which the partials
+    `scripts/delivery.js`, which reads tag records, observes the rung,
+    computes effective controls and reads continuous integration evidence,
+    and which the partials
     include into the `script` of pinned `actions/github-script` steps, so no
     job needs a checkout to run it;
     `schemas/delivery-declaration-1.schema.json`, a byte-identical copy of the
@@ -198,8 +183,8 @@ proposed-design:
     A job that needs a credential names its credential environment with
     `environment:` and requests `id-token: write`. Every such job sets the
     environment's `deployment: false` except `deploy-<environment>`, whose
-    GitHub deployment is the deploy's record; required reviewers and branch
-    policies apply either way. Its first steps, before any
+    GitHub deployment is the deploy's record; the environment's branch policy
+    applies either way. Its first steps, before any
     step that installs a dependency, are the skeleton's. To read secrets, the
     job runs `azure/login` pinned by commit with `client-id`, `tenant-id` and
     `allow-no-subscriptions: true` from `vars.AZURE_CLIENT_ID` and
@@ -297,22 +282,8 @@ proposed-design:
     because nothing could check one. A run started
     automatically whose effective start setting is `person` ends in `resolve`
     with mode `none`, success, and a summary naming the control and the rung.
-    A run whose `actor` or `triggering_actor` is not of type `User` has no
-    person known to have started it, so no approval can exclude its starter:
-    when its effective approval setting is `person`, it ends in `resolve`
-    with mode `none`, success, and a summary saying that a person dispatches
-    it. When the effective approval setting is `person`, the run's approval
-    job enters its approval environment,
-    `release-approval` for a release and `<environment>-approval` for each
-    deploy environment, and GitHub holds it until a person approves; the job
-    it gates then runs the skeleton's approval check before anything else: it
-    requires the run's `actor` and `triggering_actor` to be of type `User`,
-    which a re-run by an App breaks, reads
-    `GET /repos/<owner>/<repository>/actions/runs/<run id>/approvals` and
-    requires an approval with state `approved` for its own approval
-    environment by a user other than the run's `actor` and its
-    `triggering_actor`, and fails otherwise. No input names another run for
-    this check, because nothing authenticates which run dispatched another.
+    No person approves a run once it has started, a known limit that the
+    risk `releases-and-deploys-run-without-approval` records.
 
   triggers-and-concurrency: >-
     The release workflow has `name: Release`, a `workflow_dispatch` trigger
@@ -340,15 +311,9 @@ proposed-design:
     older release, create baseline tags or fail, ends with
     `continue-release`, which dispatches an automatic run; that run, an
     automatic start by `github-actions[bot]`, ends with mode `none` when the
-    effective `release-start` or `release-approval` is `person`, and the
-    pending intents then wait, unchanged: when the effective `release-start`
-    is `person`, for a person's dispatch alone, because every start by
-    continuous integration is automatic; and, when only `release-approval`
-    is `person`, for a person's dispatch or the next start by continuous
-    integration whose `actor` and `triggering_actor` are both of type
-    `User`, because a start with either of type `Bot` ends with mode `none`
-    by the same rule; a
-    deploy run
+    effective `release-start` is `person`, and the pending intents then wait,
+    unchanged, for a person's dispatch, because every start by continuous
+    integration is automatic; a deploy run
     exists only for a release that was made or recovered, or for a person's
     request, and `request-deploy` requests one only for the newest release
     of the unit the default branch head's deploy configuration deploys, as
@@ -360,8 +325,7 @@ proposed-design:
     deploy dispatch that
     replaces a pending automatic deploy stands as the person's choice, such as
     a rollback; the next release or dispatch deploys the newest release. A person's own dispatch replaced while
-    pending shows as cancelled, and the person dispatches again. A run waiting
-    for an approval holds its group. Both workflows are fixed paths,
+    pending shows as cancelled, and the person dispatches again. Both workflows are fixed paths,
     `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.
 
   rehearsal-workflows: >-

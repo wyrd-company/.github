@@ -107,12 +107,11 @@ properties:
     automatically on merge, secrets rotate unattended, and a template update
     merges without review. At Trusted a person starts each release or deploy
     and reviews each template update. At Custodial a person starts it, a
-    second person approves it, a person reviews each template update, and
-    Elegua waits for a person before it promotes a rotated secret. The person
-    who approves a release or deploy is never the person who started it, so a
-    Custodial repository with one maintainer cannot release at the Stable
-    rung. A tier's ceremony applies at the Stable rung. Below
-    Stable, every tier carries Standard's ceremony. A release carries the
+    person reviews each template update, and Elegua waits for a person before
+    it promotes a rotated secret. No person approves a release or deploy once
+    it has started, a known limit that the risk
+    `releases-and-deploys-run-without-approval` records. A tier's ceremony
+    applies at the Stable rung. Below Stable, every tier carries Standard's ceremony. A release carries the
     ceremony of the rung the repository holds once that release exists, so
     the first release at or above 1.0.0 carries the tier's ceremony. Maturity
     relaxes ceremony and never assurance.
@@ -125,12 +124,10 @@ properties:
     A GitHub App that is the only actor allowed to create a release commit on
     the default branch and its tag. The release workflow uses it inside an
     environment restricted to the default branch, after validation finishes
-    in a job that holds no key and after a person approves when the release's
-    ceremony requires it, and the workflow requests a token limited to the one
-    repository. The
-    token action, a GitHub action in its own repository, has Key Vault sign
-    the token request with the App's private key, so the key never reaches a
-    runner. A job that can sign can mint a token for every repository the App
+    in a job that holds no key, and the workflow requests a token limited to
+    the one repository. The token action, a GitHub action in its own
+    repository, has Key Vault sign the token request with the App's private
+    key, so the key never reaches a runner. A job that can sign can mint a token for every repository the App
     is installed on, so a shared App is one trust boundary. The organization
     has one Intentional App for its Standard repositories and one for its
     Trusted repositories, and a Custodial repository has its own App. A person
@@ -145,10 +142,8 @@ properties:
     names them in its answers.
   environment: >-
     A GitHub environment of a repository. It is the only route from a workflow
-    job to a credential, and it accepts jobs from the default branch only. A
-    person's approval, when the ceremony of a run requires one, is an approval
-    environment that holds no credential, whose required reviewers hold the
-    run before its job that uses the credential. It holds the identifiers for federated sign-in to Azure, the Key
+    job to a credential, and it accepts jobs from the default branch only. It
+    holds the identifiers for federated sign-in to Azure, the Key
     Vault address, the App identifier, and the signing key name as variables,
     and no secret value. Terraform outputs these values and Airlock writes
     them.
@@ -172,7 +167,7 @@ properties:
     what the cloud holds.
   repository-settings: >-
     The GitHub configuration of a repository and the organization: rulesets,
-    environments with their protection rules and variables, and the trusted
+    environments with their branch policies and variables, and the trusted
     publishing settings of each registry. Airlock applies them from the
     declared configuration, and its audit reports any difference between the
     declaration and what GitHub and the registries hold. npm shows a
