@@ -54,8 +54,11 @@ specification's schema and compares the central one with
 `test_central_workflows` check triggers, permissions, environment and action
 inputs. `test_delivery_environments` runs `delivery_environments.py`, the
 check that `delivery-environments` states in its validation criteria, on each
-render; `test_delivery_environments.py` proves the check refuses each breach it
-names. `test_actionlint` lints the rendered workflows, `test_action_pins`
+render. The check reads every `${{ }}` span and every `if:` value, and refuses
+a read of the whole `secrets` or `vars` context, such as `toJSON(secrets)`, a
+computed index, and `secrets: inherit`, besides named reads;
+`test_delivery_environments.py` proves it refuses each breach it names, and
+mutation rows add each such read to the rendered workflows. `test_actionlint` lints the rendered workflows, `test_action_pins`
 requires every external action to be pinned by commit with a comment, and
 `test_renovate_reads_the_pins` checks that `renovate.json` reads the template's
 workflow sources, whose conditional names do not end in `.yml`.
