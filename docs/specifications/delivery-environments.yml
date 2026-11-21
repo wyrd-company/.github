@@ -215,7 +215,9 @@ description: >-
   the apply credential. The Airlock Worker binds the bucket and its code
   only reads it: a Workers R2 binding grants the whole bucket, so the
   Worker's tests show that no code path writes or deletes an object there.
-  Terraform holds no GitHub credential and writes no GitHub setting. The
+  Terraform holds no credential that writes to GitHub and writes no GitHub
+  setting; how it authenticates its reads of private repositories is open in
+  wyrd-company/.github#20. The
   decision record `deliver-terraform-outputs-to-the-airlock-worker-through-r2`
   holds the trade-off, and the risk
   `terraform-outputs-object-is-not-authenticated` its limit. Terraform

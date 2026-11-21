@@ -10,7 +10,8 @@ description: >-
   The Airlock Worker's attended run writes each credential environment's
   variables, such as client ids and vault addresses, from the object that
   Terraform's `github_environments` output gives. Terraform writes no
-  GitHub setting and holds no GitHub credential, and who runs Terraform, and
+  GitHub setting and holds no credential that writes to GitHub, and who runs
+  Terraform, and
   with what credential, is open in wyrd-company/.github#20. Something has to
   carry the object from Terraform's apply to the Worker. The operator ruled
   on 2026-11-21 (re-plan question 5).
@@ -38,7 +39,8 @@ decision-outcome:
     The operator's ruling, for the reason the operator gave: an R2 API token
     can be scoped to one bucket, so Terraform's apply can hand the object to
     the Worker through a credential that reaches nothing else, and no person
-    has to carry a file. Terraform still holds no GitHub credential, and
+    has to carry a file. Terraform still holds no credential that writes to
+    GitHub, and
     Airlock stays the only writer of GitHub settings. A tampered object
     changes nothing by itself: every value it carries reaches GitHub only in
     a batch that an elevated person reviewed, setting by setting, and
