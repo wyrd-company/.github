@@ -238,8 +238,7 @@ validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
   fields and variable names to the forms above, refuses an environment that
   carries both secrets and keys, and refuses an
-  Airlock configuration declaration with any environment other than
-  `airlock-safe`. Each
+  Airlock configuration declaration with any environment. Each
   template's tests render every part and compare the environments, secrets,
   keys, trusted publishing and variables in the rendered declaration with the
   lists above. A test of each rendered workflow finds no `secrets.`

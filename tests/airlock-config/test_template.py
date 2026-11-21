@@ -243,7 +243,7 @@ class AirlockTemplate(unittest.TestCase):
         rendered = (self.target / '.github/delivery/airlock-config.json').read_text()
         declaration = json.loads(rendered)
         self.assertEqual(list(Draft202012Validator(SCHEMA).iter_errors(declaration)), [])
-        self.assertEqual(declaration, dict(EXAMPLE, environments={}))
+        self.assertEqual(declaration, EXAMPLE)
         self.assertEqual(rendered, json.dumps(declaration, indent=2, sort_keys=True, ensure_ascii=False) + '\n')
 
     def test_audit_workflow(self):

@@ -21,8 +21,7 @@ INVALID = {
     'secret-with-env-and-fields': (['environments', 'publish-homebrew-tap', 'secrets', 0], 'oneOf'),
     'environment-with-secrets-and-keys': (['environments', 'publish-homebrew-tap'], 'not'),
     'airlock-config-declares-a-tier': ([], 'not'),
-    # Names the retired airlock-audit environment on purpose: the only environment allowed is airlock-safe.
-    'airlock-config-with-another-environment': (['environments'], 'const'),
+    'airlock-config-with-an-environment': (['environments'], 'maxProperties'),
     'key-without-installation-variable': (['environments', 'release-authority', 'keys', 0], 'required'),
     'prepare-output-outside-the-repository': (['prepare_outputs', 0], 'pattern'),
     'prepare-output-matching-every-path': (['prepare_outputs', 0], 'not'),

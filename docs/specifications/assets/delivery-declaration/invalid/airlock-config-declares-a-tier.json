@@ -1,27 +1,6 @@
 {
   "$schema": "https://wyrd.foo/delivery/declaration/1",
-  "environments": {
-    "airlock-safe": {
-      "keys": [
-        {
-          "app_id_variable": "AIRLOCK_SAFE_APP_ID",
-          "installed_on_variable": "AIRLOCK_SAFE_INSTALLED_ON",
-          "key_name_variable": "AIRLOCK_SAFE_KEY_NAME",
-          "slug": "airlock-safe"
-        }
-      ],
-      "purpose": "Sign Airlock Safe's token request for the organization's central audit",
-      "secrets": [],
-      "variables": [
-        "AIRLOCK_SAFE_APP_ID",
-        "AIRLOCK_SAFE_INSTALLED_ON",
-        "AIRLOCK_SAFE_KEY_NAME",
-        "AZURE_CLIENT_ID",
-        "AZURE_KEY_VAULT_URL",
-        "AZURE_TENANT_ID"
-      ]
-    }
-  },
+  "environments": {},
   "template": "airlock-config",
   "tier": "standard"
 }

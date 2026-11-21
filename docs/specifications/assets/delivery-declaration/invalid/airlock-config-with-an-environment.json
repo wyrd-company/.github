@@ -1,0 +1,12 @@
+{
+  "$schema": "https://wyrd.foo/delivery/declaration/1",
+  "environments": {
+    "publish-npm": {
+      "keys": [],
+      "purpose": "Publish npm packages",
+      "secrets": [],
+      "variables": []
+    }
+  },
+  "template": "airlock-config"
+}
