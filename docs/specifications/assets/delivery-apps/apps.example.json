@@ -14,6 +14,7 @@
         "contents": "read",
         "custom_properties_for_organizations": "read",
         "environments": "read",
+        "members": "read",
         "metadata": "read",
         "organization_actions_variables": "read",
         "organization_administration": "read",

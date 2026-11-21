@@ -29,7 +29,8 @@ description: >-
   `repo-wyrd-foo-publisher`, `signers` are the repositories that publish
   packages and `installed_on` is the package inbox. `airlock-safe` is
   Airlock Safe, Airlock's read-only App: every permission it lists is
-  `read`, and its `installed_on` is `<owner>/*`, every repository of the
+  `read`, among them `members: read`, which the Airlock Worker's sign-in
+  needs to read the person's organization membership, and its `installed_on` is `<owner>/*`, every repository of the
   owner, which no other role may name. No environment signs with Safe's
   key: the Airlock Worker does, in the central run that `delivery-controls`
   defines. So Safe's one signer is the repository whose Worker it is,
