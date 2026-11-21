@@ -288,31 +288,69 @@ description: >-
   What a rotation ends. Rotating `airlock-entra-client-secret` on its
   schedule stops new Azure tokens for the old secret after Elegua's
   overlap, and ends nothing already issued. Key Vault signs whatever digest
-  an authorized caller sends and checks no claim inside it, and GitHub
-  checks a JSON Web Token's `iat` and `exp`, with `exp` at most ten minutes
-  after `iat`, only when the token is presented, against the App's
-  registered public key. So while the Worker or its Entra credential is in
-  other hands, the holder can have Key Vault sign Safe tokens dated for any
-  future window, and each one mints an installation token, valid for an
-  hour, when its window comes. Removing the Entra secret or the
-  application's role, or disabling the key in Key Vault, stops new
-  signatures and does not end the signatures already made: only deleting
-  that private key from Airlock Safe's registration at GitHub does. A
-  suspected compromise of the Worker or its Entra credential is therefore
-  answered in this order. First, an owner suspends Airlock Safe's
-  installation for the owner, which stops new installation tokens, and
-  tokens already minted expire within the hour. Second, a person deletes
-  the private key from Safe's settings at GitHub, generates a new one, and
-  imports it into the vault as a new version of the same key, as
-  `release-authority-token` gives the import, because GitHub offers no API
-  that generates an App's private key; then disables the old version in Key
-  Vault. Third, Elegua rotates `airlock-entra-client-secret` out of turn.
-  Fourth, the person reads the vault's log of sign operations on Safe's key
-  for the whole time the credential may have been exposed, and resumes the
-  installation only after the old private key is gone from GitHub, so no
-  pre-signed token works on resumption. The risk
-  `leaked-worker-credential-pre-signs-airlock-safe-tokens` records the
-  exposure. Each invocation of the Worker holds its Azure and
+  an authorized caller sends and checks no claim inside it. GitHub's
+  documentation requires a JSON Web Token's `exp` to be no more than ten
+  minutes into the future and recommends an `iat` sixty seconds in the
+  past; it does not say how GitHub treats an `iat` in the future, and it
+  checks the token against the App's registered public keys when the token
+  is presented. So while the Worker or its Entra credential is in other
+  hands, the holder can have Key Vault sign Safe tokens whose `iat` and
+  `exp` lie in a future window, each of which meets those rules when it is
+  presented inside its window and mints an installation token, valid for
+  an hour. Removing the Entra secret or the application's role, or
+  disabling the key in Key Vault, stops new signatures and does not end the
+  signatures already made: only deleting that private key from Airlock
+  Safe's registration at GitHub does.
+
+
+  Recovering from a compromise of the Worker or its Entra credential. No step
+  gives a new key or a new credential to anything the compromise may still
+  reach, so the replacement key is a new Key Vault key that only a new Entra
+  application may sign with, and the new application's secret reaches only a
+  Worker deployed again from a known commit.
+
+  1. An owner suspends Airlock Safe's installation for the owner, which stops
+  new installation tokens, and keeps it suspended until step 6.
+
+  2. A person cuts the old signer off: deletes every client secret of the
+  Worker's Entra application and the application itself, which step 5 replaces
+  in Airlock's `infra/`, removes its role on Safe's key, and disables every
+  version of that key in Key Vault, so that an Azure token the old application
+  already holds signs nothing, whatever its lifetime and however long the
+  role's removal takes to apply.
+
+  3. The Worker is made trustworthy again: a person reviews Airlock's default
+  branch and its deploy settings, has Elegua rotate `cloudflare-api-token` and
+  `airlock-session-key`, and then redeploys the Worker through the deploy
+  workflow from a reviewed release, which runs without an Entra credential
+  until step 5. When the Cloudflare account itself may be in other hands,
+  recovery waits until a person has secured it.
+
+  4. A person generates a new private key in Safe's settings at GitHub,
+  imports it into the same vault with the import that
+  `release-authority-token` gives, under a new key name in place of the
+  slug, because GitHub offers no API
+  that generates an App's private key, and deletes the old private key from
+  Safe's registration.
+
+  5. Airlock's `infra/` declares a new Entra application, the only application
+  with a role on that new key, and that role allows only the sign action. The
+  reviewed release is deployed again with the new key's name and the new
+  application's client id in its configuration, Elegua's manifest names the
+  new application, and Elegua issues its client secret into the Worker's
+  Secrets Store.
+
+  6. A person reads the vault's log of sign operations on the old key for the
+  whole time it may have been exposed, to learn what was signed and when,
+  which shows the calls and not the claims inside them; and resumes the
+  installation only when the only private key that Safe's registration holds
+  is the new one, the old application no longer exists, the Worker runs from
+  the reviewed release, and an hour has passed since the suspension, so that
+  no installation token minted before it is still valid.
+
+
+  The risk `leaked-worker-credential-pre-signs-airlock-safe-tokens` records
+  the exposure. Each invocation of the Worker holds its Azure and
   installation tokens only in memory, and revokes its installation token
   through `DELETE /installation/token` when it finishes. Rotating
   `airlock-session-key` ends every session at once, because no cookie
