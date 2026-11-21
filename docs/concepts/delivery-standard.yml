@@ -180,16 +180,16 @@ properties:
     what the cloud holds.
   repository-settings: >-
     The GitHub configuration of a repository and the organization: rulesets,
-    environments with their branch policies and variables, the OpenID
-    Connect subject template, and the trusted publishing settings of each
-    registry. Airlock applies them from the declared configuration and the
-    organization's declared GitHub plan, in a session of the Airlock Worker
-    in which a person signed in and elevated to Airlock Admin, and its audit
-    reports any difference between the declaration and what GitHub holds,
-    and each setting the plan does not give as a known limit. npm shows and
-    changes a package's trusted publishing only to a maintainer's own
-    session, so Airlock's audits report npm trust as not verified, and who
-    sets it is open question Q04.
+    environments with their branch policies and variables, and the OpenID
+    Connect subject template. Airlock applies them from the declared
+    configuration and the organization's declared GitHub plan, in a session of
+    the Airlock Worker in which a person signed in and elevated to Airlock
+    Admin, and its audit reports any difference between the declaration and
+    what GitHub holds, and each setting the plan does not give as a known
+    limit. A registry's trusted publishing settings name the repository,
+    workflow and environment that may publish. npm shows and changes them only
+    to a maintainer's own session, so Airlock's audits report npm trust as not
+    verified, and who sets it is open question Q04.
   airlock-worker: >-
     Airlock's hosted service, a Cloudflare Worker at `theairlock.app` in The
     Wyrd Company Cloudflare account. It runs the organization's central audit

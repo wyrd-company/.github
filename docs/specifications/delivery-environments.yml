@@ -293,8 +293,8 @@ validation-criteria: >-
   declaration lists for each environment, and compare each federated
   credential's subject with `Subject`. The Airlock Worker's apply tests, for a public
   repository and for a private one under each declared plan, compare the
-  environments, branch policies, variables with their level, subject
-  template and trusted publishers it writes for a repository with that
+  environments, branch policies, variables with their level and subject
+  template it writes for a repository with that
   repository's declarations and `plan-limits`. Its session tests show that
   every route that reaches a write refuses a request without a live,
   elevated session; that the scheduled handler and the Queue's consumer
