@@ -422,9 +422,8 @@ proposed-design:
     read-only installation token and reach no session.
     The attended run. The attended run is an elevated session of the Airlock
     Worker, which a person starts and elevates as `sign-in-and-elevation`
-    states, and whose writes run only from a request that carries the
-    elevated cookie, the session's CSRF token and the digest of a batch the
-    person confirmed, consumed once through a row in D1. So no request without a live, elevated
+    states, and whose writes run only from a confirmed batch, as
+    `batch-confirmation` states. So no request without a live, elevated
     person, and no scheduled or Queue invocation, can write a GitHub
     setting. Airlock Admin's registration holds no private key, so no
     installation token of Admin can be minted. The Worker holds Admin's
@@ -518,6 +517,28 @@ proposed-design:
     transaction of the other flow or of another browser, an elevation by
     another user, a replay, and a membership that is pending, absent or
     unreadable.
+
+  batch-confirmation: >-
+    A write runs only from a confirmed batch. When an elevated person
+    reviews a batch, the Worker reads each setting it would change from
+    GitHub, plans the change, shows each setting's exact value before and
+    after, and stores a confirmation in D1: a random id, the session id, the
+    GitHub user id, the repositories, the SHA-256 of the canonical change
+    set, every setting with its value before and after, and an expiry ten
+    minutes ahead. Confirming is a `POST` that carries the elevated cookie,
+    the session's CSRF token and the confirmation's id. The Worker consumes
+    the confirmation in one statement, which sets `consumed_at` where the id,
+    the session id and the user id match, `consumed_at` is empty and the
+    expiry is ahead, and returns the change set's hash; it writes nothing
+    unless that statement returns one row. So another session's
+    confirmation, an expired one, and a second or concurrent use of the same
+    one are refused. Before the first write, the Worker reads every setting
+    of the change set again and refuses the whole batch when any value
+    differs from its confirmed value before. Then it writes the change set
+    whose hash the statement returned, and nothing else. The Worker's tests
+    cover each refusal: a confirmation of another session, an expired one, a
+    replayed one, two concurrent confirmations of one batch, and a setting
+    that changed after the review.
 
   audit-coverage: >-
     The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
