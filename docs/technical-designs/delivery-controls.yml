@@ -421,33 +421,16 @@ proposed-design:
     scheduled handler and the Queue's consumer hold only Airlock Safe's
     read-only installation token and reach no session.
     The attended run. The attended run is an elevated session of the Airlock
-    Worker. A person signs in at `https://theairlock.app` through GitHub's
-    web application flow for Airlock Safe, with `state` and a PKCE
-    challenge, and the Worker admits only an active member of the owner.
-    The session shows the findings of the latest reports, the central run's
-    and each per-repository run's artifact, for the repositories that
-    `GET /user/installations/<id>/repositories` lists for the person's own
-    token, and the organization's findings to its owners. To fix a finding
-    the person elevates: a second web flow, for Airlock Admin, whose user
-    access token GitHub limits to what both the person and Admin may do and
-    expires after eight hours; the Worker requires the same login as the
-    sign-in. Each user access token is held only in a cookie sealed with
-    AES-GCM under `airlock-session-key`, marked `HttpOnly`, `Secure` and
-    `SameSite=Strict`, and never in D1, the Queue, a log or other storage;
-    the Worker discards the refresh token on receipt, and sign-out revokes
-    both tokens through `DELETE /applications/<client_id>/token`. A write
-    runs only from a request that carries the elevated cookie, the
-    session's CSRF token and the digest of a batch the person confirmed,
-    which covers each setting's exact value before and after and is
-    consumed once through a row in D1. So no request without a live,
-    elevated person, and no scheduled or Queue invocation, can write a
-    GitHub setting. Airlock Admin's registration holds no private key, so no
+    Worker, which a person starts and elevates as `sign-in-and-elevation`
+    states, and whose writes run only from a request that carries the
+    elevated cookie, the session's CSRF token and the digest of a batch the
+    person confirmed, consumed once through a row in D1. So no request without a live, elevated
+    person, and no scheduled or Queue invocation, can write a GitHub
+    setting. Airlock Admin's registration holds no private key, so no
     installation token of Admin can be minted. The Worker holds Admin's
     client secret, which only exchanges a code that a person has just
-    approved at one of the callbacks Admin registers,
-    `https://theairlock.app/auth/callback` and the loopback callback of a
-    local run of the Worker, `http://127.0.0.1:<port>/auth/callback`; a
-    person places it as `delivery-environments` states. The attended run
+    approved at a callback Admin registers, and is placed as
+    `delivery-environments` states. The attended run
     writes what `plan-limits` gives each repository and skips each
     plan-limited control, which it lists in its report as a known limit with
     its risk. After it applies, it reads back the bypass actors of every
@@ -476,6 +459,65 @@ proposed-design:
     administrators and the deploy credential that applies the Worker's
     migrations can write the database. The decision record
     `audit-and-write-settings-in-the-airlock-worker` holds the trade-off.
+
+  sign-in-and-elevation: >-
+    A person reaches the Airlock Worker's attended run through two GitHub
+    web application flows: sign-in, for Airlock Safe, and elevation, for
+    Airlock Admin, which only a signed-in session can start. Each flow is
+    one short-lived transaction. A same-origin request to `/auth/start`
+    names the flow. The Worker draws a random `state`, a random PKCE
+    verifier, whose S256 challenge it sends to GitHub, and a random
+    transaction id, and seals them with AES-GCM under `airlock-session-key`
+    into a transaction cookie, together with the flow, the App's client id,
+    the callback URL and an expiry ten minutes ahead, and for elevation the
+    session id and the GitHub user id of the signed-in person, which the
+    same-origin request's session cookie gives. The transaction cookie is
+    host-only, `HttpOnly`, `Secure` and `SameSite=Lax`, so it returns with
+    GitHub's top-level redirect to the callback, which a `SameSite=Strict`
+    cookie does not. The Worker also writes a D1 row keyed by the
+    transaction id, holding the SHA-256 of `state` and the expiry and no
+    secret.
+    The callback, `https://theairlock.app/auth/callback` or
+    `http://127.0.0.1:<port>/auth/callback` for a local run of the Worker,
+    which are the callbacks both Apps register, refuses unless the
+    transaction cookie is present, opens under the session key, has not
+    expired, names this callback, and holds the `state` that the query
+    carries, and unless deleting the transaction's D1 row, matched on its id,
+    its `state` hash and an expiry still ahead, returns that one row. That
+    delete is the single use: a replayed callback, one whose cookie came
+    from another browser or another flow, and an expired one find no row.
+    The callback then clears the transaction cookie, exchanges the code with
+    the client id and client secret of the App the transaction names, the
+    PKCE verifier and the same callback URL, and reads `GET /user`. On
+    sign-in it reads `GET /user/memberships/orgs/<owner>` with the new
+    token, which needs Safe's `members: read`, and admits the person only
+    when the answer's `state` is `active`; any other answer, a 403 or a 404
+    included, refuses the sign-in, and `role` `admin` marks an owner. On
+    elevation the Admin token's user id must equal the transaction's, and
+    for any other user the Worker revokes the token and refuses. The
+    callback answers with a same-origin page that sets the session cookie
+    and continues to the Worker's own page, so the first request that
+    carries a `SameSite=Strict` cookie is a same-site one.
+    The two session cookies, one for sign-in and one for elevation, are
+    host-only, `HttpOnly`, `Secure` and `SameSite=Strict`, sealed with
+    AES-GCM under `airlock-session-key`, and each holds the session id, the
+    GitHub user id and login, the user access token, its expiry and the
+    session's CSRF token. A user access token is held nowhere else: not in
+    D1, the Queue, a log or other storage. The Worker discards each
+    refresh token on receipt, requires the elevated cookie's session id and
+    user id to equal the sign-in cookie's on every request, and on sign-out
+    revokes both tokens through `DELETE /applications/<client_id>/token`.
+    GitHub limits Admin's user access token to what both the person and
+    Admin may do and expires it after eight hours, which ends the
+    elevation. The signed-in person sees the findings of the latest
+    reports, the central run's and each per-repository run's artifact, for
+    the repositories that `GET /user/installations/<id>/repositories` lists
+    for their own token, and the organization's findings when they are an
+    owner. The Worker's tests cover a callback with no transaction cookie,
+    a `state` that differs from the cookie's, an expired transaction, a
+    transaction of the other flow or of another browser, an elevation by
+    another user, a replay, and a membership that is pending, absent or
+    unreadable.
 
   audit-coverage: >-
     The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
