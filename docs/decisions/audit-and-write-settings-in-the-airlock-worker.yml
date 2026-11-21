@@ -1,0 +1,130 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Audit and write settings in the Airlock Worker
+relationships:
+  supersedes:
+    - run-the-privileged-audit-centrally-as-airlock-safe
+  contextualizes:
+    - delivery-controls
+    - delivery-environments
+    - delivery-apps
+  assumes:
+    - airlock-worker-signs-in-to-entra-and-has-key-vault-sign
+description: >-
+  The record of 2026-11-17 ran the privileged audit as Airlock Safe from a
+  workflow of a dedicated private repository, `organization-audit`, whose
+  `airlock-safe` environment signed in to Azure by federation and had Key
+  Vault sign Safe's JSON Web Token, and it left settings writes to
+  Airlock's terminal console, signed in as Airlock Admin through GitHub's
+  device flow. On 2026-11-21 the operator ruled that Airlock's Rust app and
+  binary are not published and that the Airlock Worker, a Cloudflare
+  Worker, replaces the terminal app and the console: a person signs in to
+  the Worker in a browser, sees the audit's findings, and elevates to
+  Airlock Admin to fix them, and settings writes happen only there. The
+  reason the operator gave: Airlock already runs a GitHub App and runs
+  remotely, so a local terminal app adds a second surface without removing
+  the hosted one. The operator also ruled that the Rust audit engine is
+  kept, compiled to WebAssembly, in the Worker and in a JavaScript GitHub
+  Action for the per-repository audit; that the Worker runs in The Wyrd
+  Company Cloudflare account, on Workers Paid, at `theairlock.app`; and
+  that the central audit runs in the Worker, so the audit repository is
+  dropped. Cloudflare issues a Worker no OpenID Connect token, so the
+  Worker cannot sign in to Azure by federation as a workflow does. What
+  this record decides is how the central audit runs once the Worker
+  exists: where it runs, and with what credential.
+considered-options:
+  1: >-
+    Keep the audit repository and its scheduled workflow, now running the
+    JavaScript action with the wasm engine in central mode, and have the
+    Worker only show its reports and write settings. Safe's route stays an
+    environment and a federated identity. The organization keeps one more
+    private repository, and the findings a person fixes in the Worker come
+    from a run in another place.
+  2: >-
+    The Worker audits on a schedule and holds Airlock Safe's private key in
+    the Cloudflare Secrets Store. No Azure call is needed, but the key
+    leaves Key Vault, and a copy of it mints read tokens for every
+    repository until a person deletes the key in Safe's settings.
+  3: >-
+    The Worker audits on a schedule as Airlock Safe, and Key Vault signs
+    Safe's JSON Web Token as it does today. The Worker signs in to Azure as
+    its own Entra application, with a client secret kept in the Cloudflare
+    Secrets Store and written and rotated by Elegua through Microsoft
+    Graph. The application's one role allows only the sign action on
+    Safe's key.
+  4: >-
+    Each repository's audit workflow calls the Worker with its run's token.
+    The token leaves the runner, every audit fails while the Worker is
+    down, and the Worker still needs a credential of its own for the
+    central reads.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    The operator's ruling. Audit and fix are one experience: a person signs
+    in to Airlock, sees which rules a repository breaks, and elevates to
+    Airlock Admin to fix them, so one Worker holds the audit and the writer,
+    and no repository is kept only to run the audit. Safe's private key
+    stays in Key Vault, which signs, as the 2026-11-17 record had it. With
+    no federated sign-in available to a Worker, a stored Entra credential
+    that can do nothing but sign with that one key, and that Elegua rotates
+    and Entra can revoke, is the narrowest credential that reaches Key
+    Vault. This record keeps from the one it supersedes: Airlock Safe as
+    the one privileged reader, with no separate audit App; Safe's key in Key
+    Vault, never leaving it; an installation token minted for each run from
+    a read-only registration that Airlock checks through `GET /app` before
+    use, and never stored; the per-repository audit holding only its run's
+    `GITHUB_TOKEN`; and bypass lists read only in a person's attended run,
+    whose attested record lets the scheduled run notice a change after it.
+    It changes where the central run runs, from the audit repository's
+    workflow to the Worker's schedule; how it reaches Key Vault, from an
+    environment's federated identity to the Worker's Entra application;
+    where the attested record lives, from the audit repository's variables
+    to the Worker's D1 database; and who writes settings, from the console
+    after the device flow to an elevated browser session of the Worker.
+    The attested record moves to the Worker's database because the Worker is
+    now both its only writer and its only reader, and no repository is left
+    that only the organization's owners write; a repository's variables
+    would let its writers change the record on GitHub Free. The Entra
+    credential is a client secret, not a certificate, because
+    Elegua's `entra` issuer already mints and rotates client secrets
+    through `addPassword`, while a certificate needs a new issuer, and
+    either one is usable by whatever code can read the Worker's binding.
+expected-outcomes:
+  positive:
+    - >-
+      No repository holds an audit credential, and the audit repository,
+      its `airlock-safe` environment and its six `AIRLOCK_SAFE__` variables
+      do not exist.
+    - >-
+      A person sees the findings and fixes them in one place, and the read
+      back after a fix becomes the attested record that the next scheduled
+      audit compares with.
+    - >-
+      The attested record no longer shares a repository's 500 variables, so
+      the organization has no bound of 494 audited repositories.
+  negative:
+    - >-
+      The Worker holds a standing credential: whatever code reads its
+      Secrets Store binding can sign Safe's JSON Web Token and so read every
+      repository of the organization, until Elegua rotates the secret or a
+      person removes it in Entra. Airlock's repository is public, so its
+      default branch keeps its rulesets on GitHub Free.
+    - >-
+      Whoever can deploy the Worker or write its D1 database, the account's
+      administrators and the deploy credential that applies its migrations,
+      can rewrite the attested record, and the scheduled audit then compares
+      with the rewritten record.
+    - >-
+      The central audit stops while the Worker is down. The per-repository
+      audits keep running in Actions, and no release waits on the Worker.
+    - >-
+      The account needs Workers Paid: one repository's audit takes about
+      250 milliseconds of CPU and 28 GitHub requests, against 10
+      milliseconds and 50 requests on the free plan.
+    - >-
+      Elegua gains a destination in the Cloudflare Secrets Store for an
+      Entra client secret, and a Graph permission over the Worker's
+      application.
+    - >-
+      An adopter outside the organization cannot sign with Airlock Safe's
+      key; it runs the per-repository audit, or its own Worker with its own
+      Apps.
