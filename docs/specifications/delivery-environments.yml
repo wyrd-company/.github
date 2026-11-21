@@ -285,19 +285,34 @@ description: >-
   person starts can show that an App's client secret works.
 
 
-  What a rotation ends. Removing an old `airlock-entra-client-secret` from
-  the Entra application stops new Azure tokens for it, and ends nothing
-  already issued: an Azure access token lives 60 to 90 minutes, a JSON Web
-  Token that Key Vault signed for Airlock Safe at most ten minutes, and an
-  installation token minted with it one hour. So whoever held a leaked
-  Entra secret can read the organization for up to 160 minutes after its
-  removal: the last Azure token, then the last signature, then the last
-  installation token. Removing the Entra application's role on Safe's
-  key, or disabling the key, stops new signatures once Azure applies the
-  change, which leaves at most the installation tokens already minted;
-  suspending Airlock Safe's installation for the owner stops every token of
-  it at once, and the central run with it until a person resumes the
-  installation. Each invocation of the Worker holds its Azure and
+  What a rotation ends. Rotating `airlock-entra-client-secret` on its
+  schedule stops new Azure tokens for the old secret after Elegua's
+  overlap, and ends nothing already issued. Key Vault signs whatever digest
+  an authorized caller sends and checks no claim inside it, and GitHub
+  checks a JSON Web Token's `iat` and `exp`, with `exp` at most ten minutes
+  after `iat`, only when the token is presented, against the App's
+  registered public key. So while the Worker or its Entra credential is in
+  other hands, the holder can have Key Vault sign Safe tokens dated for any
+  future window, and each one mints an installation token, valid for an
+  hour, when its window comes. Removing the Entra secret or the
+  application's role, or disabling the key in Key Vault, stops new
+  signatures and does not end the signatures already made: only deleting
+  that private key from Airlock Safe's registration at GitHub does. A
+  suspected compromise of the Worker or its Entra credential is therefore
+  answered in this order. First, an owner suspends Airlock Safe's
+  installation for the owner, which stops new installation tokens, and
+  tokens already minted expire within the hour. Second, a person deletes
+  the private key from Safe's settings at GitHub, generates a new one, and
+  imports it into the vault as a new version of the same key, as
+  `release-authority-token` gives the import, because GitHub offers no API
+  that generates an App's private key; then disables the old version in Key
+  Vault. Third, Elegua rotates `airlock-entra-client-secret` out of turn.
+  Fourth, the person reads the vault's log of sign operations on Safe's key
+  for the whole time the credential may have been exposed, and resumes the
+  installation only after the old private key is gone from GitHub, so no
+  pre-signed token works on resumption. The risk
+  `leaked-worker-credential-pre-signs-airlock-safe-tokens` records the
+  exposure. Each invocation of the Worker holds its Azure and
   installation tokens only in memory, and revokes its installation token
   through `DELETE /installation/token` when it finishes. Rotating
   `airlock-session-key` ends every session at once, because no cookie
