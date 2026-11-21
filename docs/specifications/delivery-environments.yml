@@ -283,6 +283,31 @@ description: >-
   Secrets Store cannot be. The second is the Worker's Secrets Store. Each
   declares `accept-unverified: true`, because only a code exchange that a
   person starts can show that an App's client secret works.
+
+
+  What a rotation ends. Removing an old `airlock-entra-client-secret` from
+  the Entra application stops new Azure tokens for it, and ends nothing
+  already issued: an Azure access token lives 60 to 90 minutes, a JSON Web
+  Token that Key Vault signed for Airlock Safe at most ten minutes, and an
+  installation token minted with it one hour. So whoever held a leaked
+  Entra secret can read the organization for up to 160 minutes after its
+  removal: the last Azure token, then the last signature, then the last
+  installation token. Removing the Entra application's role on Safe's
+  key, or disabling the key, stops new signatures once Azure applies the
+  change, which leaves at most the installation tokens already minted;
+  suspending Airlock Safe's installation for the owner stops every token of
+  it at once, and the central run with it until a person resumes the
+  installation. Each invocation of the Worker holds its Azure and
+  installation tokens only in memory, and revokes its installation token
+  through `DELETE /installation/token` when it finishes. Rotating
+  `airlock-session-key` ends every session at once, because no cookie
+  sealed with the old key opens, but the user access tokens sealed in those
+  cookies stay valid at GitHub until they expire, eight hours at most.
+  Sign-out revokes them; when a sealed cookie may have leaked with the old
+  key, a person also revokes every user token of Airlock Safe and Airlock
+  Admin from each App's settings. Rotating an App's client secret ends no
+  session and no user access token; it stops only new code exchanges with
+  the old secret, once the person deletes it.
 validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
   fields and variable names to the forms above, refuses an environment that

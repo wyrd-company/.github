@@ -105,8 +105,11 @@ expected-outcomes:
     - >-
       The Worker holds a standing credential: whatever code reads its
       Secrets Store binding can sign Safe's JSON Web Token and so read every
-      repository of the organization, until Elegua rotates the secret or a
-      person removes it in Entra. Airlock's repository is public, so its
+      repository of the organization. Rotating or removing the secret stops
+      new Azure tokens and does not end those already issued, so a leaked
+      secret keeps reading for up to 160 minutes after its removal; removing the sign role, disabling Safe's key or suspending
+      Safe's installation cuts that short, as `delivery-environments`
+      states. Airlock's repository is public, so its
       default branch keeps its rulesets on GitHub Free.
     - >-
       Whoever can deploy the Worker or write its D1 database, the account's
