@@ -2,11 +2,13 @@ $schema: https://refinery.systems/ontology/specification
 relationships:
   references:
     - delivery-standard
+    - delivery-controls
     - delivery-skeleton
     - delivery-declaration
     - delivery-apps
     - release-authority-token
   assumes:
+    - airlock-worker-signs-in-to-entra-and-has-key-vault-sign
     - cloudflare-deploy-token-permissions
     - subject-template-names-the-environment-workflow
     - private-free-jobs-run-in-named-environments
@@ -45,13 +47,25 @@ description: >-
   environment that the `cloudflare-worker` part deploys.
 
 
-  Credential environment of the central audit. `airlock-safe` exists only
-  in the organization's audit repository, is entered only by the `audit` job
-  of its `.github/workflows/delivery-airlock-safe.yml`, which
-  `airlock-central.yml` calls, signs with Airlock Safe's
-  key and reads no secret. Every other repository's Airlock configuration
-  declares no environment: its `airlock-audit.yml` holds only the run's
-  `GITHUB_TOKEN`, as `delivery-controls` states.
+  The Airlock Worker. The organization's central audit runs in the Airlock
+  Worker, not in a workflow, so no repository has a credential environment
+  for it, and every repository's Airlock configuration declares no
+  environment: its `airlock-audit.yml` holds only the run's `GITHUB_TOKEN`,
+  as `delivery-controls` states. The Worker is the `cloudflare-worker`
+  deploy of `wyrd-company/airlock`, which adopts the deploy template like
+  any other repository and declares the Worker's own resources in its
+  `infra/`. It runs in The Wyrd Company Cloudflare account, on Workers
+  Paid, served at `https://theairlock.app` and nowhere else, with its
+  `workers.dev` route off. It reaches Azure as its own Entra application,
+  declared in that `infra/`, whose one role assignment is the role whose
+  only data action is `Microsoft.KeyVault/vaults/keys/sign/action`, at the
+  scope of Airlock Safe's key. Its secrets are bindings of the account's
+  Cloudflare Secrets Store, as `Elegua` states. Its other values are plain
+  variables of its Wrangler configuration: the tenant, the Entra
+  application's client id, Airlock Safe's App id, slug and key name,
+  `<owner>/*` as Safe's installation bound, the vault that `delivery-apps`
+  names for Safe's key, the client ids of Airlock Safe and Airlock Admin,
+  and the owner it serves.
 
 
   Workflow files. Every job that enters credential environment `<E>` is a
@@ -94,15 +108,16 @@ description: >-
   it: `<APP>_APP_ID`, the App's numeric id; `<APP>_KEY_NAME`, the name of the
   Key Vault key that holds the App's private key, which is the App's slug;
   and `<APP>_INSTALLED_ON`, the repositories the App's installation may
-  reach, each `<owner>/<repository>`, joined by commas, or `<owner>/*` for
-  Airlock Safe. So `release-authority` carries `RELEASE_AUTHORITY_APP_ID`,
+  reach, each `<owner>/<repository>`, joined by commas. So
+  `release-authority` carries `RELEASE_AUTHORITY_APP_ID`,
   `RELEASE_AUTHORITY_KEY_NAME` and `RELEASE_AUTHORITY_INSTALLED_ON`,
-  `package-tags` carries the three `PACKAGE_TAGS_` variables,
-  `publish-repo-wyrd-foo` the three `REPO_WYRD_FOO_PUBLISHER_` variables, and
-  `airlock-safe` the three `AIRLOCK_SAFE_` variables. Every App and its key's
-  vault are listed in the organization's App authorization file,
-  `delivery-apps`, and an environment signs with an App only where that file
-  allows it. The key is imported once
+  `package-tags` carries the three `PACKAGE_TAGS_` variables, and
+  `publish-repo-wyrd-foo` the three `REPO_WYRD_FOO_PUBLISHER_` variables.
+  Every App and its key's vault are listed in the organization's App
+  authorization file, `delivery-apps`, and an environment signs with an App
+  only where that file allows it. Airlock Safe's key is the one key that no
+  environment signs with: the Airlock Worker signs with it, and holds the
+  same three values as variables of its configuration. The key is imported once
   by a person from the PEM that GitHub generates, with key operations `sign`
   only, into the vault the file names.
 
@@ -186,14 +201,18 @@ description: >-
   name, then by the variable name a declaration lists, with each variable's
   value as a string.
   `terraform output -json github_environments` prints that object, and it is
-  the whole of what Airlock reads from Terraform. Terraform writes no secret
-  value and creates no secret.
+  the whole of what Airlock reads from Terraform. How that object reaches the
+  Airlock Worker's attended run is an open question for the operator,
+  `delivery-standard` Q03. Terraform writes no secret value and creates no
+  secret.
 
 
-  Airlock. Airlock writes GitHub settings only in an attended run of its
-  console, which a person starts and signs in to as Airlock Admin through
-  GitHub's device flow; no workflow and no scheduled run holds a credential
-  that writes GitHub settings. It writes, for every repository that holds
+  Airlock. Airlock writes GitHub settings only in an attended run: a
+  request of a browser session of the Airlock Worker in which a person
+  signed in and then elevated to Airlock Admin, as `delivery-controls`
+  `audit-runs` states. No request without a live, elevated session, no
+  scheduled run and no workflow holds a credential that writes GitHub
+  settings. It writes, for every repository that holds
   a delivery declaration, the subject template of `Subject`. For each
   environment that a repository's delivery declarations name, and where
   the organization's plan gives the repository environments with branch
@@ -207,20 +226,19 @@ description: >-
   that `Where the variables live` gives and the value from
   `github_environments` for that repository, environment and declared
   name, and Airlock removes a variable of that form at the other level.
-  For each environment that declares `trusted_publishing`, it sets each
-  listed registry's trusted publisher for the repository's packages to
-  that repository, the calling workflow file and environment. npm manages
-  trusted publishers only for an account with write access to the package
-  and two-factor authentication, through `npm trust github`,
-  `npm trust list` and `npm trust revoke`, so Airlock writes and reads npm
-  trust only in an attended run that uses the npm session of the person
-  running it; Airlock holds no npm credential, and its scheduled audits
-  report npm trust as not verified in that run. It keeps GitHub's immutable
+  For each environment that declares `trusted_publishing`, the package's
+  trusted publisher names that repository, the calling workflow file and
+  environment. npm manages trusted publishers only for an account with
+  write access to the package and two-factor authentication, through
+  `npm trust github`, `npm trust list` and `npm trust revoke` or on
+  npmjs.com, and the Airlock Worker holds no npm credential, so who sets npm
+  trust is an open question for the operator, `delivery-standard` Q04.
+  Airlock's scheduled audits report npm trust as not verified. It keeps GitHub's immutable
   releases on unless the repository's effective `evidence` control is `on`,
   as the decision record `keep-release-assets-mutable-for-evidence` states.
   Airlock writes the rulesets that `delivery-controls` names with their
   bypass actors where the plan gives the repository rulesets, and at the
-  end of each attended run the attested record that
+  end of each attended run it stores the attested record that
   `delivery-controls` defines. Airlock writes no environment secret, no
   repository secret and no organization secret.
 
@@ -234,6 +252,27 @@ description: >-
   secrets, and are outside Elegua's manifest: GitHub offers no API that
   generates an App's private key, so a person generates it in the App's
   settings and imports it once, and Elegua has nothing to mint.
+
+
+  The Airlock Worker's secrets are four bindings of the Cloudflare Secrets
+  Store of its account, and none of them is in a vault or a repository.
+  `airlock-entra-client-secret` is the client secret of the Worker's Entra
+  application: a secret of Elegua's manifest with the `entra` issuer, which
+  adds it through Microsoft Graph's `addPassword` on that application and
+  removes the old one after the overlap, and a `cloudflare-secrets-store`
+  destination. Elegua's Graph permission changes the credentials of the
+  applications its manifest names and of no other. `airlock-session-key`,
+  the key that seals the Worker's session cookies, is a secret of the
+  manifest with the `random` issuer and the same kind of destination; a
+  rotation ends every session sealed with the old key. The client secrets of
+  Airlock Admin and Airlock Safe, `airlock-admin-client-secret` and
+  `airlock-safe-client-secret`, are outside Elegua's manifest: GitHub offers
+  no API that generates an App's client secret, and Elegua's `human` issuer
+  needs a destination it can read back, which the Secrets Store is not. A
+  person generates each one in the App's settings, writes it straight into
+  the Secrets Store with `wrangler secrets-store secret create`, typing the
+  value at its prompt, and after a rotation deletes the old one in the
+  App's settings.
 validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
   fields and variable names to the forms above, refuses an environment that
@@ -252,8 +291,12 @@ validation-criteria: >-
   Terraform's module tests plan one repository from a declaration and an
   App file, compare `github_environments` with the variable names the
   declaration lists for each environment, and compare each federated
-  credential's subject with `Subject`. Airlock's apply tests, for a public
+  credential's subject with `Subject`. The Airlock Worker's apply tests, for a public
   repository and for a private one under each declared plan, compare the
   environments, branch policies, variables with their level, subject
   template and trusted publishers it writes for a repository with that
-  repository's declarations and `plan-limits`.
+  repository's declarations and `plan-limits`. Its session tests show that
+  every route that reaches a write refuses a request without a live,
+  elevated session; that the scheduled handler and the Queue's consumer
+  reach no session's token; and that no user access token is written to
+  storage or a log.
