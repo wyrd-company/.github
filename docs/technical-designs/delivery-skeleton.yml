@@ -397,7 +397,7 @@ proposed-design:
     update. The organization Renovate preset excludes the files the templates
     render, `.github/workflows/release.yml`, `release-rehearsal.yml`,
     `release-authority-smoke.yml`, `intentional.yml`, `deploy.yml`,
-    `deploy-rehearsal.yml`, `airlock-audit.yml`, `airlock-central.yml`,
+    `deploy-rehearsal.yml`, `airlock-audit.yml`,
     every `delivery-<environment>.yml`, `.github/release-artifact-client/**` and `.github/deploy-wrangler/**`,
     through
     `ignorePaths`, and a repository with its own `ignorePaths` keeps them in
