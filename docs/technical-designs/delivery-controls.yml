@@ -178,7 +178,7 @@ proposed-design:
     every repository as Airlock Safe. The attended run reads `parts`,
     `answers.release_model`, `answers.release_authority_app` and
     `answers.package_tags_app` from the release application, to write the
-    repository rulesets, their bypass actors and the trusted publishers.
+    repository rulesets and their bypass actors.
 
   floor-placement: >-
     The release commit and the tags created with it are pushed only by the
@@ -367,9 +367,7 @@ proposed-design:
     names an App that `delivery-apps` does not allow for the repository; when
     an App's installation differs from `delivery-apps` in the ways that file
     states; when a ruleset, a bypass actor or an environment variable differs
-    from the attested record; when an npm package's trusted publisher does
-    not name the repository, `.github/workflows/release.yml` and the
-    environment its declaration names; when a secret that a declaration lists is not a
+    from the attested record; when a secret that a declaration lists is not a
     destination of Elegua's manifest in the environment's vault; and when
     such a secret's manifest `tier` is not the one its readers' effective
     `rotation-approval` requires. It reads Elegua's manifest from the
