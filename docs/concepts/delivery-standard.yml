@@ -170,7 +170,10 @@ properties:
   secret-manifest: >-
     Elegua's declaration of every long-lived credential: its issuer, the
     stores that carry it, and its rotation policy. Elegua mints, places,
-    verifies, rotates, and revokes each credential. No other part creates or
+    verifies, rotates, and revokes each credential. A credential that only a
+    person can generate, such as a GitHub App's client secret, has Elegua's
+    `human` issuer: the person generates it when Elegua asks, and Elegua
+    stages, places, records and retires it. No other part creates or
     replaces a secret.
   cloud-resource: >-
     A resource in Cloudflare, AWS, or Azure, including each Key Vault, the

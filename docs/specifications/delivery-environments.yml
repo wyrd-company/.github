@@ -255,7 +255,8 @@ description: >-
 
 
   The Airlock Worker's secrets are four bindings of the Cloudflare Secrets
-  Store of its account, and none of them is in a vault or a repository.
+  Store of its account, all four secrets of Elegua's manifest, and no
+  repository holds any of them.
   `airlock-entra-client-secret` is the client secret of the Worker's Entra
   application: a secret of Elegua's manifest with the `entra` issuer, which
   adds it through Microsoft Graph's `addPassword` on that application and
@@ -266,13 +267,22 @@ description: >-
   manifest with the `random` issuer and the same kind of destination; a
   rotation ends every session sealed with the old key. The client secrets of
   Airlock Admin and Airlock Safe, `airlock-admin-client-secret` and
-  `airlock-safe-client-secret`, are outside Elegua's manifest: GitHub offers
-  no API that generates an App's client secret, and Elegua's `human` issuer
-  needs a destination it can read back, which the Secrets Store is not. A
-  person generates each one in the App's settings, writes it straight into
-  the Secrets Store with `wrangler secrets-store secret create`, typing the
-  value at its prompt, and after a rotation deletes the old one in the
-  App's settings.
+  `airlock-safe-client-secret`, are secrets of the manifest with the
+  `human` issuer and kind `opaque`, the issuer for a credential that only a
+  person can generate: GitHub offers no API that generates an App's client
+  secret, only the App's settings page. When one is due, Elegua asks for it
+  with the manifest's `instructions`; the person generates a new client
+  secret in the App's settings and sends it with `elegua ingest`; and
+  Elegua stages it, writes it to its two destinations in order, records the
+  rotation in its ledger, and asks the person to delete the old client
+  secret in the App's settings once a sign-in to the Worker with the new
+  one has succeeded. The first destination is Airlock's custody vault, a
+  Key Vault that Airlock's `infra/` declares, which Elegua's writing
+  identity alone reads and no environment's identity reads; it is the
+  destination Elegua reads back, which the `human` issuer requires and the
+  Secrets Store cannot be. The second is the Worker's Secrets Store. Each
+  declares `accept-unverified: true`, because only a code exchange that a
+  person starts can show that an App's client secret works.
 validation-criteria: >-
   The delivery declaration schema restricts environment names, secret names,
   fields and variable names to the forms above, refuses an environment that
