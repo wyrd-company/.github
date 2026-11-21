@@ -4,14 +4,14 @@ import unittest
 
 from delivery_environments import violations
 
-DECLARATION = {'environments': {'airlock-safe': {'variables': ['AZURE_CLIENT_ID']}}}
+DECLARATION = {'environments': {'package-tags': {'variables': ['AZURE_CLIENT_ID']}}}
 CALLER = '''
 permissions: {}
 jobs:
   audit:
     permissions:
       id-token: write
-    uses: ./.github/workflows/delivery-airlock-safe.yml
+    uses: ./.github/workflows/delivery-package-tags.yml
 '''
 CALLED = '''
 on:
@@ -21,14 +21,14 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     environment:
-      name: airlock-safe
+      name: package-tags
       deployment: false
     permissions:
       id-token: write
     steps:
       - uses: example/action@0000000000000000000000000000000000000000 # 1.0.0
         with:
-          client: ${{ vars.AIRLOCK_SAFE__AZURE_CLIENT_ID }}
+          client: ${{ vars.PACKAGE_TAGS__AZURE_CLIENT_ID }}
           token: ${{ secrets.GITHUB_TOKEN }}
 '''
 PLAIN = '''
@@ -49,7 +49,7 @@ def job(body):
 
 class DeliveryEnvironmentsCheck(unittest.TestCase):
     def test_conforming_workflows_pass(self):
-        self.assertEqual(violations({'caller.yml': CALLER, 'delivery-airlock-safe.yml': CALLED, 'plain.yml': PLAIN},
+        self.assertEqual(violations({'caller.yml': CALLER, 'delivery-package-tags.yml': CALLED, 'plain.yml': PLAIN},
                                     DECLARATION), [])
 
     def assert_one(self, workflows, declaration, fragment):
@@ -101,8 +101,8 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
         self.assert_one({'caller.yml': CALLER + '    secrets: inherit\n'}, DECLARATION, 'secrets: inherit')
 
     def test_whole_vars_context_even_in_its_credential_workflow(self):
-        self.assert_one({'delivery-airlock-safe.yml': CALLED.replace(
-            '${{ vars.AIRLOCK_SAFE__AZURE_CLIENT_ID }}', '${{ toJSON(vars) }}')},
+        self.assert_one({'delivery-package-tags.yml': CALLED.replace(
+            '${{ vars.PACKAGE_TAGS__AZURE_CLIENT_ID }}', '${{ toJSON(vars) }}')},
             DECLARATION, 'the whole vars context')
 
     def test_whole_vars_context_elsewhere(self):
@@ -116,7 +116,7 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
             DECLARATION), [])
 
     def test_variable_outside_a_credential_workflow(self):
-        self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ vars.AIRLOCK_SAFE__AZURE_CLIENT_ID }}\n')},
+        self.assert_one({'plain.yml': job('    steps:\n      - run: echo ${{ vars.PACKAGE_TAGS__AZURE_CLIENT_ID }}\n')},
                         DECLARATION, 'outside a credential environment workflow')
 
     def test_variable_outside_any_job(self):
@@ -124,20 +124,20 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
                         DECLARATION, 'vars.X outside a job')
 
     def test_variable_not_declared(self):
-        self.assert_one({'delivery-airlock-safe.yml': CALLED.replace('AIRLOCK_SAFE__AZURE_CLIENT_ID', 'AIRLOCK_SAFE__AZURE_TENANT_ID')},
+        self.assert_one({'delivery-package-tags.yml': CALLED.replace('PACKAGE_TAGS__AZURE_CLIENT_ID', 'PACKAGE_TAGS__AZURE_TENANT_ID')},
                         DECLARATION, 'not a variable declared')
 
     def test_variable_of_another_environment(self):
-        self.assert_one({'delivery-airlock-safe.yml': CALLED.replace('AIRLOCK_SAFE__AZURE', 'RELEASE_AUTHORITY__AZURE')},
+        self.assert_one({'delivery-package-tags.yml': CALLED.replace('PACKAGE_TAGS__AZURE', 'RELEASE_AUTHORITY__AZURE')},
                         DECLARATION, 'not a variable declared')
 
     def test_credential_workflow_of_an_undeclared_environment(self):
-        found = violations({'delivery-airlock-safe.yml': CALLED}, {'environments': {}})
+        found = violations({'delivery-package-tags.yml': CALLED}, {'environments': {}})
         self.assertEqual(len(found), 3, found)
 
     def test_environment_outside_its_workflow(self):
-        self.assert_one({'plain.yml': job('    environment: airlock-safe\n    steps: []\n')},
-                        DECLARATION, 'environment airlock-safe outside')
+        self.assert_one({'plain.yml': job('    environment: package-tags\n    steps: []\n')},
+                        DECLARATION, 'environment package-tags outside')
 
     def test_id_token_in_another_job(self):
         self.assert_one({'plain.yml': job('    permissions:\n      id-token: write\n    steps: []\n')},
@@ -152,7 +152,7 @@ class DeliveryEnvironmentsCheck(unittest.TestCase):
                         DECLARATION, 'at the top level')
 
     def test_caller_of_a_workflow_that_is_not_a_credential_environment(self):
-        self.assert_one({'caller.yml': CALLER.replace('delivery-airlock-safe.yml', 'other.yml')},
+        self.assert_one({'caller.yml': CALLER.replace('delivery-package-tags.yml', 'other.yml')},
                         DECLARATION, 'id-token: write')
 
     # Span boundaries: a `}}` inside a single-quoted literal does not end the expression.

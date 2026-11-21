@@ -11,7 +11,7 @@
   ],
   "github-actions": {
     "description": [
-      "Read the action pins of the Airlock configuration template's workflows, whose conditional file names end in a Jinja tag rather than .yml. Renovate adds these patterns to its defaults."
+      "Read the action pin of the Airlock configuration template's workflow under templates/. Renovate adds these patterns to its defaults."
     ],
     "managerFilePatterns": [
       "/^templates/airlock-config/template/\\.github/workflows/[^/]+$/"

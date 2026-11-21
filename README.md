@@ -81,21 +81,9 @@ Every repository that applies the template also gets:
 - `.github/delivery/airlock-config.json`, the Airlock configuration
   declaration, which declares no environment.
 
-Answer `central_audit` true only in the organization's audit repository,
-`organization-audit`. Every other repository keeps the default, false. In the
-audit repository the template also renders:
-
-- `.github/workflows/airlock-central.yml`, which runs once a day and when a
-  person dispatches it. Its one job calls `delivery-airlock-safe.yml` with
-  only `id-token: write`.
-- `.github/workflows/delivery-airlock-safe.yml`, the workflow of the
-  `airlock-safe` credential environment. Its one job enters `airlock-safe`
-  without creating a deployment and runs the Airlock action in central mode,
-  signed in as Airlock Safe from the six `AIRLOCK_SAFE__` variables.
-
-The declaration then lists `airlock-safe` with its key and its six variables.
-Both workflows read the organization policy from `airlock/policy.yml` in the
-owner's `.github` repository. The template owns the Airlock action pin, and
+The workflow reads the organization policy from `airlock/policy.yml` in the
+owner's `.github` repository. The organization's central audit runs in the
+Airlock Worker, not in a rendered workflow. The template owns the Airlock action pin, and
 this repository's Renovate updates it. See
 [the delivery controls design](docs/technical-designs/delivery-controls.yml),
 `audit-runs`.
