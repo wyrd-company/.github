@@ -110,8 +110,9 @@ expected-outcomes:
       secret, its role or the key in Key Vault stops new signatures without
       ending those already made; only deleting Safe's private key at GitHub
       does. The recovery that `delivery-environments` gives suspends Safe's
-      installation, replaces Safe's private key, then rotates the secret,
-      and the risk `leaked-worker-credential-pre-signs-airlock-safe-tokens`
+      installation, cuts the old Entra application off, redeploys the
+      Worker, and replaces Safe's private key with a new key that only a new
+      Entra application may sign with, and the risk `leaked-worker-credential-pre-signs-airlock-safe-tokens`
       records the exposure. Airlock's repository is public, so its default
       branch keeps its rulesets on GitHub Free.
     - >-
