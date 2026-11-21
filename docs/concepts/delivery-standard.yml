@@ -191,8 +191,9 @@ properties:
     what GitHub holds, and each setting the plan does not give as a known
     limit. A registry's trusted publishing settings name the repository,
     workflow and environment that may publish. npm shows and changes them only
-    to a maintainer's own session, so Airlock's audits report npm trust as not
-    verified, and who sets it is open question Q04.
+    to a maintainer's own session, so a person sets them from the values the
+    Airlock Worker shows, and Airlock's audits report npm trust as not
+    verified.
   airlock-worker: >-
     Airlock's hosted service, a Cloudflare Worker at `theairlock.app` in The
     Wyrd Company Cloudflare account. It runs the organization's central audit
@@ -237,52 +238,6 @@ open-questions:
     and Terraform writes the records.
   Q02: >-
     How are products and environments separated across cloud accounts?
-  Q03: >-
-    In short: how does Airlock's Worker get the values Terraform creates?
-    (Re-plan question 5.)
-
-
-    The attended run writes each environment's variables, such as client
-    ids and vault addresses, from the object that
-    `terraform output -json github_environments` prints.
-
-
-    (a) Recommended. The person uploads that output into the elevated
-    session. The Worker checks its shape and shows every value it will write
-    in the batch review. It keeps the file only with the batch's
-    confirmation in D1, which goes when the confirmation is used or expires;
-    what lasts is what every option leaves, the variables in GitHub and
-    their values in the attested record. No credential that reads Terraform
-    is stored, and it does not wait on who runs Terraform, which
-    wyrd-company/.github#20 leaves open.
-
-
-    (b) Terraform's apply commits the output to the app's `infra/`, and the
-    Worker reads it with the person's token. A good fit once
-    wyrd-company/.github#20 settles who runs Terraform.
-
-
-    (c) The Worker reads Terraform's state. Not recommended: state can hold
-    secrets, and reading it needs a stored Azure credential.
-  Q04: >-
-    In short: who sets npm trusted publishing, now that settings are written
-    from a browser, with no npm login? (Re-plan question 6.)
-
-
-    npm lets only a maintainer's own session, with two-factor
-    authentication, set or read a package's trusted publisher, and the
-    Airlock Worker holds no npm credential. Either way no audit reads npm
-    trust, as the risk `npm-trusted-publishers-are-not-verified` records.
-
-
-    (a) Recommended. The person runs `npm trust github`, or uses npmjs.com,
-    with the exact values the Worker shows. The Worker records each package
-    in the attested record as set by that person, and the audits keep
-    reporting npm trust as not verified.
-
-
-    (b) Airlock leaves npm trust out. The attested record holds no npm
-    entry, and setting it stays a step in the release template's README.
 exclusions:
   - Intentional generating or running workflows.
   - Terraform changing GitHub settings.

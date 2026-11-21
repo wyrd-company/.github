@@ -4,6 +4,7 @@ relationships:
     - delivery-controls
     - delivery-environments
     - audit-and-write-settings-in-the-airlock-worker
+    - set-npm-trusted-publishing-by-a-person
 slug: npm-trusted-publishers-are-not-verified
 title: An npm package's trusted publisher changes and no audit sees it
 description: >-
@@ -21,8 +22,11 @@ categories:
 likelihood: 1
 impact: 4
 response: >-
-  Open: who sets npm trust is the operator's question `delivery-standard`
-  Q04. What holds meanwhile: a change of trusted publisher needs a
+  Follows from the operator's ruling of 2026-11-21 that a person sets npm
+  trust, which `set-npm-trusted-publishing-by-a-person` records. What
+  holds: the attested record names who set each package's trusted publisher
+  and when; Airlock fails a version whose npm provenance names another
+  repository or workflow; a change of trusted publisher needs a
   maintainer account with two-factor authentication; where `provenance` is
   on, the release workflow verifies the registry's provenance for each
   package it publishes; and the person who sets the trusted

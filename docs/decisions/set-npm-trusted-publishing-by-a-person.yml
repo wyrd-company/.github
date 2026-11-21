@@ -1,0 +1,49 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Set npm trusted publishing by a person
+relationships:
+  contextualizes:
+    - delivery-environments
+    - delivery-controls
+  references:
+    - audit-and-write-settings-in-the-airlock-worker
+description: >-
+  npm sets and shows a package's trusted publisher only to a maintainer's
+  own session with two-factor authentication, through `npm trust` or
+  npmjs.com, and a package that npm does not yet hold has no trusted
+  publisher to set. The Airlock Worker writes settings from a browser
+  session and holds no npm credential. The operator ruled on 2026-11-21
+  (re-plan question 6).
+considered-options:
+  1: >-
+    A person sets each package's trusted publisher from the exact values the
+    Worker shows, and the Worker records it in the attested record as set by
+    that person; the audits report npm trust as not verified.
+  2: >-
+    Airlock leaves npm trust out, and setting it stays a step in the release
+    template's README.
+decision-outcome:
+  chosen-option: 1
+  justification: >-
+    The operator's ruling. The values come from the same declarations as
+    every other setting Airlock writes, so a person sets npm trust to what
+    the standard names, and the attested record says who set it and when.
+    The operator added a convention for a new package, which closes the gap
+    of a package that npm does not hold yet: a person-run script publishes a
+    placeholder with no code at `0.0.0`, or `0.0.1` when npm refuses
+    `0.0.0`, and then sets the trusted publisher, so the release workflow
+    publishes every real version.
+expected-outcomes:
+  positive:
+    - >-
+      Every npm package exists on the registry, with its trusted publisher
+      set to its release workflow, before its first release.
+    - >-
+      The attested record names the person who set each package's trusted
+      publisher.
+  negative:
+    - >-
+      No run reads npm trust, so a later change to it is not seen, as the
+      risk `npm-trusted-publishers-are-not-verified` records.
+    - >-
+      Each new package needs a maintainer's session to publish its
+      placeholder.

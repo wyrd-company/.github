@@ -60,7 +60,8 @@ description: >-
   declared in that `infra/`, whose one role assignment is the role whose
   only data action is `Microsoft.KeyVault/vaults/keys/sign/action`, at the
   scope of Airlock Safe's key. Its secrets are bindings of the account's
-  Cloudflare Secrets Store, as `Elegua` states. Its other values are plain
+  Cloudflare Secrets Store, as `Elegua` states, and it binds the R2 bucket
+  `airlock-terraform-outputs`, as `Terraform` states. Its other values are plain
   variables of its Wrangler configuration: the tenant, the Entra
   application's client id, Airlock Safe's App id, slug and key name,
   `<owner>/*` as Safe's installation bound, the vault that `delivery-apps`
@@ -201,10 +202,24 @@ description: >-
   name, then by the variable name a declaration lists, with each variable's
   value as a string.
   `terraform output -json github_environments` prints that object, and it is
-  the whole of what Airlock reads from Terraform. How that object reaches the
-  Airlock Worker's attended run is an open question for the operator,
-  `delivery-standard` Q03. Terraform writes no secret value and creates no
-  secret.
+  the whole of what Airlock reads from Terraform. Each apply writes it, as
+  JSON, to the object `github_environments.json` in
+  `airlock-terraform-outputs`, an R2 bucket of The Wyrd Company Cloudflare
+  account that Airlock's `infra/` declares, through R2's S3-compatible API
+  with the credentials R2 derives from `terraform-outputs-r2-token`. That
+  token is an R2 API token scoped to that one bucket with Object Read &
+  Write, the narrowest R2 permission that writes, because R2 has none that
+  only writes. It is a secret of Elegua's manifest with the `cloudflare`
+  issuer, which mints and rotates it, and its destination is the Key Vault
+  that Terraform's apply reads, which wyrd-company/.github#20 places with
+  the apply credential. The Airlock Worker binds the bucket and its code
+  only reads it: a Workers R2 binding grants the whole bucket, so the
+  Worker's tests show that no code path writes or deletes an object there.
+  Terraform holds no GitHub credential and writes no GitHub setting. The
+  decision record `deliver-terraform-outputs-to-the-airlock-worker-through-r2`
+  holds the trade-off, and the risk
+  `terraform-outputs-object-is-not-authenticated` its limit. Terraform
+  writes no secret value and creates no secret.
 
 
   Airlock. Airlock writes GitHub settings only in an attended run: a
@@ -231,9 +246,21 @@ description: >-
   environment. npm manages trusted publishers only for an account with
   write access to the package and two-factor authentication, through
   `npm trust github`, `npm trust list` and `npm trust revoke` or on
-  npmjs.com, and the Airlock Worker holds no npm credential, so who sets npm
-  trust is an open question for the operator, `delivery-standard` Q04.
-  Airlock's scheduled audits report npm trust as not verified. It keeps GitHub's immutable
+  npmjs.com, and the Airlock Worker holds no npm credential, so a person
+  sets it. In an elevated session the Worker shows, for each package, the
+  repository, workflow file and environment its trusted publisher names;
+  the person sets them with `npm trust github` or on npmjs.com; and the
+  Worker records the package in the attested record as set by that person.
+  Airlock's audits report npm trust as not verified. A package that npm does
+  not hold has no trusted publisher to set, so a new package's first version
+  comes from a script that a person runs: a maintainer of the package's
+  scope, with two-factor authentication, runs it from their own npm
+  session; it publishes a placeholder under the declared name, with no code
+  and no install script, at version `0.0.0`, or `0.0.1` when npm refuses
+  `0.0.0`, and then sets the package's trusted publisher to the repository,
+  `.github/workflows/release.yml` and `publish-npm`. The release workflow
+  publishes every later version. The decision record
+  `set-npm-trusted-publishing-by-a-person` holds the ruling. It keeps GitHub's immutable
   releases on unless the repository's effective `evidence` control is `on`,
   as the decision record `keep-release-assets-mutable-for-evidence` states.
   Airlock writes the rulesets that `delivery-controls` names with their
