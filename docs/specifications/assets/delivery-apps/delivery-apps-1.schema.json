@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/apps/1",
   "title": "Delivery App authorization",
-  "description": "The organization's list of GitHub Apps whose keys a workflow signs with, the role each plays, the permissions each is registered with, and the repositories each may serve. Terraform grants a key's sign role, and Airlock names a ruleset bypass actor, only for an enrolment this file allows.",
+  "description": "The organization's list of GitHub Apps whose keys a workflow or the Airlock Worker signs with, the role each plays, the permissions each is registered with, and the repositories each may serve. Terraform grants a key's sign role, and Airlock names a ruleset bypass actor, only for an enrolment this file allows.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -86,7 +86,7 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$"
           },
-          "description": "The repositories whose environments may sign with the App's key."
+          "description": "The repositories whose environments may sign with the App's key; for `airlock-safe`, the one repository whose Worker signs with it."
         },
         "installed_on": {
           "type": "array",
@@ -147,7 +147,7 @@
           }
         },
         {
-          "description": "Airlock Safe is read-only, installed on every repository of its owner, and signed with by one repository.",
+          "description": "Airlock Safe is read-only, installed on every repository of its owner, and signed with by the Worker of one repository.",
           "if": {
             "properties": {
               "role": {

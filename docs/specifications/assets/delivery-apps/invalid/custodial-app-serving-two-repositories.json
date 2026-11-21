@@ -27,7 +27,7 @@
       },
       "role": "airlock-safe",
       "signers": [
-        "example-org/organization-audit"
+        "example-org/airlock"
       ]
     },
     "example-intentional-standard": {
