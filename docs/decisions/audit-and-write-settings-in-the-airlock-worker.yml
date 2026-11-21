@@ -105,12 +105,15 @@ expected-outcomes:
     - >-
       The Worker holds a standing credential: whatever code reads its
       Secrets Store binding can sign Safe's JSON Web Token and so read every
-      repository of the organization. Rotating or removing the secret stops
-      new Azure tokens and does not end those already issued, so a leaked
-      secret keeps reading for up to 160 minutes after its removal; removing the sign role, disabling Safe's key or suspending
-      Safe's installation cuts that short, as `delivery-environments`
-      states. Airlock's repository is public, so its
-      default branch keeps its rulesets on GitHub Free.
+      repository of the organization. Key Vault signs any digest, so that
+      code can have Safe tokens signed for future windows, and removing the
+      secret, its role or the key in Key Vault stops new signatures without
+      ending those already made; only deleting Safe's private key at GitHub
+      does. The recovery that `delivery-environments` gives suspends Safe's
+      installation, replaces Safe's private key, then rotates the secret,
+      and the risk `leaked-worker-credential-pre-signs-airlock-safe-tokens`
+      records the exposure. Airlock's repository is public, so its default
+      branch keeps its rulesets on GitHub Free.
     - >-
       Whoever can deploy the Worker or write its D1 database, the account's
       administrators and the deploy credential that applies its migrations,
