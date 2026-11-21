@@ -31,12 +31,10 @@ description: >-
   deploy declaration holds `unit`, the Release Unit it deploys; `chain`, the
   deploy environments in the order an automatic deploy enters them; and
   `environments`. The Airlock configuration declaration holds only
-  `environments`, which is empty in every repository except the
-  organization's audit repository, where it holds `airlock-safe`. The schema
-  allows `airlock-safe` in any Airlock configuration declaration; the
-  enrolment rule of `delivery-apps`, whose only signer for Airlock Safe is
-  the audit repository, keeps every other repository from signing with
-  it.
+  `environments`, which is empty: its one workflow, `airlock-audit.yml`,
+  enters no environment and holds only the run's `GITHUB_TOKEN`, and the
+  schema refuses an Airlock configuration declaration with any
+  environment.
 
 
   `environments` maps each GitHub environment that a rendered workflow of the

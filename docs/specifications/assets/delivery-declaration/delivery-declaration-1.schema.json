@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wyrd.foo/delivery/declaration/1",
   "title": "Delivery declaration",
-  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, the central audit's environment in the organization's audit repository and none elsewhere; for each, every environment the rendered workflows enter and what each environment carries.",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, no environment; for each, every environment the rendered workflows enter and what each environment carries.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -176,10 +176,8 @@
       "then": {
         "properties": {
           "environments": {
-            "description": "A repository's Airlock configuration declares no environment; only the organization's audit repository declares `airlock-safe`.",
-            "propertyNames": {
-              "const": "airlock-safe"
-            }
+            "description": "An Airlock configuration declares no environment: its one workflow holds only the run's `GITHUB_TOKEN`.",
+            "maxProperties": 0
           }
         },
         "not": {
