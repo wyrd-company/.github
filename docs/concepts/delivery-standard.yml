@@ -249,8 +249,12 @@ open-questions:
 
     (a) Recommended. The person uploads that output into the elevated
     session. The Worker checks its shape and shows every value it will write
-    in the batch review. Nothing is stored, and it does not wait on who runs
-    Terraform, which wyrd-company/.github#20 leaves open.
+    in the batch review. It keeps the file only with the batch's
+    confirmation in D1, which goes when the confirmation is used or expires;
+    what lasts is what every option leaves, the variables in GitHub and
+    their values in the attested record. No credential that reads Terraform
+    is stored, and it does not wait on who runs Terraform, which
+    wyrd-company/.github#20 leaves open.
 
 
     (b) Terraform's apply commits the output to the app's `infra/`, and the
