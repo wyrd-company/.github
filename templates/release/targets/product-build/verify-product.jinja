@@ -1,0 +1,30 @@
+{# relationships: implements: release-process #}
+name: Verify released products
+runs-on: {% raw %}${{ matrix.runner }}{% endraw %}
+permissions:
+  contents: read
+strategy:
+  fail-fast: false
+  matrix:
+    include:
+{% for unit in product_build_units | split(' ') %}
+{% for runner in product_verification_matrix.runners %}
+      - unit: {{ unit | toyaml }}
+        runner: {{ runner | tojson }}
+{% endfor %}
+{% endfor %}
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      ref: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      persist-credentials: false
+  - name: Verify released product
+    if: >-
+      contains(fromJSON(needs.resolve.outputs.units), matrix.unit){% if ns.record_units %} && (!contains(fromJSON(needs.resolve.outputs.record_units), matrix.unit) || needs.release-record.result == 'success'){% endif %}
+    uses: {{ product_verification_recipe }}
+    with:
+      unit: {% raw %}${{ matrix.unit }}{% endraw %}
+      matrix-entry: {% raw %}${{ toJSON(matrix) }}{% endraw %}
+      tag: {% raw %}${{ fromJSON(env.RELEASE_JSON)[matrix.unit].tag }}{% endraw %}
+      version: {% raw %}${{ fromJSON(env.RELEASE_JSON)[matrix.unit].version }}{% endraw %}
+      prerelease: {% raw %}${{ toJSON(fromJSON(env.RELEASE_JSON)[matrix.unit].prerelease) }}{% endraw %}

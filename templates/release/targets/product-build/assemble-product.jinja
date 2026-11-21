@@ -1,0 +1,28 @@
+{# relationships: implements: release-process #}
+name: Assemble product assets
+runs-on: {{ product_assembly_runner | toyaml }}
+permissions:
+  contents: read
+strategy:
+  fail-fast: false
+  matrix:
+    unit: {{ product_build_units | split(' ') | tojson }}
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      ref: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      persist-credentials: false
+  - name: Download this unit's build assets
+    if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
+    uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+    with:
+      pattern: {% raw %}release-asset+${{ matrix.unit }}+*{% endraw %}
+      path: {% raw %}${{ runner.temp }}/release-product/inputs/${{ matrix.unit }}{% endraw %}
+  - name: Run repository recipe
+    if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
+    uses: {{ product_assembly_recipe }}
+    with:
+      unit: {% raw %}${{ matrix.unit }}{% endraw %}
+      input-directory: {% raw %}${{ runner.temp }}/release-product/inputs/${{ matrix.unit }}{% endraw %}
+      output-directory: {% raw %}${{ runner.temp }}/release-product/assemble/${{ matrix.unit }}{% endraw %}
+{% include 'targets/product-build/upload.jinja' %}

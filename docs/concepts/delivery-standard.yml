@@ -43,7 +43,8 @@ properties:
     targets, deploy targets, and documentation publishing are parts a
     repository selects. The standard also renders the Airlock audit workflow
     and the Intentional check on pull requests. Continuous integration is a
-    contract the release template calls, and each repository writes its own.
+    contract the release template relies on, and each repository writes its
+    own.
   applied-record: >-
     The committed `.toha.json` that names the template revision, the selected
     parts, and the answers a repository rendered from. Toha renders the files
@@ -59,8 +60,9 @@ properties:
     every ceremony control. The organization's Airlock configuration can name
     a minimum tier for a repository. An answer below the minimum fails the
     audit and is not a deviation. A change of tier is a re-answered interview
-    that arrives as a pull request, and a lower tier carries a recorded
-    reason.
+    that arrives as a pull request, and every change to a lower tier than the
+    one recorded carries a recorded reason, whether or not the re-answered
+    questions suggest the lower tier.
   tier-questions: >-
     The yes-or-no interview questions whose answers suggest a tier, which the
     person answering then confirms or changes. Any yes among these suggests
@@ -83,11 +85,21 @@ properties:
   floor: >-
     The controls every repository carries at every tier and every rung from
     Building: the workflow creates the release commit and tag through the
-    release authority; organization rulesets make tags immutable and refuse
-    unclassified tags; a job reaches a credential only through an environment
-    and Key Vault; the repository holds no repository-level secret; and
-    recovery runs from the immutable tag and performs only missing work. No
-    answer lowers the floor.
+    release authority; rulesets make tags immutable, refuse unclassified
+    tags and keep the default branch linear; a job reaches a credential only
+    through an environment's workflow on the default branch and Key Vault;
+    the repository holds no repository-level secret; and recovery runs from
+    the immutable tag and performs only missing work. The run's
+    `GITHUB_TOKEN`, which GitHub issues for one run and revokes when it
+    ends, is not a credential in this sense. No answer lowers the floor. The
+    organization's GitHub plan and the repository's visibility decide which
+    of GitHub's settings exist: a private repository on GitHub Free has no
+    rulesets, no deployment branch policies and no environment variables.
+    There, each control those settings carry is a known limit, recorded as
+    a risk that names what a paid plan or a public repository restores, and
+    Airlock reports it as such; the credential route holds through federated
+    credentials that name the default branch and the environment's
+    workflow.
   assurance: >-
     The controls automation performs without a person. A release rehearsal in
     continuous integration for every commit with unreleased intents, a
@@ -104,10 +116,14 @@ properties:
     automatically on merge, secrets rotate unattended, and a template update
     merges without review. At Trusted a person starts each release or deploy
     and reviews each template update. At Custodial a person starts it, a
-    person approves it, and Elegua waits for a person before it promotes a
-    rotated secret. A tier's ceremony applies at the Stable rung. Below
-    Stable, every tier carries Standard's ceremony. Maturity relaxes ceremony
-    and never assurance.
+    person reviews each template update, and Elegua waits for a person before
+    it promotes a rotated secret. No person approves a release or deploy once
+    it has started, a known limit that the risk
+    `releases-and-deploys-run-without-approval` records. A tier's ceremony
+    applies at the Stable rung. Below Stable, every tier carries Standard's ceremony. A release carries the
+    ceremony of the rung the repository holds once that release exists, so
+    the first release at or above 1.0.0 carries the tier's ceremony. Maturity
+    relaxes ceremony and never assurance.
   deviation: >-
     An assurance or ceremony control set below the default that applies at the
     repository's current rung, recorded in the applied record with a reason.
@@ -115,12 +131,13 @@ properties:
     no reason.
   release-authority: >-
     A GitHub App that is the only actor allowed to create a release commit on
-    the default branch and its tag. The release workflow uses it inside a
-    protected environment after validation finishes in a job that holds no
-    key, and the workflow requests a token limited to the one repository. The
-    token action, a GitHub action in its own repository, has Key Vault sign
-    the token request with the App's private key, so the key never reaches a
-    runner. A job that can sign can mint a token for every repository the App
+    the default branch and its tag, wherever the plan gives the repository
+    rulesets. The release workflow uses it inside an environment whose
+    identity admits only the default branch, after validation finishes
+    in a job that holds no key, and the workflow requests a token limited to
+    the one repository. The token action, a GitHub action in its own
+    repository, has Key Vault sign the token request with the App's private
+    key, so the key never reaches a runner. A job that can sign can mint a token for every repository the App
     is installed on, so a shared App is one trust boundary. The organization
     has one Intentional App for its Standard repositories and one for its
     Trusted repositories, and a Custodial repository has its own App. A person
@@ -134,12 +151,15 @@ properties:
     organization creates its own Apps from the published instructions and
     names them in its answers.
   environment: >-
-    A GitHub environment of a repository. It is the only route from a workflow
-    job to a credential, and it carries the protection rules the tier
-    requires. It holds the identifiers for federated sign-in to Azure, the Key
-    Vault address, the App identifier, and the signing key name as variables,
-    and no secret value. Terraform outputs these values and Airlock writes
-    them.
+    A GitHub environment of a repository, with its own workflow file and
+    Azure identity. It is the only route from a workflow job to a
+    credential, and its identity admits only that workflow file on the
+    default branch; where the plan gives one, a branch policy also admits
+    the default branch only. The identifiers for federated sign-in to Azure,
+    the Key Vault address, the App identifier, and the signing key name are
+    its variables, held in the environment where the plan gives environment
+    variables and in the repository otherwise, and no secret value.
+    Terraform outputs these values and Airlock writes them.
   key-vault: >-
     The Azure Key Vault a workflow reads from after federated sign-in through
     its environment. Every credential a workflow needs that a service cannot
@@ -150,7 +170,10 @@ properties:
   secret-manifest: >-
     Elegua's declaration of every long-lived credential: its issuer, the
     stores that carry it, and its rotation policy. Elegua mints, places,
-    verifies, rotates, and revokes each credential. No other part creates or
+    verifies, rotates, and revokes each credential. A credential that only a
+    person can generate, such as a GitHub App's client secret, has Elegua's
+    `human` issuer: the person generates it when Elegua asks, and Elegua
+    stages, places, records and retires it. No other part creates or
     replaces a secret.
   cloud-resource: >-
     A resource in Cloudflare, AWS, or Azure, including each Key Vault, the
@@ -160,10 +183,27 @@ properties:
     what the cloud holds.
   repository-settings: >-
     The GitHub configuration of a repository and the organization: rulesets,
-    environments with their protection rules and variables, and the trusted
-    publishing settings of each registry. Airlock applies them from the
-    declared configuration, and its audit reports any difference between the
-    declaration and what GitHub and the registries hold.
+    environments with their branch policies and variables, and the OpenID
+    Connect subject template. Airlock applies them from the declared
+    configuration and the organization's declared GitHub plan, in a session of
+    the Airlock Worker in which a person signed in and elevated to Airlock
+    Admin, and its audit reports any difference between the declaration and
+    what GitHub holds, and each setting the plan does not give as a known
+    limit. A registry's trusted publishing settings name the repository,
+    workflow and environment that may publish. npm shows and changes them only
+    to a maintainer's own session, so a person sets them from the values the
+    Airlock Worker shows, and Airlock's audits report npm trust as not
+    verified.
+  airlock-worker: >-
+    Airlock's hosted service, a Cloudflare Worker at `theairlock.app` in The
+    Wyrd Company Cloudflare account. It runs the organization's central audit
+    each day as Airlock Safe, whose key Azure Key Vault holds and uses to
+    sign, and it shows every report. A person signs in, sees which rules a
+    repository breaks, and elevates to Airlock Admin to fix them; every
+    write of a GitHub setting happens in that elevated session. Airlock's
+    audit engine is compiled to WebAssembly and runs in the Worker and in
+    the JavaScript action of each repository's own audit. The Worker deploys
+    through the deploy template like any other Worker of the organization.
 features:
   adopt-by-interview: >-
     A repository answers the template's questions, including its targets, and
@@ -176,12 +216,14 @@ features:
     change, lists the adopting repositories, and starts the sessions. An
     adopter outside the organization chooses its own trigger.
   release-from-a-source-commit: >-
-    A release starts from one commit of the default branch that has passed
-    continuous integration. The workflow creates the release commit and tag
-    through the release authority, then delivers through the selected parts.
+    A release starts from one commit of the default branch whose push run of
+    continuous integration succeeded, and a release of a commit without one
+    fails. The workflow creates the release commit and tag through the
+    release authority, then delivers through the selected parts.
   read-credentials-through-an-environment: >-
-    A job enters its environment, signs in to Azure by federation, and reads
-    only the Key Vault secrets its part declares.
+    A job of its environment's workflow enters the environment, signs in to
+    Azure by federation, and reads only the Key Vault secrets its part
+    declares.
   audit-conformance: >-
     Airlock reads the applied record, the release model, the repository
     settings, the absence of repository-level secrets, the tier, and the

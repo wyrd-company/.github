@@ -1,0 +1,18 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - deploy-process
+description: >-
+  `wrangler deploy --tag <release tag>` accepts every release tag the
+  organization's tag templates produce, bare SemVer and `<name>@<SemVer>`,
+  and `wrangler versions view <id> --json` returns it unchanged at
+  `annotations["workers/tag"]` for the version that
+  `wrangler deployments status --json` reports at 100 percent.
+end-descendant-type: spike
+evidence:
+  - Cloudflare documents `--tag` on `wrangler deploy` and `versions upload`
+    and the `workers/tag` annotation, and states no length or character
+    limit.
+  - A secret change creates a version that inherits the tag, so the tag
+    identifies the release and not one version.
+  - The deploy template's live cases read the tag back after each deploy.

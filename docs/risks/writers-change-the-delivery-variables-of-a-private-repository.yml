@@ -1,0 +1,39 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-environments
+    - delivery-controls
+    - hold-the-floor-within-the-github-plan
+slug: writers-change-the-delivery-variables-of-a-private-repository
+title: A writer of a private repository changes the variables a credential route reads
+description: >-
+  On a private repository of an organization on GitHub Free, GitHub gives
+  environments no variables, so each credential environment's identifiers
+  are repository variables, which any account with write access can change,
+  where an environment variable takes a repository administrator. A changed
+  `<ENVIRONMENT>__<APP>_INSTALLED_ON` widens the installations the token
+  action accepts, so a misplaced installation of the App is not refused; a
+  changed client id, tenant or vault address points the job at another
+  identity or vault.
+categories:
+  - security
+  - integrity
+likelihood: 1
+impact: 2
+response: >-
+  Accepted by the operator on 2026-11-19, who keeps the organization on
+  GitHub Free for its cost. What holds: Entra refuses a sign-in as any
+  identity whose federated credential does not name this repository's
+  default branch and the environment's workflow file, and Key Vault refuses
+  a read or a signature by an identity without its role; the central audit
+  checks each App installation's selection itself; and the central audit
+  compares every variable with the attested record and fails on a
+  difference, at the next scheduled run, which detects and does not prevent
+  the change. Airlock reports the variables of each such repository as
+  repository-scoped, a known limit naming this risk. Moving the
+  organization to GitHub Team restores environment variables: Airlock moves
+  each variable into its environment under the same name, where only a
+  repository administrator can change it, and the rendered workflows read
+  it unchanged. Making a repository public restores the same for that
+  repository on Free.
+status: open

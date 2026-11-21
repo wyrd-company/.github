@@ -1,0 +1,69 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Deliver Terraform's outputs to the Airlock Worker through R2
+relationships:
+  contextualizes:
+    - delivery-environments
+    - delivery-controls
+  references:
+    - audit-and-write-settings-in-the-airlock-worker
+description: >-
+  The Airlock Worker's attended run writes each credential environment's
+  variables, such as client ids and vault addresses, from the object that
+  Terraform's `github_environments` output gives. Terraform writes no
+  GitHub setting and holds no credential that writes to GitHub, and who runs
+  Terraform, and
+  with what credential, is open in wyrd-company/.github#20. Something has to
+  carry the object from Terraform's apply to the Worker. The operator ruled
+  on 2026-11-21 (re-plan question 5).
+considered-options:
+  1: >-
+    The person uploads the output of
+    `terraform output -json github_environments` into the elevated session.
+    No credential carries it, and a person handles a file for every batch.
+  2: >-
+    Terraform's apply commits the output to the app's `infra/`, and the
+    Worker reads it with the person's token. Terraform's apply then needs a
+    GitHub credential that writes a repository.
+  3: >-
+    The Worker reads Terraform's state. State can hold secrets, and reading
+    it needs a stored Azure credential.
+  4: >-
+    Terraform's apply writes the object to a dedicated R2 bucket, which
+    Airlock's `infra/` declares, with an R2 API token scoped to that one
+    bucket and held in Key Vault, where Elegua rotates it; the Worker reads
+    the latest object through its binding of the bucket, and the person
+    confirms each repository's exact changes in the batch review.
+decision-outcome:
+  chosen-option: 4
+  justification: >-
+    The operator's ruling, for the reason the operator gave: an R2 API token
+    can be scoped to one bucket, so Terraform's apply can hand the object to
+    the Worker through a credential that reaches nothing else, and no person
+    has to carry a file. Terraform still holds no credential that writes to
+    GitHub, and
+    Airlock stays the only writer of GitHub settings. A tampered object
+    changes nothing by itself: every value it carries reaches GitHub only in
+    a batch that an elevated person reviewed, setting by setting, and
+    confirmed.
+expected-outcomes:
+  positive:
+    - >-
+      The attended run always reads Terraform's latest output, and no person
+      copies a file between Terraform and the Worker.
+    - >-
+      The token that writes the object reaches one bucket, which holds
+      identifiers and no secret.
+  negative:
+    - >-
+      Nothing in the object proves that Terraform wrote it. Whoever holds
+      the token, Terraform's apply credential or the Cloudflare account can
+      write it, and the person's review of each value is what stands
+      between a written object and GitHub, as the risk
+      `terraform-outputs-object-is-not-authenticated` records.
+    - >-
+      R2 has no permission that only writes, so the token is Object Read &
+      Write on its bucket, and a Workers R2 binding grants the whole bucket,
+      so the Worker reads it only by its own code.
+    - >-
+      Elegua gains a secret, the R2 token, and the Key Vault that Terraform's
+      apply reads holds it, which wyrd-company/.github#20 places.

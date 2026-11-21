@@ -1,0 +1,81 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - delivery-controls
+    - delivery-environments
+    - delivery-skeleton
+format: json-schema
+description: >-
+  A delivery declaration is the JSON file a delivery template renders to state
+  what the repository's delivery workflows need and how strict they are. The
+  release template renders `.github/delivery/release.json`, the deploy
+  template renders `.github/delivery/deploy.json`, and the Airlock
+  configuration template renders `.github/delivery/airlock-config.json`. Each is a whole file that
+  Toha owns in the applied record's `paths`, rendered from the application's
+  answers and parts and from nothing else, and defined by
+  `assets/delivery-declaration/delivery-declaration-1.schema.json`, whose `$id`
+  and the file's `$schema` are `https://wyrd.foo/delivery/declaration/1`.
+  Toha's `tojson` writes it with keys sorted by code point.
+
+
+  The release declaration holds `tier`, the repository's tier as answered;
+  `tier_reason`, when answered; `prepare_outputs`, the Git pathspec globs
+  that the prepare recipe may change, from the `release_prepare_outputs`
+  answer;
+  `controls`, every control the interview answers with a setting rather than
+  `default`, each with its `setting` and, when the setting ranks below the
+  tier's default at the Stable rung, its `reason`; `release_authority.slug`, the slug of the App that
+  creates release commits and tags; `package_tags.slug` when the release model
+  gives any tag `require_phase: after-publication`; and `environments`. The
+  deploy declaration holds `unit`, the Release Unit it deploys; `chain`, the
+  deploy environments in the order an automatic deploy enters them; and
+  `environments`. The Airlock configuration declaration holds only
+  `environments`, which is empty: its one workflow, `airlock-audit.yml`,
+  enters no environment and holds only the run's `GITHUB_TOKEN`, and the
+  schema refuses an Airlock configuration declaration with any
+  environment.
+
+
+  `environments` maps each GitHub environment that a rendered workflow of the
+  template enters to its `purpose`; `variables`, every variable name the
+  environment carries; `secrets`, each Key Vault secret a job reads there, with
+  its Key Vault `name`, either the `env` name the reading steps receive it as
+  or, for a JSON secret, `fields` mapping each member to such a name, and its
+  `purpose`; `keys`, each App whose Key Vault key a job signs with there, with
+  its `slug`, the names of the variables that hold its App id, its key name
+  and the repositories its installation may reach, and the `owner` and
+  `repositories` its token is for when they are not
+  the declaring repository; and `trusted_publishing`, the registries whose
+  trusted publishing names this environment. An environment carries
+  secrets or keys, never both, because it names one vault. The names are those of `delivery-environments`.
+
+
+  Readers. The release and deploy workflows read `tier` and `controls` from
+  `.github/delivery/release.json` and compute each control's effective
+  setting as `delivery-controls` defines, at the revision
+  `delivery-skeleton` fixes for the run's governing rung. A release workflow
+  run that concerns one release, in mode `release` or `recover`, reads the
+  file at that release's release commit: in mode `release` it reads it at
+  the source commit, which the release commit carries unchanged because
+  `release-process` refuses a release commit that changes a path under
+  `.github/`. The deploy workflow, and a release workflow run that releases
+  nothing, read it at the commit their workflow file came from. The release
+  workflow's `request-deploy` reads `.github/delivery/deploy.json` at the
+  default branch head, the deploy configuration that a deploy dispatched
+  then runs with, as `release-process` states. Airlock
+  reads both declarations to know which environments,
+  variables and branch policies to apply and audit, and which secrets
+  Elegua's manifest must declare. A repository with a deploy declaration and no
+  release declaration fails the deploy workflow's `resolve` job and Airlock's
+  audit.
+validation-criteria: >-
+  The schema is JSON Schema 2020-12. `release.example.json` and
+  `deploy.example.json` in the same folder validate against it, and the
+  documents under `invalid/` each fail it for the one reason their file name
+  states, checked by `task test`; `airlock-config.example.json` validates
+  as well. Each template carries a byte-identical copy
+  of the schema in its skeleton copy, and its tests validate the declaration
+  rendered for every part, every tier and every control setting against that
+  copy. Airlock vendors a byte-identical copy and refuses a declaration whose
+  `$schema` is not this `$id`.

@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "renovate": "44.167.1"
+  },
+  "private": true,
+  "//": {
+    "relationships": {
+      "validates": "release-process"
+    }
+  }
+}

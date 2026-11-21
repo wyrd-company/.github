@@ -1,0 +1,205 @@
+# ---
+# relationships:
+#   implements: release-process
+# ---
+name: release
+description: Release workflow from the Intentional Release Model
+schemas: schemas
+data:
+  release_targets:
+    product-build: !include targets/product-build/target.yml
+    crates-io: !include targets/crates-io/target.yml
+    npm: !include targets/npm/target.yml
+    ghcr: !include targets/ghcr/target.yml
+    homebrew-tap: !include targets/homebrew-tap/target.yml
+    repo-wyrd-foo: !include targets/repo-wyrd-foo/target.yml
+interview:
+  - id: release_model
+    type: document
+    prompt: Intentional Release Model
+    schema: https://intentional.foo/schemas/release-model/1
+    input: .intentional/release-model.json
+  - id: targets
+    type: multiselect
+    parts: true
+    prompt: Publication targets
+    options: [crates-io, npm, ghcr, homebrew-tap, repo-wyrd-foo, product-build]
+    default: []
+  - id: npm_units
+    type: text
+    prompt: Release Units with npm packages (space separated)
+    when: "'npm' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: npm_trusted_publishing
+    type: confirm
+    prompt: Use npm trusted publishing configured for release.yml?
+    when: "'npm' in targets"
+    default: true
+  - id: npm_dry_run
+    type: confirm
+    prompt: Dry run npm publication without registry writes?
+    when: "'npm' in targets"
+    default: false
+  - id: ghcr_units
+    type: text
+    prompt: Release Units published as GHCR images (space separated)
+    when: "'ghcr' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: ghcr_dry_run
+    type: confirm
+    prompt: Build GHCR images without registry access?
+    when: "'ghcr' in targets"
+    default: false
+  - id: ci_workflow
+    type: text
+    prompt: CI workflow file name
+    default: ci.yml
+    validate:
+      regex: '^[A-Za-z0-9_.-]+\.ya?ml$'
+    required: true
+  - id: required_units
+    computed: "release_model.release_units | dictsort | map(attribute='1') | selectattr('release_record', 'equalto', 'required') | list | length"
+  - id: latest_unit
+    type: select
+    prompt: Release Unit marked latest
+    when: required_units > 1
+    options: "release_model.release_units | dictsort | selectattr('1.release_record', 'equalto', 'required') | map(attribute='0') | list"
+  - id: crates_io_units
+    type: text
+    prompt: Release Units published to crates.io (space separated)
+    when: "'crates-io' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: homebrew_tap_units
+    type: text
+    prompt: Release Units with Homebrew formula assets (space separated)
+    when: "'homebrew-tap' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: homebrew_tap_repository
+    type: text
+    prompt: Homebrew tap repository (owner/repository)
+    when: "'homebrew-tap' in targets"
+    required: true
+    validate:
+      regex: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  - id: homebrew_tap_dry_run
+    type: confirm
+    prompt: Show the Homebrew formula diff without committing to the tap?
+    when: "'homebrew-tap' in targets"
+    default: false
+  - id: repo_wyrd_foo_units
+    type: text
+    prompt: Release Units submitted to repo.wyrd.foo (space separated)
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: repo_wyrd_foo_action_sha
+    type: text
+    prompt: Qualified submit-release Action commit on remote main
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      regex: '^[0-9a-f]{40}$'
+  - id: repo_wyrd_foo_action_tag
+    type: text
+    prompt: Qualified submit-release Action release tag (bare SemVer)
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    validate:
+      # yamllint disable rule:line-length
+      regex: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+      # yamllint enable rule:line-length
+  - id: repo_wyrd_foo_manifest_asset
+    type: text
+    prompt: Package selection manifest release asset name
+    when: "'repo-wyrd-foo' in targets"
+    required: true
+    default: release-manifest.json
+    validate:
+      regex: '^[A-Za-z0-9][A-Za-z0-9._+-]*$'
+  - id: repo_wyrd_foo_dry_run
+    type: confirm
+    prompt: Validate package selection without submitting to repo.wyrd.foo?
+    when: "'repo-wyrd-foo' in targets"
+    default: false
+  - id: product_build_units
+    type: text
+    prompt: Release Units built by repository recipes (space separated)
+    when: "'product-build' in targets"
+    required: true
+    validate:
+      regex: '^[a-z0-9][a-z0-9._-]*( [a-z0-9][a-z0-9._-]*)*$'
+  - id: product_build_matrix
+    type: document
+    prompt: Product build targets and runner labels
+    when: "'product-build' in targets"
+    schema: https://github.com/wyrd-company/.github/blob/main/release/schemas/product-build-matrix.schema.json
+    input: .github/release-builds.json
+  - id: product_build_recipe
+    type: text
+    prompt: Repository-owned local build action
+    when: "'product-build' in targets"
+    default: ./.github/actions/release-build
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_build_assembly
+    type: confirm
+    prompt: Assemble the build outputs with a repository recipe?
+    when: "'product-build' in targets"
+    default: false
+  - id: product_assembly_recipe
+    type: text
+    prompt: Repository-owned local assembly action
+    when: "'product-build' in targets and product_build_assembly"
+    default: ./.github/actions/release-assemble
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_assembly_runner
+    type: text
+    prompt: Runner label for assembly
+    when: "'product-build' in targets and product_build_assembly"
+    default: ubuntu-latest
+    required: true
+    validate:
+      regex: '^[A-Za-z0-9_.-]+$'
+  - id: product_verification
+    type: confirm
+    prompt: Verify released products with a repository recipe?
+    when: "'product-build' in targets"
+    default: false
+  - id: product_verification_recipe
+    type: text
+    prompt: Repository-owned local verification action
+    when: "'product-build' in targets and product_verification"
+    default: ./.github/actions/release-verify
+    required: true
+    validate:
+      regex: '^\./\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$'
+  - id: product_verification_matrix
+    type: document
+    prompt: Product verification runners
+    when: "'product-build' in targets and product_verification"
+    schema: https://github.com/wyrd-company/.github/blob/main/release/schemas/product-verification-matrix.schema.json
+    input: .github/release-verification.json
+  - id: major_tag_update
+    type: confirm
+    prompt: Update a numeric major tag after release verification?
+    default: false
+  - id: major_tag_unit
+    type: select
+    prompt: Release Unit whose release moves the numeric major tag
+    when: major_tag_update
+    options: "release_model.release_units | dictsort | selectattr('1.release_record', 'equalto', 'required') | map(attribute='0') | list"
+    required: true
+  - id: credential_answers
+    computed: "dict(npm_trusted_publishing=(npm_trusted_publishing | default(true)))"

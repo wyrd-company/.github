@@ -1,0 +1,15 @@
+{# relationships: implements: release-process #}
+name: Publish Homebrew tap formulas
+runs-on: ubuntu-latest
+permissions:
+  contents: read
+steps:
+  - name: Compare or commit release formulas
+    uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+    env:
+      HOMEBREW_TAP_TOKEN: {% raw %}${{ secrets.HOMEBREW_TAP_TOKEN }}{% endraw %}
+    with:
+      script: |
+{% set script %}{% include 'targets/homebrew-tap/homebrew.js' %}{% endset %}{{ script | indent(8, true) }}
+        const tap = new github.constructor({auth: process.env.HOMEBREW_TAP_TOKEN});
+        await homebrewRelease({source: github, tap, repo: context.repo, env: process.env, log: core.info});

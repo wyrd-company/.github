@@ -1,0 +1,24 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - deploy-process
+    - build-the-worker-once-and-deploy-the-bundle
+description: >-
+  The files `wrangler deploy --dry-run --outdir <dir> --env <environment>`
+  writes, carried to another job with the repository's configuration, its
+  static assets directory and its migrations directories, deploy unchanged
+  with `wrangler deploy <dir>/<entry> --no-bundle --env <environment>`, which
+  applies the environment's bindings, static assets, Durable Object
+  migrations and queue consumers as `wrangler deploy` of the source does, and
+  the template-pinned Wrangler installed with `npm ci --ignore-scripts` runs
+  it.
+end-descendant-type: spike
+evidence:
+  - Cloudflare documents `--dry-run --outdir` as writing the bundled output
+    and `--no-bundle` as skipping Wrangler's build for code built by other
+    tooling.
+  - Cloudflare does not document deploying a dry run's output, nor whether
+    additional modules the dry run writes are found under `--no-bundle`.
+  - The deploy template's spike deploys the first adopter's Worker this way
+    to a test environment and compares the deployed version's behaviour with
+    a deploy of the source.

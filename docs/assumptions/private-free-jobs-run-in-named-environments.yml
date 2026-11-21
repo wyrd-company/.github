@@ -1,0 +1,26 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-skeleton
+    - deploy-process
+description: >-
+  On a private repository on GitHub Free, a job that names an environment
+  runs. GitHub applies none of the environment's configuration to it: no
+  branch policy, no variable and no secret. The job's OpenID Connect token
+  carries the `environment` claim, and a job without `deployment: false`
+  creates a GitHub deployment of that environment, as on a public
+  repository.
+end-descendant-type: spike
+evidence:
+  - GitHub's documentation says that configured protection rules and
+    environment secrets are ignored once a repository on Free becomes
+    private, and that creating an environment in a private repository needs
+    GitHub Team or Pro; it does not say what a job that names one does.
+  - The private repository `tavern-playhouse` holds a `production`
+    deployment whose status is `success`, created on 2026-08-05 by a run of
+    `cd.yml`; the organization's plan and the repository's visibility at
+    that time were not checked.
+  - A spike on the testbed, made private, runs a job that names an
+    environment and reads its token's claims and the deployment it leaves.
+    If GitHub refuses the job, the templates name environments only where
+    the declared plan and visibility give them.

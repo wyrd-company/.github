@@ -1,0 +1,51 @@
+{# relationships: implements: release-process #}
+{# Each target adds literal, conditional includes here. See tests/release/README.md. #}
+
+{% if 'crates-io' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/crates-io/publish-crates-io.yml' %}{% endset %}
+{{ ns.part_job('publish-crates-io', crates_io_units, 'publish', body) }}
+{% endif %}
+
+{% if 'npm' in targets %}
+{% if stage == 'publish' %}
+{% set body %}{% include 'targets/npm/publish-npm.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/npm/publish-npm.env.yml' %}{% endset %}
+{{ ns.part_job('publish-npm', npm_units, 'publish', body, extra_env) }}
+{% endif %}
+{% if stage == 'verify' %}
+{% set body %}{% include 'targets/npm/verify-npm-clients.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/npm/verify-npm-clients.env.yml' %}{% endset %}
+{{ ns.part_job('verify-npm-clients', npm_units, 'verify', body, extra_env) }}
+{% endif %}
+{% endif %}
+
+{% if 'ghcr' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/ghcr/publish-ghcr.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/ghcr/publish-ghcr.env.yml' %}{% endset %}
+{{ ns.part_job('publish-ghcr', ghcr_units, 'publish', body, extra_env) }}
+{% endif %}
+
+{% if 'homebrew-tap' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/homebrew-tap/publish-homebrew-tap.yml' %}{% endset %}
+{% set extra_env %}{% include 'targets/homebrew-tap/publish-homebrew-tap.env.yml' %}{% endset %}
+{{ ns.part_job('publish-homebrew-tap', homebrew_tap_units, 'publish', body, extra_env) }}
+{% endif %}
+
+{% if 'repo-wyrd-foo' in targets and stage == 'publish' %}
+{% set body %}{% include 'targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml' %}{% endset %}
+{{ ns.part_job('publish-repo-wyrd-foo', repo_wyrd_foo_units, 'publish', body) }}
+{% endif %}
+
+{% if 'product-build' in targets %}
+{% if stage == 'build' %}
+{% set body %}{% include 'targets/product-build/build-product.jinja' %}{% endset %}
+{{ ns.part_job('build-product', product_build_units, 'build', body) }}
+{% endif %}
+{% if stage == 'assemble' and product_build_assembly %}
+{% set body %}{% include 'targets/product-build/assemble-product.jinja' %}{% endset %}
+{{ ns.part_job('assemble-product', product_build_units, 'assemble', body) }}
+{% endif %}
+{% if stage == 'verify' and product_verification | default(false) %}
+{% set body %}{% include 'targets/product-build/verify-product.jinja' %}{% endset %}
+{{ ns.part_job('verify-product', product_build_units, 'verify', body) }}
+{% endif %}{# Adjacent tags preserve disabled-output whitespace. #}{% endif %}

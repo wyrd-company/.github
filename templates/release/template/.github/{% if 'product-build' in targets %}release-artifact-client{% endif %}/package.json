@@ -1,0 +1,1 @@
+{# relationships: implements: release-process #}{% include 'targets/product-build/artifact-client/package.json' %}

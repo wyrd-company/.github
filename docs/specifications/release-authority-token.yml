@@ -1,0 +1,116 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - delivery-environments
+    - delivery-skeleton
+format: github-action
+description: >-
+  The token action is the JavaScript GitHub action `action.yml` at the root of
+  `wyrd-company/azure-key-vault-github-app-token`, running on `node24` from
+  a bundled `dist/` committed with each release. It returns a GitHub App
+  installation token limited to the repositories and permissions its caller
+  names, after Azure Key Vault signs the App's JSON Web Token with a key that
+  never leaves the vault. It reads no private key, accepts none as an input,
+  and depends on no tool or service beyond GitHub, Microsoft Entra ID and Azure
+  Key Vault. Workflows pin it by full commit with its version as a comment.
+
+
+  Inputs. `app-id` (required): the App's numeric id. `vault-url` (required):
+  the vault's address, `https://` and a host with no path. `key-name`
+  (required): the Key Vault key that holds the App's private key, one to 127
+  letters, digits and dashes. `key-version` (optional): the key version; the
+  latest enabled version when absent. `azure-tenant-id` and `azure-client-id`
+  (required): the tenant and the client id of the identity whose federated
+  credential trusts the calling job. `owner` (optional): the account that
+  installed the App; the calling repository's owner when absent.
+  `repositories` (optional): repository names under `owner`, separated by
+  commas or newlines. With neither `owner` nor `repositories` the token is
+  for the calling repository alone; with `repositories` alone it is for those
+  repositories under the calling repository's owner; with `owner` alone it
+  is for every repository of that installation. `permission-<name>` (optional, one
+  input per GitHub App permission, named as GitHub names it with underscores
+  written as dashes, such as `permission-contents`): `read`, `write` or
+  `admin`; the token carries exactly the permissions given, and the
+  installation's permissions when none is given.
+  `installation-repositories` (optional): every repository the App's
+  installation may reach, each `<owner>/<repository>`, separated by commas
+  or newlines, or the single entry `<owner>/*` when it may reach every
+  repository of the owner; when given, the action refuses to return a token
+  from an installation that reaches any other. Names match whole and
+  without regard to case, as GitHub's do; `*` is allowed only as that single
+  entry, which every repository of the owner matches whatever the
+  selection; an empty value is the same as an absent one, so a caller that
+  must check passes a value it has proved present. `skip-token-revoke`
+  (optional): `true` leaves the token valid after the job; `false` when absent.
+  `github-api-url` (optional): the REST API root; the calling run's
+  `github.api_url` when absent.
+
+
+  Outputs. `token`: the installation token, masked in the log before the
+  action writes it as an output. `installation-id`: the installation's
+  numeric id. `app-slug`: the App's slug. `expires-at`: the token's expiry as
+  GitHub states it.
+
+
+  Sequence. The action requests the job's OpenID Connect token with audience
+  `api://AzureADTokenExchange`, which needs the job permission
+  `id-token: write`. It exchanges that token at
+  `https://login.microsoftonline.com/<azure-tenant-id>/oauth2/v2.0/token` as a
+  client assertion for `azure-client-id`, with scope
+  `https://vault.azure.net/.default`. It builds the App's JSON Web Token with
+  header `{"alg":"RS256","typ":"JWT"}` and claims `iat` sixty seconds before
+  now, `exp` 540 seconds after now and `iss` the App id as a string; hashes the
+  unpadded base64url signing input with SHA-256; and calls the Key Vault
+  operation `POST <vault-url>/keys/<key-name>/<key-version>/sign` with
+  algorithm `RS256` and the digest, under API version 7.4 or later; without
+  `key-version` the version segment is empty, as the Azure SDKs send it, and
+  Key Vault signs with the latest enabled version. It appends
+  the returned signature, base64url without padding. With the signed token it
+  finds the installation through `GET /repos/<owner>/<repository>/installation`
+  when it names one repository, and otherwise through
+  `GET /orgs/<owner>/installation`, falling back to
+  `GET /users/<owner>/installation` when the owner is a user. When
+  `installation-repositories` is given, it then checks the installation's
+  scope: an installation whose `repository_selection` is `all` passes only
+  when the input is `<owner>/*`; otherwise it requests a token for the whole
+  installation with only `metadata: read`, lists
+  `GET /installation/repositories` across every page, revokes that token,
+  and fails when a listed repository is not in the input. A repository in
+  the input that the installation does not reach is not a failure. It
+  requests the
+  installation token through `POST /app/installations/<id>/access_tokens` with
+  `repositories` and `permissions` as given. Its post step revokes the token
+  through `DELETE /installation/token` unless `skip-token-revoke` is `true`.
+
+
+  Failures. Each failure stops the action with a message that names the step
+  that failed, one of `azure-sign-in`, `key-vault-sign`, `installation-lookup`,
+  `installation-scope`, `token-request` and `token-revoke`, together with the HTTP status and the
+  service's error code when there is one. An App not installed for the owner
+  or repository is a 404 at `installation-lookup`; a repository or a
+  permission the installation does not grant is a 422 at `token-request`. A
+  failure at `installation-scope` names each repository the installation
+  reaches outside `installation-repositories`, or the `all` selection. No
+  message contains a token, an
+  assertion, a signature or a request body.
+
+
+  The identity's only role on the key holds the data action
+  `Microsoft.KeyVault/vaults/keys/sign/action`; Azure's built-in
+  `Key Vault Crypto User` also suffices and grants more. A key generated by
+  GitHub enters the vault once, by a person, with
+  `az keyvault key import --vault-name <vault> --name <app-slug> --pem-file <app>.pem --ops sign`,
+  after which the PEM is deleted. Key Vault never returns the private part of
+  a key, so the key cannot be exported.
+validation-criteria: >-
+  A workflow run in the action's repository, entering an environment whose
+  identity federates to Azure, obtains a token for that repository with
+  `permission-contents: read`, uses it for one API call that succeeds, shows a
+  call to another repository of the installation refused, and shows a call
+  after the post step refused with 401. A run with a wrong key name fails at
+  `key-vault-sign`, a run whose environment has no federated credential
+  fails at `azure-sign-in`, and a run whose `installation-repositories` omits
+  a repository the installation reaches fails at `installation-scope`
+  naming it; no log contains a token, an assertion or a signature. The README states every input, every output, the role on the
+  key, and the import command.

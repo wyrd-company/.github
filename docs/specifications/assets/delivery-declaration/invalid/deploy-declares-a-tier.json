@@ -1,0 +1,46 @@
+{
+  "$schema": "https://wyrd.foo/delivery/declaration/1",
+  "chain": [
+    "staging",
+    "production"
+  ],
+  "environments": {
+    "production": {
+      "keys": [],
+      "purpose": "Deploy the Cloudflare Worker to production",
+      "secrets": [
+        {
+          "env": "CLOUDFLARE_API_TOKEN",
+          "name": "cloudflare-api-token",
+          "purpose": "Upload the Worker and apply its D1 migrations"
+        }
+      ],
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ]
+    },
+    "staging": {
+      "keys": [],
+      "purpose": "Deploy the Cloudflare Worker to staging",
+      "secrets": [
+        {
+          "env": "CLOUDFLARE_API_TOKEN",
+          "name": "cloudflare-api-token",
+          "purpose": "Upload the Worker and apply its D1 migrations"
+        }
+      ],
+      "variables": [
+        "AZURE_CLIENT_ID",
+        "AZURE_KEY_VAULT_URL",
+        "AZURE_TENANT_ID",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ]
+    }
+  },
+  "template": "deploy",
+  "tier": "standard",
+  "unit": "example-service"
+}

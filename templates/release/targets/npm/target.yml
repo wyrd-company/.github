@@ -1,0 +1,10 @@
+# relationships: implements: release-process
+units: npm_units
+build: []
+publish: [publish-npm]
+verify: [verify-npm-clients]
+credentials:
+  npm-token:
+    name: NPM_TOKEN
+    purpose: Publish npm packages with a granular access token
+    unless: npm_trusted_publishing

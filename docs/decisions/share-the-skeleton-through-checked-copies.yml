@@ -1,0 +1,59 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Share the delivery skeleton through checked copies
+relationships:
+  contextualizes:
+    - delivery-skeleton
+    - release-process
+    - deploy-process
+description: >-
+  The release template and the deploy template render workflows on one
+  skeleton of stages, gates, credential steps and ceremony checks, and the
+  delivery standard makes them two templates that a repository applies
+  separately. Toha resolves every include relative to one template root,
+  refuses `..` and symlinked paths, and offers no composition of one template
+  by another, so two template roots cannot include one file.
+considered-options:
+  1: >-
+    Render both workflows from one template, with deploy targets as parts
+    beside the publication targets. The skeleton exists once, but a
+    repository could no longer apply the release template without the deploy
+    template's questions, and the standard's two templates become one.
+  2: >-
+    Keep two hand-maintained copies of the skeleton, one in each template.
+    Each copy can drift, and a fix made in one is silently missing from the
+    other.
+  3: >-
+    Keep the skeleton once in `templates/skeleton/`, write a byte-identical
+    copy into each template root with a repository task, and refuse any
+    difference with a test.
+  4: >-
+    Extend Toha so that a template can include files from a sibling root in
+    the same source repository. Toha confines every include to one template
+    root so that an applied record names everything its files came from; an
+    include from a sibling root makes each record depend on files outside its
+    own template, and each update merge on two roots that change on their
+    own.
+decision-outcome:
+  chosen-option: 3
+  justification: >-
+    One edited source, a mechanical copy and a failing test give the
+    templates one skeleton without weakening the confinement that makes an
+    applied record complete, so no Toha change would make this better. Each
+    template stays a
+    self-contained root that Toha loads, records and updates on its own, and
+    a reviewer sees a skeleton change once in `templates/skeleton/` and again
+    in each copy in the same commit.
+expected-outcomes:
+  positive:
+    - >-
+      A change to a stage gate or a credential step reaches both templates in
+      the same commit, or the test fails.
+    - >-
+      Each template renders from its own root, so its applied record names
+      only its own source.
+  negative:
+    - >-
+      Every skeleton change appears three times in a diff.
+    - >-
+      Two templates applied at different revisions can carry different
+      skeletons until both are updated.

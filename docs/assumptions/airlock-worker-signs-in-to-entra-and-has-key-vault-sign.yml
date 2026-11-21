@@ -1,0 +1,26 @@
+$schema: https://refinery.systems/ontology/assumption
+relationships:
+  references:
+    - delivery-controls
+    - delivery-environments
+    - release-authority-token
+description: >-
+  Code running in workerd, the Workers runtime, obtains an Entra access
+  token for `https://vault.azure.net/.default` with the client credentials
+  grant, using the Worker's Entra application id and a client secret read
+  from a Cloudflare Secrets Store binding, and then has Key Vault sign a
+  digest through the sign operation that `release-authority-token` gives, so
+  the Worker's scheduled audit signs Airlock Safe's JSON Web Token without
+  the key leaving the vault.
+end-descendant-type: spike
+evidence:
+  - The engine audited a repository inside workerd with a host-supplied
+    `fetch` and gave the same findings as the native build (Airlock re-plan,
+    2026-11-21). That proof made only GitHub requests; no Entra or Key Vault
+    request was made from workerd.
+  - Both calls are HTTPS requests with a form or JSON body and a bearer
+    token, which `fetch` in workerd sends; neither needs a library that
+    runs only outside workerd.
+  - Proven by the Worker's scheduled audit against fake Entra ID, Key Vault
+    and GitHub in its tests, then by its first live run against the
+    organization, which signs as Airlock Safe and reads its installation.

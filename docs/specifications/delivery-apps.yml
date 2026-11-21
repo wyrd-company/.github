@@ -1,0 +1,87 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - delivery-environments
+    - delivery-declaration
+    - delivery-controls
+    - release-authority-token
+format: json-schema
+description: >-
+  The App authorization file is `delivery/apps.json` in the organization's
+  `.github` repository, owned by the organization and changed only through a
+  reviewed pull request there. It is defined by
+  `assets/delivery-apps/delivery-apps-1.schema.json`, whose `$id` and the
+  file's `$schema` are `https://wyrd.foo/delivery/apps/1`. It lists, keyed by
+  slug, every GitHub App whose key a workflow of the organization or the Airlock
+  Worker signs with:
+  its `role` (`release-authority`, `package-tags`, `repo-wyrd-foo-publisher`
+  or `airlock-safe`), its numeric `app_id`, the `key_vault_url` of the vault
+  that holds its key, `permissions`, the permissions the App is registered
+  with as GitHub names them, `signers`, the repositories whose environments
+  may sign with its key, `installed_on`, the repositories it may be installed
+  on and so the only repositories a token signed with its key can reach, and,
+  for the two tag roles, the `tier` it serves. A release authority App and a
+  package tags App are registered with `contents: write` and
+  `metadata: read` and nothing else. A Custodial App has one signer and one
+  installation. For the two tag roles, `signers` and `installed_on` are the
+  same repositories, because each repository signs for itself. For
+  `repo-wyrd-foo-publisher`, `signers` are the repositories that publish
+  packages and `installed_on` is the package inbox. `airlock-safe` is
+  Airlock Safe, Airlock's read-only App: every permission it lists is
+  `read`, among them `members: read`, which the Airlock Worker's sign-in
+  needs to read the person's organization membership, and its `installed_on` is `<owner>/*`, every repository of the
+  owner, which no other role may name. No environment signs with Safe's
+  key: the Airlock Worker does, in the central run that `delivery-controls`
+  defines. So Safe's one signer is the repository whose Worker it is,
+  `<owner>/airlock`, which declares the Worker's Entra application and that
+  application's sign role on Safe's key in its own `infra/`. Terraform
+  grants no environment the sign role on Safe's key, because no
+  declaration can enrol Safe in an environment. The role names Airlock Safe
+  alone: the Worker signs only for the App id and slug its configuration
+  names, and refuses a `GET /app` answer with another.
+
+
+  An enrolment is a repository's delivery declaration naming an App's slug in
+  one of its environments. It is allowed when the file lists that slug, the
+  App's role is the one the environment's job plays, the repository is one of
+  the App's `signers`, and, for a tag role, the repository's declared tier
+  equals the App's `tier`. Terraform reads this file beside the declarations
+  and grants a key's sign role to an environment's identity only for an
+  allowed enrolment; it takes the key's vault from `key_vault_url`, and
+  outputs for that environment, under the names the declaration's key
+  gives, its `app_id_variable` from `app_id`, its `key_name_variable` as the
+  slug and its `installed_on_variable` as `installed_on` joined by commas in
+  the file's order, and `AZURE_KEY_VAULT_URL` as `key_vault_url`.
+  Airlock names an App as a bypass actor only for an allowed enrolment, and
+  only on a ruleset of the enrolled repository.
+
+
+  Which repositories an installation reaches when its selection is
+  `selected` is readable only with a token of that App, through
+  `GET /installation/repositories`, and only the App's signers can obtain
+  one. So the check lives where the key signs: the token action, given the
+  App's `<APP>_INSTALLED_ON`, lists the installation's repositories before
+  every token it returns and refuses when the installation reaches any
+  other, as `release-authority-token` states. Airlock's central run reads
+  every installation of the organization as Airlock Safe and fails when a
+  declaration names an App the file does not allow for that repository; when
+  an App of the file is not installed for the owner; when an App other than
+  Airlock Safe is installed with `repository_selection` `all`, or Airlock
+  Safe with `selected`; and when an installation's permissions differ from
+  the App's `permissions`. The decision record
+  `check-app-membership-where-the-key-signs` holds the trade-off.
+validation-criteria: >-
+  The schema is JSON Schema 2020-12. `apps.example.json` in the same folder
+  validates against it, and each document under `invalid/` fails it for the
+  one reason its file name states, checked by `task test`. Terraform's tests
+  plan a declaration that names an App the file does not allow, and one from
+  a repository that is in `installed_on` but not in `signers`, and assign no
+  role for either, and compare each `<APP>_INSTALLED_ON` with the file.
+  Airlock's tests cover an enrolment outside the file, an App installed with
+  `repository_selection` `all`, an installation whose permissions differ from
+  the file, and Airlock Safe installed on selected repositories. The
+  Airlock Worker's tests cover a `GET /app` answer whose id or slug differs
+  from its configuration. The token
+  action's tests cover an installation that reaches a repository outside the
+  list it is given.

@@ -1,0 +1,12 @@
+{
+  "name": "release-artifact-client",
+  "private": true,
+  "//": {
+    "relationships": {
+      "implements": "release-process"
+    }
+  },
+  "dependencies": {
+    "@actions/artifact": "6.3.1"
+  }
+}

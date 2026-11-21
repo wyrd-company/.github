@@ -1,0 +1,55 @@
+$schema: https://refinery.systems/ontology/decision-record
+name: Keep release assets mutable only where evidence needs it
+relationships:
+  contextualizes:
+    - release-process
+    - delivery-environments
+    - delivery-controls
+description: >-
+  The standard puts a durable evidence file on the release record. That file
+  can only be complete after publication and read-back. GitHub's immutable
+  releases lock a release's assets and tag once it is published, and the
+  publication parts need the release published before they deliver, because
+  formulas and package manifests point at its asset URLs. Tag immutability
+  through rulesets does not protect release assets: an actor with
+  `contents: write` can replace or delete an asset after every check has
+  passed.
+considered-options:
+  1: >-
+    Turn immutable releases off for every repository on the standard. Simple,
+    but repositories that keep no evidence file lose asset immutability for
+    nothing.
+  2: >-
+    Turn immutable releases off only where the effective `evidence` control is
+    `on`, record the exposure, and detect a changed asset by comparing each
+    release record's assets with the digests its `SHA256SUMS`, its evidence
+    file and its build provenance attestations hold.
+  3: >-
+    Keep immutable releases on everywhere and hold the evidence outside the
+    release record, as an attestation whose subjects are the release assets.
+    The evidence would be immutable, but it would not be a file on the release
+    record, which the standard requires.
+decision-outcome:
+  chosen-option: 2
+  justification: >-
+    It meets the standard's evidence file and keeps asset immutability
+    wherever the evidence file does not need it. Where it is off, the
+    provenance attestations in GitHub's attestation store are immutable and
+    bind each asset's digest to the build that produced it, so a replaced
+    asset fails `gh attestation verify` and the audit's comparison even
+    though the release accepts the change.
+expected-outcomes:
+  positive:
+    - >-
+      Repositories with `evidence` off keep GitHub's immutable releases.
+    - >-
+      A replaced asset is detected by any consumer that verifies provenance,
+      and by Airlock's audit.
+  negative:
+    - >-
+      At Trusted and Custodial, where `evidence` is on by default, a
+      `contents: write` actor can replace an asset after publication; the
+      change is detected, not prevented.
+    - >-
+      The evidence file itself can be replaced; its digest is in the run's
+      artifact and job summary, which expire.

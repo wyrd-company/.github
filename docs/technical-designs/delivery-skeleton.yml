@@ -1,0 +1,453 @@
+$schema: https://refinery.systems/ontology/technical-design
+relationships:
+  related-to:
+    - delivery-standard
+    - release-process
+    - deploy-process
+    - delivery-controls
+  references:
+    - delivery-environments
+    - delivery-declaration
+    - release-authority-token
+    - continuous-integration
+  assumes:
+    - toha-renders-question-defaults
+    - workflow-token-reads-effective-rulesets
+    - subject-template-names-the-environment-workflow
+    - private-free-jobs-run-in-named-environments
+objective: >-
+  Define the skeleton that the release template and the deploy template share:
+  the six stages every delivery workflow runs, the job graph and gates that
+  order them, the one route from a job to a credential, the check of
+  credentials before work, the ceremony each run computes from the tier and
+  the rung, and the single source in this repository that both templates
+  render the skeleton from.
+background:
+  current-design: >-
+    The release template under `templates/release/` renders a dispatched
+    `release.yml` whose stages are resolve, preflight, build, assembly, release
+    record, publish, verify and an optional major tag update, and whose
+    credentials are GitHub secrets checked for presence. No deploy template
+    exists. Toha resolves `{% include %}` and `!include` names relative to one
+    template root and refuses `..` and symlinks, so two template roots cannot
+    include one file, and no template can read another application's answers.
+    The delivery standard fixes the stages, the route to credentials, the
+    tiers and their controls, and the writers of each setting.
+  problems:
+    - >-
+      The release and deploy templates need the same stages, gates, credential
+      route and ceremony, and Toha gives two template roots no shared file.
+    - >-
+      Ceremony depends on the rung the repository holds once a release
+      exists, while a rendered workflow changes only when a template is
+      updated.
+design-challenges:
+  one-source-for-two-roots: >-
+    The skeleton lives once in `templates/skeleton/`, and each template root
+    holds a byte-identical copy in its own `skeleton/` directory, which Toha
+    includes as any other partial. A repository task writes the copies and a
+    test refuses a copy that differs. The decision record
+    `share-the-skeleton-through-checked-copies` holds the trade-off.
+  ceremony-at-run-time: >-
+    Assurance depends only on the tier, which the release template knows when
+    it renders, so assurance controls are rendered as jobs that exist or do
+    not. Ceremony depends on the rung, which only the tags of the moment show,
+    so every workflow renders the automatic trigger, and its `resolve` job
+    computes the effective ceremony for the run from the release declaration
+    and the tag records.
+  credentials-only-through-environments: >-
+    A rendered workflow contains no `secrets.` expression other than
+    `secrets.GITHUB_TOKEN`. Every credential value enters a job through a
+    skeleton step that signs in by federation and reads Key Vault, or through
+    the token action, and only in a job that names its environment. No job
+    that holds a credential runs Intentional or a repository recipe, and a
+    secret reaches only the steps whose `env` names it.
+  rendered-equals-recorded: >-
+    Airlock reports a rendered file that differs from what its application
+    renders, so no tool other than Toha edits a rendered file. The template
+    owns every action pin in what it renders, and this repository's Renovate
+    updates the pins inside `templates/`.
+  two-template-languages: >-
+    Workflow bodies and partials are rendered by MiniJinja before GitHub reads
+    them, and both use `{{ }}`. A GitHub expression must survive the render
+    unchanged and a rendered value must never be rendered twice.
+proposed-design:
+  high-level-overview: >-
+    Every delivery workflow runs six stages in this order: resolve, check
+    credentials, build, record, deliver, verify. `resolve` decides what the
+    run ships and whether it runs at all, without credentials. Check
+    credentials proves every credential the run will need is reachable before
+    any build. Build produces everything the run ships, without credentials.
+    Record writes the durable record of what ships before anything ships.
+    Deliver ships it. Verify reads back what shipped and checks it as a
+    consumer would. The release workflow ships a release; the deploy workflow
+    ships one release to one or more environments. Both start automatically
+    when the effective start setting is `automatic` and by a person's
+    `workflow_dispatch` always, run serially within a repository, read every credential through a
+    GitHub environment and Key Vault, and recover by running again: every job
+    that changes state outside the run first reads that state and does only
+    what is missing.
+
+  stages: >-
+    `resolve` is one job, `resolve`, with `contents: read` and
+    `actions: read`. It validates the trigger, fetches the tags with their tag
+    objects, installs the pinned Intentional, reads the release declaration,
+    observes the rung, computes the effective ceremony and decides the run's
+    mode; a mode of `none` ends the run with a job summary and success. Check
+    credentials is one `preflight-<environment>` job per credential
+    environment the run enters. Build holds the jobs that turn the source into
+    what ships, all without credentials: the release parent's `prepare`,
+    which builds the release commit and which the release part jobs prefixed
+    `build-`, `assemble-` and `consume-` need, the release parent's `attest`,
+    and the deploy part's job prefixed `build-`. Record holds the release workflow's
+    `record`, `release-record` and, at `revalidation` on,
+    `revalidate`; the deploy workflow's record is the GitHub deployment that
+    each deploy job creates by entering its environment, together with the
+    version annotations the Worker part writes. Deliver holds release part
+    jobs prefixed `publish-` and the deploy workflow's
+    `deploy-<environment>`. Verify holds release part jobs prefixed
+    `verify-`, the parent's `verify-provenance`,
+    `prepare-after-publication-tags`, `tag-after-publication`, `evidence`,
+    `request-deploy` and `continue-release`, and deploy jobs
+    `verify-<environment>`. A job id is
+    unique in its workflow, and a part cannot declare a job id that the parent
+    uses.
+
+  job-graph: >-
+    Every job needs every job of every earlier stage, so the order holds when
+    a stage is empty. Preflight jobs carry the condition
+    `needs.resolve.outputs.proceed == 'true'`, so GitHub's implicit
+    `success()` also applies. Every later job starts from the stage gate
+    `!cancelled() && !failure() && needs.resolve.result == 'success' &&
+    needs.resolve.outputs.proceed == 'true'` joined with one test per
+    preflight job: `needs.<preflight job>.result == 'success'`, or, for a
+    deploy environment's preflight, that result or the environment's absence
+    from `fromJSON(needs.resolve.outputs.environments)`. A deploy
+    environment's preflight runs only when its environment is in the run.
+    `!failure()` is false when any ancestor failed, and the `result` tests
+    stop the job when `resolve` or a needed preflight did not succeed for any
+    other reason. A part
+    job adds `&& (<unit test>)`, one clause per Release Unit it serves joined
+    with `||`, and, when the part job has `if`, `&& (<if>)`; the parent writes
+    every `needs` and every condition, and a part can only narrow its own
+    condition. In the deploy workflow the deliver and verify stages repeat per
+    environment in chain order: `deploy-<environment>` needs every earlier
+    job, including
+    `verify-<previous environment>`, so one environment is delivered and
+    verified before the next is entered. A failed job stops every later job.
+    The workflow sets `permissions: {}` at the top level and every job
+    declares its own.
+
+  skeleton-source: >-
+    `templates/skeleton/` holds the shared partials, scripts, schemas and
+    data. `templates/release/skeleton/` and `templates/deploy/skeleton/` are
+    copies, byte for byte, written by `task skeleton` and refused by the test
+    `tests/skeleton/test_copies.py` when any file differs, is missing or is
+    extra. Templates include them as `skeleton/<path>`. Files outside a
+    template's `template/` source directory are partials and are never
+    emitted. The skeleton holds: `partials/gates.jinja`, the macros that write
+    `needs` lists and stage conditions; `partials/resolve-steps.yml`, the
+    trigger checks, tag fetch, Intentional install and declaration read;
+    `partials/preflight-job.yml`;
+    `partials/environment-workflow.yml`, the reusable workflow of one
+    credential environment;
+    `partials/key-vault-read.yml`, the federated sign-in and secret read
+    steps; `partials/app-token.yml`, the token action step;
+    `scripts/delivery.js`, which reads tag records, observes the rung,
+    computes effective controls and reads continuous integration evidence,
+    and which the partials
+    include into the `script` of pinned `actions/github-script` steps, so no
+    job needs a checkout to run it;
+    `schemas/delivery-declaration-1.schema.json`, a byte-identical copy of the
+    specification's schema; `schemas/part-job.schema.json` and
+    `schemas/credential.schema.json`, the part schemas both templates
+    validate their parts against; and `data/toolchain.yml`, the pinned Intentional
+    version with the SHA-256 of each platform's release archive and the
+    pinned action references.
+
+  intentional-toolchain: >-
+    `resolve`, `revalidate` and `prepare-after-publication-tags` in the
+    release workflow, `resolve` in the deploy workflow, both rehearsal
+    workflows and `intentional.yml` install Intentional from
+    `https://github.com/wyrd-company/intentional/releases/download/<version>/<archive>`
+    and refuse an archive whose SHA-256 differs from `data/toolchain.yml`. No
+    job that enters a credential environment installs or runs it. The version
+    is the first Intentional release that carries release model
+    `https://intentional.foo/schemas/release-model/1` with the commands
+    `plan`, `apply`, `tag --plan [--phase]`, `tag --baseline`,
+    `verify <tag> --json`, `check` and `status --json`, and the tag record
+    contracts `contract-1` and `contract-2`, each carrying `baseline` and
+    `tag-id` and accepting an optional `tag-role` with the same meaning.
+    Intentional 0.4.0 and 0.4.1 write `contract-2` records and their schema
+    has no `tag-role`, so neither is that release. The templates require
+    Toha 0.4.1 or later, the first release with part selection, document
+    questions and the applied record that this design reads.
+
+  credential-route: >-
+    Every job that enters credential environment `<E>` is a job of the
+    reusable workflow `.github/workflows/delivery-<E>.yml`, rendered from
+    the skeleton's `partials/environment-workflow.yml` with the jobs of every
+    part and stage that enter `<E>`. It runs only on `workflow_call`, with
+    the input `stage`, which selects the jobs of one stage, and an input for
+    each `resolve` output its jobs read; its jobs set the `RELEASE_` and
+    `DEPLOY_` variables from those inputs, and it maps every job output a
+    later job reads to its own `outputs`. The delivery workflow calls it
+    with `uses: ./.github/workflows/delivery-<E>.yml` from one calling job
+    per stage that enters `<E>`: `preflight-<E>` with `stage: preflight`,
+    and the deliver or record job the stage names, such as `record`,
+    `publish-<part>`, `tag-after-publication` or `deploy-<environment>`,
+    with that stage. The calling job carries the `needs` and the condition
+    that the job graph gives, and the permissions its called jobs need,
+    which each called job narrows to its own; GitHub reports a called job as
+    `<calling job id> / <job id>`, and `needs.<calling job id>.outputs`
+    reads the mapped outputs. So every job of `<E>` presents the subject of
+    one file, which is what its identity's federated credential names, as
+    `delivery-environments` states. A job of `<E>` names the environment
+    with `environment:` and requests `id-token: write`. Every such job sets
+    the environment's `deployment: false` except `deploy-<environment>`,
+    whose GitHub deployment is the deploy's record; the environment's branch
+    policy applies either way where the plan gives one. Its first steps,
+    before any step that installs a dependency, are the skeleton's. To read
+    secrets, the job runs `azure/login` pinned by commit with `client-id`,
+    `tenant-id` and `allow-no-subscriptions: true` from
+    `vars.<ENVIRONMENT>__AZURE_CLIENT_ID` and
+    `vars.<ENVIRONMENT>__AZURE_TENANT_ID`, then one step with id
+    `credentials` that, for each secret the part declares, runs
+    `az keyvault secret show --id "$AZURE_KEY_VAULT_URL/secrets/<name>" --query value --output tsv`,
+    with `AZURE_KEY_VAULT_URL` from `vars.<ENVIRONMENT>__AZURE_KEY_VAULT_URL`,
+    writes `::add-mask::` for the value, or for each member of a secret
+    declared with `fields`, and writes it to the step output named by the
+    secret's `env`, or by each member's variable. The steps that use a secret
+    receive it through their own `env` mapping from
+    `steps.credentials.outputs.<name>`; no secret enters `GITHUB_ENV`, a file,
+    an artifact, a workflow output or another job. To sign as an App, the
+    job runs the token action with `vars.<ENVIRONMENT>__<APP>_APP_ID`,
+    `vars.<ENVIRONMENT>__AZURE_KEY_VAULT_URL`,
+    `vars.<ENVIRONMENT>__<APP>_KEY_NAME`,
+    `vars.<ENVIRONMENT>__AZURE_TENANT_ID` and
+    `vars.<ENVIRONMENT>__AZURE_CLIENT_ID`,
+    `vars.<ENVIRONMENT>__<APP>_INSTALLED_ON` as
+    `installation-repositories`, the App's declared owner and repositories,
+    and the exact permissions the job needs, and the token is revoked when
+    the job ends. The names are those of `delivery-environments`, where
+    `<ENVIRONMENT>` is the environment's name in upper case with `-` written
+    as `_`. The decision record
+    `scope-federation-to-the-workflow-of-each-environment` holds the
+    trade-off.
+
+  check-credentials: >-
+    Each credential environment the run enters gets one
+    `preflight-<environment>` calling job, whose called job `preflight`, in
+    the environment's workflow file, enters it with `id-token: write` and no
+    other permission, and with `deployment: false`, so it creates no GitHub
+    deployment. For each declared secret it reads the secret as the
+    credential route does and discards the value; for each declared App it
+    runs the token action as the credential route does, with
+    `permission-metadata: read`, so a misplaced installation of the App fails
+    the run before any build, and lets the post step revoke the token. A
+    missing or empty variable, `<APP>_INSTALLED_ON` included, a refused sign-in, an absent or disabled secret, a JSON
+    secret without a declared member, and a refused signature each fail the
+    job with a line naming the environment, the variable, secret or App, and
+    its declared purpose, never a value. An environment that carries only
+    trusted publishing has nothing to read; its preflight proves that the
+    environment admits the run. Every credential the selected parts declare
+    is checked on every run, so a missing credential is found before any
+    build.
+
+  ceremony-at-run-time: >-
+    A rung is observed from a set of tag records as Airlock does: Seeded
+    without a baseline record, Building from a baseline record, Released
+    from a non-baseline primary release record below 1.0.0, Stable from one
+    at or above 1.0.0 without a prerelease part. A record with
+    `baseline: true` is a baseline record whatever its `tag-id`, and a record
+    whose `tag-id` starts with `workspace/` is never a primary record. A
+    non-baseline record whose `tag-id` is `release-unit/<unit>/<key>` takes
+    its role from the release model at the commit its tag points at: it is a
+    primary record when that model gives tag `<key>` of unit `<unit>` the
+    `role` `primary`, and not when it gives another role. This is the
+    revision from which the later-release scan of `release-process` takes
+    each candidate's role. It is the model the release was made with,
+    because `release-tree` keeps `.intentional/release-model.json` unchanged
+    in a release commit, so a record's role is fixed once its tag exists,
+    and a later model, such as one that renames the unit's primary key,
+    never reclassifies it. A tag of the plan, which `resolve` classifies
+    before the tag exists, takes its role from the model at the source
+    commit, which the release commit carries unchanged. When the commit
+    holds no `.intentional/release-model.json` whose `$schema` is
+    `https://intentional.foo/schemas/release-model/1` and which names tag
+    `<key>` of unit `<unit>`, as for a record made before the repository
+    committed a release model, the record's `tag-role` decides when the
+    record carries one, and a record without one counts as primary. A
+    `tag-role` is read only then; one that differs from the model's role is
+    ignored. Counting a record as primary never lowers a rung. The plan
+    gives every tag of a unit the unit's version, and every tag of a release points at its
+    release commit, so a release's records carry one version and are
+    reachable together: a role decides which record stands for a release,
+    never which versions were released, and counting a projection record as
+    primary changes the rung only when its release's primary record is
+    missing, and then raises it. `scripts/delivery.js` holds this one
+    classification, which the later-release scan and every rung observation
+    use, and Airlock classifies tag records the same way. For each ceremony
+    control, the effective setting is the declaration's setting when present and
+    otherwise the default that `delivery-controls` gives for the tier at the
+    governing rung. The governing rung of a release is the rung the
+    repository holds once that release exists, as the standard states,
+    observed from the tag records reachable from the release commit, its own
+    included, with the tier and controls of `.github/delivery/release.json`
+    at the release commit; both are fixed once the release commit and its
+    tags exist, so every run that concerns one release computes the same
+    ceremony for it, whatever was released later. The governing rung of a
+    deploy, and of a run that releases nothing, is the rung observed from the
+    tag records reachable from the default branch head, with the declaration
+    at the commit the workflow file came from. `resolve` refuses a run without
+    the declaration, and outputs the effective settings as `ceremony`, a JSON
+    object keyed by control id. A run is a person's start only when its
+    event is `workflow_dispatch`, its input `automatic` is not true, and its
+    `actor` and its `triggering_actor` are both accounts that
+    `GET /users/<login>` reports with `type` `User`. Every other run is an
+    automatic start, including a dispatch by an account of type `Bot`, such
+    as `github-actions[bot]` or an App, whatever inputs it passes. GitHub
+    cannot tell a person from automation that acts through a user account's
+    token, so such an account counts as a person. That automation can act
+    as a person through a user account's token is a known limit, which the
+    operator accepted on 2026-11-17, and no rule is written against it,
+    because nothing could check one. A run started
+    automatically whose effective start setting is `person` ends in `resolve`
+    with mode `none`, success, and a summary naming the control and the rung.
+    No person approves a run once it has started, a known limit that the
+    risk `releases-and-deploys-run-without-approval` records.
+
+  triggers-and-concurrency: >-
+    The release workflow has `name: Release`, a `workflow_dispatch` trigger
+    with the optional inputs `source-sha`, `baseline` and `automatic`, and a
+    `workflow_run` trigger on the workflow named by `ci_workflow_name` with
+    `types: [completed]` and `branches: [<default_branch>]`, so only runs of
+    continuous integration on the default branch start a release. The deploy
+    workflow has `name: Deploy` and only a `workflow_dispatch` trigger, with
+    the inputs `release-tag`, `from` and `automatic`; a
+    person dispatches it,
+    and the release workflow's `request-deploy` job dispatches it with
+    `automatic: true` after a successful run in mode `release` or `recover`
+    of the unit the default branch head's deploy configuration deploys. An automatic release start, a `workflow_run` event
+    or a dispatch that is not a person's start, only wakes the workflow: `resolve`
+    releases the default branch head, ends with mode `none` while the head's
+    push run has not completed, and fails when the head's push run concluded
+    `failure`, `timed_out`, `startup_failure` or `action_required`. Each
+    workflow has workflow-level `concurrency` group `release` or `deploy`
+    without cancelling. GitHub keeps one running and one pending run per group
+    and cancels the older pending run when a newer one queues. The design
+    keeps the work of a replaced run: an automatic release run, whatever
+    started it, releases the head as it stands when it resolves, which holds
+    every pending intent of any automatic run it replaced; every run a person
+    dispatched, which can replace a pending automatic run and then recover an
+    older release, create baseline tags or fail, ends with
+    `continue-release`, which dispatches an automatic run; that run, an
+    automatic start by `github-actions[bot]`, ends with mode `none` when the
+    effective `release-start` is `person`, and the pending intents then wait,
+    unchanged, for a person's dispatch, because every start by continuous
+    integration is automatic; a deploy run
+    exists only for a release that was made or recovered, or for a person's
+    request, and `request-deploy` requests one only for the newest release
+    of the unit the default branch head's deploy configuration deploys, as
+    `release-process` states, so its request never replaces a pending deploy
+    of a newer release of that unit; this ordering holds only for
+    `request-deploy`'s requests, and a dispatch from anywhere else by an
+    account of type `Bot`, which is an automatic start with the
+    `release-tag` its caller chose, has none; a person's
+    deploy dispatch that
+    replaces a pending automatic deploy stands as the person's choice, such as
+    a rollback; the next release or dispatch deploys the newest release. A person's own dispatch replaced while
+    pending shows as cancelled, and the person dispatches again. Both workflows are fixed paths,
+    `.github/workflows/release.yml` and `.github/workflows/deploy.yml`.
+
+  rehearsal-workflows: >-
+    The release template renders `.github/workflows/release-rehearsal.yml`
+    and the deploy template renders `.github/workflows/deploy-rehearsal.yml`,
+    each triggered only by `workflow_call`, with `permissions: {}` at the top
+    level and `contents: read` and nothing else in every job, whatever the
+    same part job requests in the delivery workflow; steps that need more,
+    such as attestation, do not run in rehearsal mode. Each runs its
+    workflow's `resolve` in rehearsal mode on the calling commit, then its
+    build stage and, for the release, every part's deliver job in its dry-run
+    mode, with no environment and no credential. Its job ids are those of the
+    delivery workflow and no job has a `name` key, so GitHub reports them as
+    `<caller job id> / <job id>`. Rehearsal mode reads only the calling
+    commit and the tags and writes nothing outside the run. Continuous
+    integration calls them as `continuous-integration` states.
+
+  escaping-convention: >-
+    Toha renders with MiniJinja built without the `custom_syntax` feature.
+    A GitHub expression with no template value inside it is written inside a
+    raw block covering the smallest span: `{% raw %}${{ github.token }}{% endraw %}`.
+    An expression with a template value is written as one Jinja string
+    expression, such as `{{ "${{ vars." ~ name ~ " }}" }}`, only for a value
+    that a schema or question pattern restricts to an identifier; free text
+    never goes inside a GitHub expression. A script never contains `${{ }}`:
+    values reach `run` through `env`, a job condition is a bare expression,
+    and a step reads `RELEASE_` or `DEPLOY_` variables. In `template.yml`, a
+    string leaf starting with `{%` or `{{` is quoted so YAML does not read it
+    as a flow mapping. A partial renders once, as part of its parent's body.
+
+  action-pins: >-
+    Every external action reference in a rendered workflow is
+    `owner/repo[/path]@<40-hex commit> # <version>`, and a local action is a
+    `./` path. The template owns every pin it renders, and this repository's
+    Renovate configuration updates the pins in every file under `templates/`,
+    including partials, so a pin update reaches an adopter as a template
+    update. The organization Renovate preset excludes the files the templates
+    render, `.github/workflows/release.yml`, `release-rehearsal.yml`,
+    `release-authority-smoke.yml`, `intentional.yml`, `deploy.yml`,
+    `deploy-rehearsal.yml`, `airlock-audit.yml`,
+    every `delivery-<environment>.yml`, `.github/release-artifact-client/**` and `.github/deploy-wrangler/**`,
+    through
+    `ignorePaths`, and a repository with its own `ignorePaths` keeps them in
+    its list.
+
+  outputs-and-environment: >-
+    `resolve` runs no repository or dependency code and exposes `proceed`
+    (`'true'` or `'false'`), `mode`, `source_sha`, `units` (a JSON array of
+    Release Unit ids), `releases` (an object mapping each unit id to `tag`,
+    `version` and `prerelease`), `ceremony` and `rung`, and, when the release
+    commit already exists, `release_sha`; each workflow adds its own. The
+    gates read only these outputs. In the release workflow, the release
+    commit of a new release comes from the `release-candidate` bundle for the
+    build stage and from `record`'s `release_sha` output for every later
+    job. Every part job receives
+    `RELEASE_SOURCE_SHA`, `RELEASE_SHA`, `RELEASE_UNITS` (ids separated by one
+    space) and `RELEASE_JSON` (the `releases` object), set by the parent and
+    not overridable. In the deploy workflow these describe the deployed
+    release: `RELEASE_SHA` is the commit its tag points at,
+    `RELEASE_SOURCE_SHA` that commit's parent, `RELEASE_UNITS` the deployed
+    unit and `RELEASE_JSON` that unit's entry; a deploy job also receives
+    `DEPLOY_ENVIRONMENT` and `DEPLOY_TAG`.
+
+  implementation-validation: >-
+    The tests of `scripts/delivery.js` and Airlock's tests of its rung
+    observer run the same rung cases on local repositories whose tag records
+    are annotated tags with the fixed tagger, and expect the same rung; the
+    skeleton's tests also expect, for each tier, the effective ceremony that
+    `delivery-controls` gives at that rung. A primary-key rename after a
+    Stable release: unit `app` releases 1.0.0 under key `primary`, then a
+    commit changes the model so that the unit's primary key is `ship` and
+    `primary` is gone; the head observes Stable, so a Trusted repository's
+    next automatic release start ends with mode `none` and a deploy runs
+    under Stable's ceremony, where taking the role from the head's model,
+    which names no key `primary`, would drop the record, observe Building and
+    relax both. Older projection tags: a release at
+    1.0.0 under a model that gives key `mirror` the role `projection`, then a
+    model that makes `mirror` the unit's primary key; the 1.0.0 `mirror`
+    record stays a projection and the 1.0.0 `primary` record still counts,
+    so the head observes Stable; and a set whose records at or above 1.0.0
+    are all projection records by their own commit's model, beside primary
+    records below 1.0.0, observes Released. Records made before the release
+    model: release records without `tag-role` on commits that hold no
+    `.intentional/release-model.json`, as in Intentional's own history,
+    count as primary, so such a record at 1.0.0 observes Stable, and one
+    whose `tag-role` is `projection` does not count; a record whose
+    `tag-role` differs from its commit's model takes the model's role.
+    Recovery of a historical release: releases at 0.9.0 and 1.0.0, then the
+    key rename; the governing rung of a recovery of 0.9.0 is Released and
+    that of a recovery of 1.0.0 is Stable, each the rung its recording run
+    computed, so each recovery computes its recording run's ceremony; and a
+    release run whose plan takes the unit to 1.0.0 governs at Stable before
+    its tags exist.

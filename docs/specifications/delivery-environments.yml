@@ -1,0 +1,431 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - delivery-controls
+    - delivery-skeleton
+    - delivery-declaration
+    - delivery-apps
+    - release-authority-token
+  assumes:
+    - airlock-worker-signs-in-to-entra-and-has-key-vault-sign
+    - cloudflare-deploy-token-permissions
+    - subject-template-names-the-environment-workflow
+    - private-free-jobs-run-in-named-environments
+format: names
+description: >-
+  The names that the templates, Terraform, Airlock and Elegua share for every
+  route from a workflow job to a credential. A job reaches a credential only
+  as a job of its credential environment's workflow file that enters that
+  GitHub environment, and then by signing in to Azure by federation with
+  that environment's identity to read a Key Vault secret or sign with a Key
+  Vault key, or by federating with a registry whose trusted publishing names
+  that environment. Each environment's values are variables, never a
+  secret. A rendered workflow names its environments and
+  what each one carries in its delivery declaration, and nothing outside this
+  list reaches a job. The run's `GITHUB_TOKEN`, which GitHub issues for one
+  run and revokes when it ends, is the one token a job holds without an
+  environment.
+
+
+  Credential environments of the release template. `release-authority` is
+  entered by the release workflow's `record` job, its
+  `preflight-release-authority` job and `release-authority-smoke.yml`; it
+  signs with the release authority App's key and reads no secret.
+  `package-tags` is entered by the release workflow's `tag-after-publication`
+  job and its `preflight-package-tags` job when the release model gives any
+  tag `require_phase: after-publication`; it signs with the package tags App's
+  key and reads no secret. `publish-<part>` is entered by the deliver jobs of a
+  publication part that declares a secret, an App or trusted publishing, and
+  by its `preflight-publish-<part>` job.
+
+
+  Credential environments of the deploy template. Each deploy environment the
+  deploy interview names, such as `staging` or `production`, is entered by
+  the deploy workflow's `deploy-<environment>` job and its
+  `preflight-<environment>` job. Its name is also the name of the Wrangler
+  environment that the `cloudflare-worker` part deploys.
+
+
+  The Airlock Worker. The organization's central audit runs in the Airlock
+  Worker, not in a workflow, so no repository has a credential environment
+  for it, and every repository's Airlock configuration declares no
+  environment: its `airlock-audit.yml` holds only the run's `GITHUB_TOKEN`,
+  as `delivery-controls` states. The Worker is the `cloudflare-worker`
+  deploy of `wyrd-company/airlock`, which adopts the deploy template like
+  any other repository and declares the Worker's own resources in its
+  `infra/`. It runs in The Wyrd Company Cloudflare account, on Workers
+  Paid, served at `https://theairlock.app` and nowhere else, with its
+  `workers.dev` route off. It reaches Azure as its own Entra application,
+  declared in that `infra/`, whose one role assignment is the role whose
+  only data action is `Microsoft.KeyVault/vaults/keys/sign/action`, at the
+  scope of Airlock Safe's key. Its secrets are bindings of the account's
+  Cloudflare Secrets Store, as `Elegua` states, and it binds the R2 bucket
+  `airlock-terraform-outputs`, as `Terraform` states. Its other values are plain
+  variables of its Wrangler configuration: the tenant, the Entra
+  application's client id, Airlock Safe's App id, slug and key name,
+  `<owner>/*` as Safe's installation bound, the vault that `delivery-apps`
+  names for Safe's key, the client ids of Airlock Safe and Airlock Admin,
+  and the owner it serves.
+
+
+  Workflow files. Every job that enters credential environment `<E>` is a
+  job of `.github/workflows/delivery-<E>.yml`, a reusable workflow that runs
+  only on `workflow_call`, and no other file names `<E>` in `environment:`.
+  The workflows that enter `<E>` call it with a local `./` path from one
+  calling job per stage, as `delivery-skeleton` defines, so every job of
+  `<E>` presents the subject of that one file. GitHub allows a workflow to
+  call 50 distinct reusable workflows, so a delivery workflow enters at
+  most 50 credential environments.
+
+
+  Subject. Airlock sets each repository's OpenID Connect subject template
+  to the claims `repo`, `ref` and `job_workflow_ref`, through
+  `PUT /repos/<owner>/<repository>/actions/oidc/customization/sub` with
+  `use_default` false. A job of `delivery-<E>.yml` in a run of the default
+  branch then presents
+  `<prefix>:ref:refs/heads/<default>:job_workflow_ref:<owner>/<repository>/.github/workflows/delivery-<E>.yml@refs/heads/<default>`,
+  where `<prefix>` is the repository's `sub_claim_prefix`, which GitHub
+  gives as `repo:<owner>/<repository>`, or with owner and repository ids for
+  a repository on GitHub's immutable subject format. The subject names no
+  environment, so it is the same on every plan and visibility, and a run
+  of any other branch, a pull request's included, presents another subject.
+  The decision record
+  `scope-federation-to-the-workflow-of-each-environment` holds the
+  trade-off.
+
+
+  Variables in every credential environment that reads a secret or signs
+  with a key. `AZURE_TENANT_ID` is the Entra tenant. `AZURE_CLIENT_ID` is the
+  client id of the user-assigned managed identity whose federated credential
+  trusts this environment. `AZURE_KEY_VAULT_URL` is the address of the one
+  vault the environment uses, `https://` and the vault host with no path and
+  no trailing slash. An environment either reads secrets or signs with App
+  keys, never both, because it names one vault. An environment whose parts
+  declare no secret and no key carries none of the three.
+
+
+  An App credential is three variables in the environment that signs with
+  it: `<APP>_APP_ID`, the App's numeric id; `<APP>_KEY_NAME`, the name of the
+  Key Vault key that holds the App's private key, which is the App's slug;
+  and `<APP>_INSTALLED_ON`, the repositories the App's installation may
+  reach, each `<owner>/<repository>`, joined by commas. So
+  `release-authority` carries `RELEASE_AUTHORITY_APP_ID`,
+  `RELEASE_AUTHORITY_KEY_NAME` and `RELEASE_AUTHORITY_INSTALLED_ON`,
+  `package-tags` carries the three `PACKAGE_TAGS_` variables, and
+  `publish-repo-wyrd-foo` the three `REPO_WYRD_FOO_PUBLISHER_` variables.
+  Every App and its key's vault are listed in the organization's App
+  authorization file, `delivery-apps`, and an environment signs with an App
+  only where that file allows it. Airlock Safe's key is the one key that no
+  environment signs with: the Airlock Worker signs with it, and holds the
+  same three values as variables of its configuration. The key is imported once
+  by a person from the PEM that GitHub generates, with key operations `sign`
+  only, into the vault the file names.
+
+
+  Where the variables live. A declaration lists each environment's
+  variables by the names above. GitHub holds each one as
+  `<ENVIRONMENT>__<NAME>`, where `<ENVIRONMENT>` is the environment's name
+  in upper case with each `-` written as `_`, so `release-authority`'s
+  client id is `RELEASE_AUTHORITY__AZURE_CLIENT_ID`; an environment name
+  holds no `_` and a variable name starts with a letter, so the first `__`
+  divides the two. A rendered workflow reads it only in a job of that
+  environment's workflow file, as `vars.<ENVIRONMENT>__<NAME>`. Where the
+  organization's plan gives the repository environment variables, as
+  `delivery-controls` `plan-limits` states, it is a variable of that
+  environment, which only a repository administrator can change. Otherwise
+  it is a repository variable, which any writer can change, as the risk
+  `writers-change-the-delivery-variables-of-a-private-repository`
+  records. GitHub resolves `vars.` from the environment before the
+  repository, so the rendered workflow reads the same expression at either
+  level and does not change with the plan.
+
+
+  Secrets each part reads, by Key Vault secret name, with the environment
+  variable the part's step receives it as. `crates-io` reads `crates-io-token`
+  as `CARGO_REGISTRY_TOKEN` in `publish-crates-io`. `npm` reads `npm-token` as
+  `NODE_AUTH_TOKEN` in `publish-npm` when `npm_trusted_publishing` is false;
+  when it is true, `publish-npm` reads nothing and declares
+  `trusted_publishing: [npm]`, and each package's npm trusted publisher names
+  this repository, `.github/workflows/release.yml` and the environment
+  `publish-npm`. `homebrew-tap` reads `homebrew-tap-token` as
+  `HOMEBREW_TAP_TOKEN` in `publish-homebrew-tap`. `cloudflare-worker` reads
+  `cloudflare-api-token` as `CLOUDFLARE_API_TOKEN` in each deploy
+  environment, together with the variable `CLOUDFLARE_ACCOUNT_ID`. `ghcr`
+  and `product-build` read no secret; `ghcr` publishes with the run's
+  `GITHUB_TOKEN` and `packages: write`. A secret name is lower case letters,
+  digits and single dashes, at most 119 characters, and never ends in
+  `-pending`, which is Elegua's staging form. A credential with several fields
+  is one secret whose value is a JSON object with string members, declared
+  with `fields`, which maps each member to the variable the reading steps
+  receive it as. An AWS access key is the secret `aws-access-key` with members
+  `access-key-id` and `secret-access-key`, received as `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY`, beside the variable `AWS_REGION`.
+
+
+  Vaults. Each credential environment that reads secrets reads its own vault,
+  which holds exactly the secrets that environment's parts declare, so a
+  staging and a production `cloudflare-api-token` live in two vaults. An
+  environment that signs names the vault that holds its App's key, which
+  several repositories share for a shared App. The vaults use Azure
+  role-based access. An environment's identity holds `Key Vault Secrets User`
+  on its own secrets vault, which also lets it read the `<name>-pending` value
+  Elegua stages there during a rotation, and the role whose only data action
+  is `Microsoft.KeyVault/vaults/keys/sign/action` on each key it signs with,
+  at that key's scope. Elegua's writing identity holds
+  `Key Vault Secrets Officer` on every vault that holds a secret of its
+  manifest.
+
+
+  Terraform. For each repository, Terraform reads the repository's delivery
+  declarations from its default branch, and the organization's App
+  authorization file, through the GitHub provider's `github_repository_file`
+  data source, changing nothing in GitHub. It takes from the declarations the
+  credential environments and which of them read secrets, and from the App
+  file each enrolment it allows, with the App's id, installations and key
+  vault; it takes as
+  inputs the subscription, the tenant and each variable it does not create,
+  such as `CLOUDFLARE_ACCOUNT_ID`. It reads each repository's default
+  branch through the `github_repository` data source and its
+  `sub_claim_prefix` through the `github_rest_api` data source on
+  `repos/<owner>/<repository>/actions/oidc/customization/sub`. For each
+  credential environment that reads a secret or signs, it creates a
+  user-assigned managed identity with one federated identity credential:
+  issuer `https://token.actions.githubusercontent.com`, the subject that
+  `Subject` gives for that environment's workflow file, audience
+  `api://AzureADTokenExchange`. It creates the vault of each environment that
+  reads secrets and assigns the roles above; a key-scoped assignment reads
+  the key as existing, so the key is imported before Terraform assigns sign
+  on it, and Terraform assigns it only for an enrolment the App file allows.
+  Its root module has one output, `github_environments`, whose value is an
+  object keyed by `<owner>/<repository>`, then by credential environment
+  name, then by the variable name a declaration lists, with each variable's
+  value as a string.
+  `terraform output -json github_environments` prints that object, and it is
+  the whole of what Airlock reads from Terraform. Each apply writes it, as
+  JSON, to the object `github_environments.json` in
+  `airlock-terraform-outputs`, an R2 bucket of The Wyrd Company Cloudflare
+  account that Airlock's `infra/` declares, through R2's S3-compatible API
+  with the credentials R2 derives from `terraform-outputs-r2-token`. That
+  token is an R2 API token scoped to that one bucket with Object Read &
+  Write, the narrowest R2 permission that writes, because R2 has none that
+  only writes. It is a secret of Elegua's manifest with the `cloudflare`
+  issuer, which mints and rotates it, and its destination is the Key Vault
+  that Terraform's apply reads, which wyrd-company/.github#20 places with
+  the apply credential. The Airlock Worker binds the bucket and its code
+  only reads it: a Workers R2 binding grants the whole bucket, so the
+  Worker's tests show that no code path writes or deletes an object there.
+  Terraform holds no credential that writes to GitHub and writes no GitHub
+  setting; how it authenticates its reads of private repositories is open in
+  wyrd-company/.github#20. The
+  decision record `deliver-terraform-outputs-to-the-airlock-worker-through-r2`
+  holds the trade-off, and the risk
+  `terraform-outputs-object-is-not-authenticated` its limit. Terraform
+  writes no secret value and creates no secret.
+
+
+  Airlock. Airlock writes GitHub settings only in an attended run: a
+  request of a browser session of the Airlock Worker in which a person
+  signed in and then elevated to Airlock Admin, as `delivery-controls`
+  `audit-runs` states. No request without a live, elevated session, no
+  scheduled run and no workflow holds a credential that writes GitHub
+  settings. It writes, for every repository that holds
+  a delivery declaration, the subject template of `Subject`. For each
+  environment that a repository's delivery declarations name, and where
+  the organization's plan gives the repository environments with branch
+  policies and variables, as `delivery-controls` `plan-limits` states,
+  Airlock creates the environment, restricts its deployments to the
+  default branch through a custom branch policy, and writes exactly the
+  variables the declaration lists as variables of that environment. The
+  branch policy is the environment's only protection rule. Where the plan
+  does not give them, it creates no environment and writes the same
+  variables as repository variables. Either way each variable has the name
+  that `Where the variables live` gives and the value from
+  `github_environments` for that repository, environment and declared
+  name, and Airlock removes a variable of that form at the other level.
+  For each environment that declares `trusted_publishing`, the package's
+  trusted publisher names that repository, the calling workflow file and
+  environment. npm manages trusted publishers only for an account with
+  write access to the package and two-factor authentication, through
+  `npm trust github`, `npm trust list` and `npm trust revoke` or on
+  npmjs.com, and the Airlock Worker holds no npm credential, so a person
+  sets it. In an elevated session the Worker shows, for each package, the
+  repository, workflow file and environment its trusted publisher names;
+  the person sets them with `npm trust github` or on npmjs.com; and the
+  Worker records the package in the attested record as set by that person.
+  Airlock's audits report npm trust as not verified. A package that npm does
+  not hold has no trusted publisher to set, so a new package's first version
+  comes from a script that a person runs: a maintainer of the package's
+  scope, with two-factor authentication, runs it from their own npm
+  session; it publishes a placeholder under the declared name, with no code
+  and no install script, at version `0.0.0`, or `0.0.1` when npm refuses
+  `0.0.0`, and then sets the package's trusted publisher to the repository,
+  `.github/workflows/release.yml` and `publish-npm`. The release workflow
+  publishes every later version. The decision record
+  `set-npm-trusted-publishing-by-a-person` holds the ruling. It keeps GitHub's immutable
+  releases on unless the repository's effective `evidence` control is `on`,
+  as the decision record `keep-release-assets-mutable-for-evidence` states.
+  Airlock writes the rulesets that `delivery-controls` names with their
+  bypass actors where the plan gives the repository rulesets, and at the
+  end of each attended run it stores the attested record that
+  `delivery-controls` defines. Airlock writes no environment secret, no
+  repository secret and no organization secret.
+
+
+  Elegua. Every secret a delivery declaration lists is a secret of Elegua's
+  manifest with a destination whose store is an `azure-key-vault` store whose
+  `vault-url` equals the environment's `AZURE_KEY_VAULT_URL`, and whose `path`
+  equals the secret name. Its manifest `tier` is `sensitive` when the
+  effective `rotation-approval` of any repository whose environment reads it
+  is `person`, and `routine` otherwise. App keys are Key Vault keys, not
+  secrets, and are outside Elegua's manifest: GitHub offers no API that
+  generates an App's private key, so a person generates it in the App's
+  settings and imports it once, and Elegua has nothing to mint.
+
+
+  The Airlock Worker's secrets are four bindings of the Cloudflare Secrets
+  Store of its account, all four secrets of Elegua's manifest, and no
+  repository holds any of them.
+  `airlock-entra-client-secret` is the client secret of the Worker's Entra
+  application: a secret of Elegua's manifest with the `entra` issuer, which
+  adds it through Microsoft Graph's `addPassword` on that application and
+  removes the old one after the overlap, and a `cloudflare-secrets-store`
+  destination. Elegua's Graph permission changes the credentials of the
+  applications its manifest names and of no other. `airlock-session-key`,
+  the key that seals the Worker's session cookies, is a secret of the
+  manifest with the `random` issuer and the same kind of destination; a
+  rotation ends every session sealed with the old key. The client secrets of
+  Airlock Admin and Airlock Safe, `airlock-admin-client-secret` and
+  `airlock-safe-client-secret`, are secrets of the manifest with the
+  `human` issuer and kind `opaque`, the issuer for a credential that only a
+  person can generate: GitHub offers no API that generates an App's client
+  secret, only the App's settings page. When one is due, Elegua asks for it
+  with the manifest's `instructions`; the person generates a new client
+  secret in the App's settings and sends it with `elegua ingest`; and
+  Elegua stages it, writes it to its two destinations in order, records the
+  rotation in its ledger, and asks the person to delete the old client
+  secret in the App's settings once a sign-in to the Worker with the new
+  one has succeeded. The first destination is Airlock's custody vault, a
+  Key Vault that Airlock's `infra/` declares, which Elegua's writing
+  identity alone reads and no environment's identity reads; it is the
+  destination Elegua reads back, which the `human` issuer requires and the
+  Secrets Store cannot be. The second is the Worker's Secrets Store. Each
+  declares `accept-unverified: true`, because only a code exchange that a
+  person starts can show that an App's client secret works.
+
+
+  What a rotation ends. Rotating `airlock-entra-client-secret` on its
+  schedule stops new Azure tokens for the old secret after Elegua's
+  overlap, and ends nothing already issued. Key Vault signs whatever digest
+  an authorized caller sends and checks no claim inside it. GitHub's
+  documentation requires a JSON Web Token's `exp` to be no more than ten
+  minutes into the future and recommends an `iat` sixty seconds in the
+  past; it does not say how GitHub treats an `iat` in the future, and it
+  checks the token against the App's registered public keys when the token
+  is presented. So while the Worker or its Entra credential is in other
+  hands, the holder can have Key Vault sign Safe tokens whose `iat` and
+  `exp` lie in a future window, each of which meets those rules when it is
+  presented inside its window and mints an installation token, valid for
+  an hour. Removing the Entra secret or the application's role, or
+  disabling the key in Key Vault, stops new signatures and does not end the
+  signatures already made: only deleting that private key from Airlock
+  Safe's registration at GitHub does.
+
+
+  Recovering from a compromise of the Worker or its Entra credential. No step
+  gives a new key or a new credential to anything the compromise may still
+  reach, so the replacement key is a new Key Vault key that only a new Entra
+  application may sign with, and the new application's secret reaches only a
+  Worker deployed again from a known commit.
+
+  1. An owner suspends Airlock Safe's installation for the owner, which stops
+  new installation tokens, and keeps it suspended until step 6.
+
+  2. A person cuts the old signer off: deletes every client secret of the
+  Worker's Entra application and the application itself, which step 5 replaces
+  in Airlock's `infra/`, removes its role on Safe's key, and disables every
+  version of that key in Key Vault, so that an Azure token the old application
+  already holds signs nothing, whatever its lifetime and however long the
+  role's removal takes to apply.
+
+  3. The Worker is made trustworthy again, isolated before anything new is
+  issued: a person first takes the compromised deployment out of service by
+  deleting the Worker, so no code that the compromise may have changed still
+  runs or can read the Secrets Store; has Elegua rotate
+  `cloudflare-api-token`; reviews Airlock's default branch and its deploy
+  settings; revokes every user token of Airlock Safe and Airlock Admin from
+  each App's settings, since the old code could read the tokens sealed in
+  any session; and only then has Elegua rotate `airlock-session-key`,
+  `airlock-safe-client-secret` and `airlock-admin-client-secret`, and
+  redeploys the Worker through the deploy workflow from a reviewed release,
+  which runs without an Entra credential until step 5. For each App's
+  client secret the person generates a new one in the App's settings and
+  deletes every older client secret there at once, without the usual
+  overlap, because the old code could read them. Each of these is issued
+  only while no deployment of the old code exists. When the Cloudflare account itself may be in other hands, recovery
+  waits until a person has secured it.
+
+  4. A person generates a new private key in Safe's settings at GitHub,
+  imports it into the same vault with the import that
+  `release-authority-token` gives, under a new key name in place of the
+  slug, because GitHub offers no API
+  that generates an App's private key, and deletes the old private key from
+  Safe's registration.
+
+  5. Airlock's `infra/` declares a new Entra application, the only application
+  with a role on that new key, and that role allows only the sign action. The
+  reviewed release is deployed again with the new key's name and the new
+  application's client id in its configuration, Elegua's manifest names the
+  new application, and Elegua issues its client secret into the Worker's
+  Secrets Store.
+
+  6. A person reads the vault's log of sign operations on the old key for the
+  whole time it may have been exposed, to learn what was signed and when,
+  which shows the calls and not the claims inside them; and resumes the
+  installation only when the only private key that Safe's registration holds
+  is the new one, each App's settings hold only the client secret issued in
+  step 3, the old application no longer exists, the Worker runs from
+  the reviewed release, every version of the Worker deployed before step 3
+  is gone, and an hour has passed since the suspension, so that
+  no installation token minted before it is still valid.
+
+
+  The risk `leaked-worker-credential-pre-signs-airlock-safe-tokens` records
+  the exposure. Each invocation of the Worker holds its Azure and
+  installation tokens only in memory, and revokes its installation token
+  through `DELETE /installation/token` when it finishes. Rotating
+  `airlock-session-key` ends every session at once, because no cookie
+  sealed with the old key opens, but the user access tokens sealed in those
+  cookies stay valid at GitHub until they expire, eight hours at most.
+  Sign-out revokes them; when a sealed cookie may have leaked with the old
+  key, a person also revokes every user token of Airlock Safe and Airlock
+  Admin from each App's settings. Rotating an App's client secret ends no
+  session and no user access token; it stops only new code exchanges with
+  the old secret, once the person deletes it.
+validation-criteria: >-
+  The delivery declaration schema restricts environment names, secret names,
+  fields and variable names to the forms above, refuses an environment that
+  carries both secrets and keys, and refuses an
+  Airlock configuration declaration with any environment. Each
+  template's tests render every part and compare the environments, secrets,
+  keys, trusted publishing and variables in the rendered declaration with the
+  lists above. A test of each rendered workflow finds no `secrets.`
+  expression other than `secrets.GITHUB_TOKEN`; no `vars.` expression
+  outside a job of a credential environment's workflow file; no `vars.`
+  name other than `<ENVIRONMENT>__<NAME>` for a name the rendered
+  declaration lists for that file's environment; no `environment:` naming a
+  credential environment outside that environment's workflow file; and no
+  `id-token: write` in a job other than a job of a credential environment's
+  workflow file, a job that calls one, and the parent's `attest` job.
+  Terraform's module tests plan one repository from a declaration and an
+  App file, compare `github_environments` with the variable names the
+  declaration lists for each environment, and compare each federated
+  credential's subject with `Subject`. The Airlock Worker's apply tests, for a public
+  repository and for a private one under each declared plan, compare the
+  environments, branch policies, variables with their level and subject
+  template it writes for a repository with that
+  repository's declarations and `plan-limits`. Its session tests show that
+  every route that reaches a write refuses a request without a live,
+  elevated session; that the scheduled handler and the Queue's consumer
+  reach no session's token; and that no user access token is written to
+  storage or a log.

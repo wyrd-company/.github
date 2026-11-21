@@ -1,0 +1,7 @@
+# relationships: validates: release-process
+name: Verify sample artifact
+runs-on: ubuntu-latest
+permissions:
+  contents: read
+steps:
+  - run: test -n "$RELEASE_SOURCE_SHA"

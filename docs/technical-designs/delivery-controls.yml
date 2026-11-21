@@ -1,0 +1,586 @@
+$schema: https://refinery.systems/ontology/technical-design
+relationships:
+  related-to:
+    - delivery-standard
+    - delivery-skeleton
+    - release-process
+    - deploy-process
+  references:
+    - delivery-declaration
+    - delivery-environments
+    - delivery-apps
+    - continuous-integration
+    - release-authority-token
+  assumes:
+    - airlock-worker-signs-in-to-entra-and-has-key-vault-sign
+    - workflow-token-reads-effective-rulesets
+    - workflow-token-reads-environment-protection
+    - airlock-safe-reads-organization-installations
+    - ruleset-update-time-tracks-bypass-changes
+    - immutable-releases-hold-on-a-private-free-repository
+objective: >-
+  Define how a repository answers its tier, how the tier, the controls set
+  away from their defaults and their reasons are held in the applied record,
+  how a workflow and Airlock compute each control's effective setting and
+  every deviation at the repository's rung, and where each floor, assurance and
+  ceremony control sits in what the templates render.
+background:
+  current-design: >-
+    The delivery standard defines three tiers, the yes-or-no questions that
+    suggest one, four rungs that Airlock observes from Intentional tag records,
+    the floor, the assurance controls with their tier defaults, the ceremony
+    with its tier defaults at Stable, and a deviation as a control set below
+    the default at the current rung with a recorded reason. The release
+    template on `epic/release-process` asks no tier question and renders no
+    tier-dependent control. Airlock has rungs, waivers and exceptions, and no
+    tier.
+  problems:
+    - >-
+      The tier is the only declaration of how strict delivery is, and it must
+      exist once, in the applied record, while two templates render workflows
+      that depend on it.
+    - >-
+      A deviation is judged at the current rung, which changes after the
+      answers were given, so a reason must exist before the deviation does.
+design-challenges:
+  one-declaration-two-templates: >-
+    Toha gives no template another application's answers. The release
+    template, which every repository on the standard applies, asks the tier
+    and every control, and renders them into `.github/delivery/release.json`,
+    which the deploy workflow reads when it runs. The decision record
+    `hold-the-tier-in-the-release-application` holds the trade-off.
+  reasons-before-deviations: >-
+    A reason is required for every control answered below the tier's default
+    at the Stable rung, which is the strictest default the control will reach,
+    so no rung change creates a deviation without a reason.
+proposed-design:
+  tier-interview: >-
+    The release template asks seven `confirm` questions, each with default
+    false, in this order. `tier_others_secrets`: does it store or handle
+    secrets, credentials, or personal data that belong to someone other than
+    the person running it? `tier_sign_in`: do people sign in to it or through
+    it? `tier_changes_others`: does it hold credentials that can change other
+    repositories, cloud accounts, or organization settings?
+    `tier_others_data_service`: is it a running service that other people's
+    data passes through? `tier_runs_in_builds`: does it run inside other
+    repositories' build or release workflows? `tier_shapes_shipments`: does it
+    produce or change what other projects ship, such as versions, generated
+    files, or base images? `tier_credentials_purpose`: is handling credentials
+    or tokens its purpose? A computed value `tier_suggested` is `custodial`
+    when any of the first four is true, otherwise `trusted` when any of the
+    last three is true, otherwise `standard`. The `select` question `tier`
+    offers `custodial`, `trusted` and `standard`, with prompt
+    `Tier (suggested: {{ tier_suggested }})` and default
+    `{{ tier_suggested }}`. The `text` question `tier_reason` is always
+    asked, and is required when the chosen tier ranks below the suggestion,
+    with custodial above trusted above standard. A change of tier is a pull
+    request that re-answers the interview, and every change to a lower tier
+    than the recorded one carries a new `tier_reason`, whether or not the
+    re-answered questions suggest the lower tier, as the operator ruled and
+    the standard states. The rule holds where every change arrives, the pull
+    request, because `.github/delivery/release.json` and the applied record
+    can change without the interview, so the release template's rendered pull
+    request check, the `delivery` job of
+    `intentional.yml`, compares `.github/delivery/release.json` at the pull
+    request's base and head, and fails when the head's tier ranks below the
+    base's and the head's `tier_reason` is absent or equals the base's.
+
+  release-authority-app: >-
+    The `text` question `release_authority_app` holds the slug of the App
+    that creates the repository's release commits and tags, validated by
+    `^[a-z0-9]+(-[a-z0-9]+)*$` and at most 34 characters. Its default is the
+    slug in the template data `release_authority_apps` for the chosen tier,
+    which holds the slugs of the organization's Intentional Apps for
+    `standard` and `trusted` as they are registered; `custodial` has no entry,
+    so a Custodial repository names its own App. The `text` question
+    `package_tags_app` holds the slug of the App that creates tags after
+    publication, asked when the release model gives any tag
+    `require_phase: after-publication`, with its default from
+    `package_tags_apps` keyed the same way. An answer names an App; it grants
+    nothing. A repository signs with an App only where the organization's App
+    authorization file, `delivery-apps`, allows that repository, role and
+    tier: Terraform grants the key's sign role and Airlock names the App as a
+    bypass actor only for such an enrolment, and Airlock's audit fails a
+    declaration that names any other App. An adopter outside the organization
+    answers both with its own Apps and keeps its own authorization file.
+
+  control-catalog: >-
+    Assurance controls take `on` or `off`. `rehearsal`, the release rehearsal
+    that continuous integration runs on every commit with pending intents;
+    `sealed-plan`, the release plan committed in the release commit and bound
+    to the tag records by its digest; `revalidation`, the independent check of
+    the pushed release before anything is published; `provenance`, build
+    provenance attested for each release asset and verified on the bytes read
+    back after publication; `evidence`, the durable evidence file on each
+    release record; and `consumer-after`, a clean install of what was
+    published, are `on` at Trusted and Custodial and `off` at Standard.
+    `consumer-before`, a clean install of what was built before anything is
+    published, and `authority-smoke`, the smoke workflow that proves the
+    release authority without changing anything, are `on` at Custodial and
+    `off` at Trusted and Standard. Assurance defaults do not vary with the
+    rung. Ceremony controls are `release-start` and `deploy-start`, which take
+    `automatic` or `person`, and `update-review` and `rotation-approval`,
+    which take `none` or `person`. Below Stable every tier takes Standard's
+    ceremony: both starts `automatic` and the two others `none`. At Stable,
+    Standard keeps that; Trusted takes `person` for both starts and for
+    `update-review`, and `none` for `rotation-approval`; Custodial takes
+    `person` for all four. A setting
+    ranks below another when it is `off` against `on`, `automatic` against
+    `person`, or `none` against `person`.
+
+  control-answers: >-
+    The `confirm` question `customize_controls`, default false, asks whether
+    any control is set away from its default. When it is true, the template
+    asks one `select` question per control, with id `control_` followed by
+    the control id with dashes written as underscores, such as
+    `control_sealed_plan`, options `default` and the control's two settings,
+    and default `default`. For each answer that is not `default` and ranks
+    below the tier's default at Stable, the required `text` question
+    `control_<id>_reason` is asked. Questions that are skipped are not
+    recorded, so a repository that sets nothing records only its tier
+    answers. The release declaration's `controls` holds every control whose
+    answer is not `default`, with its `setting` and, when asked, its
+    `reason`.
+
+  effective-setting-and-deviation: >-
+    A control's effective setting at a rung is the recorded setting when one
+    exists and otherwise the tier's default at that rung. A deviation is a
+    control whose effective setting ranks below the tier's default at the
+    repository's current rung; it carries the recorded reason. A setting
+    above its default is not a deviation and needs no reason. The skeleton's
+    `scripts/delivery.js` and Airlock compute both from the same three inputs:
+    the release declaration's `tier` and `controls`, and the observed rung.
+    Both observe the rung as `delivery-skeleton` `ceremony-at-run-time`
+    states: each tag record takes its role from the release model at the
+    commit its tag points at, whichever revision is observed, with the same
+    fallbacks for a commit that holds no model naming the record's key, so a
+    later model never lowers the rung.
+    Assurance controls take effect when the release template renders, so a
+    change to one is a template update; ceremony controls take effect when a
+    run computes them.
+
+  applied-record-fields: >-
+    In `.toha.json`, the release application is the application whose
+    `source` is the release template's source that the organization accepts
+    under `REPO-TPL-01`, and the deploy and Airlock configuration applications
+    likewise for their templates. Airlock reads from the release application
+    `commit`, `parts`, `answers.tier`, `answers.tier_reason`, the seven
+    `answers.tier_*` question answers, `answers.release_authority_app`,
+    `answers.package_tags_app`, `answers.customize_controls`, every
+    `answers.control_<id>` and `answers.control_<id>_reason`,
+    `answers.ci_workflow`, `answers.ci_workflow_name` and
+    `answers.release_model`; from the deploy application `commit`, `parts`,
+    `answers.deploy_unit` and `answers.environments`; from the Airlock
+    configuration application `commit`; and from each, `paths`, to find the files it renders. An answer absent from
+    the record is a question that was skipped, and takes its default. Both
+    scheduled audits read every one of these fields: the per-repository run
+    for its own repository with the run's token, and the central run for
+    every repository as Airlock Safe. The attended run reads `parts`,
+    `answers.release_model`, `answers.release_authority_app` and
+    `answers.package_tags_app` from the release application, to write the
+    repository rulesets and their bypass actors.
+
+  floor-placement: >-
+    The release commit and the tags created with it are pushed only by the
+    release workflow's `record` job, inside `release-authority`, with a token
+    the token action mints from the release authority App for the one
+    repository with `contents: write`; the tags that wait for publication are
+    pushed only by `tag-after-publication`, inside `package-tags`, with a
+    token from the package tags App. `release-record` and `evidence` hold the
+    run's `GITHUB_TOKEN` with `contents: write`, which can change releases and
+    their assets but, under the rulesets below, cannot create, move or delete
+    a tag or update the default branch. Every credential reaches a job
+    through its environment's workflow file and federated identity, as
+    `delivery-skeleton` and `delivery-environments` define, and no rendered
+    workflow reads a repository or organization secret; the absence of
+    repository secrets is checked by Airlock's central audit. Tags are
+    immutable and classified by the rulesets of `rulesets`. Recovery runs
+    from the immutable tags: a release dispatched again for its source
+    commit finds its tags, and every job that changes state outside the run
+    does only what is missing. No answer removes any of these. On a
+    repository that `plan-limits` gives no rulesets, the federated
+    credentials, the absence of repository secrets and recovery hold as
+    stated; the rulesets do not exist, so the delivery workflows are the
+    only writers of release commits and tags by their own construction and
+    not against another writer, and a tag is fixed only once a published
+    release with immutable releases on locks it. The risks
+    `writers-change-the-default-branch-of-a-private-repository` and
+    `writers-change-the-tags-of-a-private-repository` record those limits.
+
+  rulesets: >-
+    On each repository that holds a release declaration, Airlock applies
+    seven repository rulesets, each with enforcement `active`, wherever
+    `plan-limits` gives the repository rulesets. Three carry no bypass actor
+    and the same rules in every repository. `delivery-tags-immutable`:
+    target `tag`, ref condition include `~ALL`, rules `update`, `deletion`
+    and `non_fast_forward`. `delivery-tags-unclassified`: target `tag`,
+    include `~ALL`, exclude `[0-9]*.[0-9]*.[0-9]*` and
+    `**@[0-9]*.[0-9]*.[0-9]*`, rule `creation`, so every tag outside the
+    organization's two classified forms, bare SemVer and `<name>@<SemVer>`,
+    is refused to everyone. `delivery-default-branch`: target `branch`,
+    include `~DEFAULT_BRANCH`, rules `required_linear_history`,
+    `non_fast_forward` and `deletion`; `record` pushes a fast-forward to a
+    release commit whose one parent is the source commit, so it needs no
+    bypass of these. Four name as a bypass actor, when they name one, an App
+    that `delivery-apps` enrols for that repository.
+    `delivery-default-branch-review`: target `branch`, include
+    `~DEFAULT_BRANCH`, rule `pull_request`, bypass mode `always` for the
+    repository's release authority App only, so `record` can push the release
+    commit and no other App can push there, wherever it is installed. The
+    three tag rulesets take their ref patterns from the release model's tag
+    templates, with `{version}` written as `[0-9]*.[0-9]*.[0-9]*` and `{id}`
+    as the unit's literal id. `delivery-tags-recorded`: target `tag`, include
+    the patterns of every template with no `require_phase` or with
+    `before-publication`, rule `creation`, bypass the repository's release
+    authority App only. `delivery-tags-published`: target `tag`, include the
+    patterns of every template with `after-publication`, rule `creation`,
+    bypass the repository's package tags App only.
+    `delivery-tags-repository`: target `tag`, include `~ALL`, exclude every
+    pattern of the two others, rule `creation`, no bypass actor, so a
+    classified name that no template of the repository produces is refused
+    too. Every ruleset is a repository ruleset because repository rulesets
+    exist on every plan and visibility that has rulesets, and because the
+    patterns and the bypass actor of four of them belong to one repository,
+    so an App installed where it should not be bypasses nothing there; the
+    decision record `hold-the-floor-within-the-github-plan` holds the
+    trade-off. A repository administrator can change them, and Airlock's
+    audit reports any difference, as `audit-coverage` states. A
+    tag name that matches both phases' patterns is refused to both Apps, so
+    Airlock refuses a release model whose patterns of the two phases overlap,
+    `resolve` refuses a plan in which a tag matches a pattern of the other
+    phase, and a template whose tag is not bare SemVer or `<name>@<SemVer>` is
+    refused by `resolve`. The patterns admit some names that are not SemVer;
+    the only writers of matching names are `record` and
+    `tag-after-publication`, which push exactly the tag names of the plan.
+    GitHub returns a ruleset's bypass actors only to a reader with write
+    access to it, which for a repository ruleset is repository
+    administration write, so no workflow and no scheduled run sees them.
+    The rulesets check is the one `resolve`, the smoke workflow and both
+    scheduled audits run: it reads the effective rulesets and requires each
+    of these to be present and `active` with the conditions and rules above.
+    When GitHub answers the read with HTTP 403 and the message `Upgrade to
+    GitHub Pro or make this repository public to enable this feature` for a
+    private repository, the check passes, names each ruleset as a known
+    limit, and links the risks of `plan-limits`; every other failure to
+    read fails it. The attended Airlock run, which writes the bypass actors,
+    reads them back and records them.
+
+  plan-limits: >-
+    The organization's Airlock configuration declares the organization's
+    GitHub plan as `github-plan`, one of `free`, `team` and `enterprise`,
+    because no App can read it. From the declared plan and a repository's
+    visibility, as GitHub's documentation gives them, Airlock takes which
+    settings the repository can hold. A public repository holds every
+    setting below on every plan. A private repository holds repository
+    rulesets, deployment branch policies and environment variables on
+    `team` and `enterprise`, and none of them on `free`. Repository
+    variables, the secrets list, the OpenID Connect subject template and
+    immutable releases are held on every plan and visibility. A control
+    that needs a setting the repository cannot hold is plan-limited:
+    Airlock's attended run does not write it, and every audit run reports
+    it as a known limit with the risk it names, never as passed and never as
+    failed. The plan-limited controls of a private repository on `free`, and
+    their risks, are: `delivery-default-branch` and
+    `delivery-default-branch-review`, with
+    `writers-change-the-default-branch-of-a-private-repository`;
+    the five tag rulesets, with
+    `writers-change-the-tags-of-a-private-repository`; the branch policy of
+    each environment that declares `trusted_publishing`, with
+    `trusted-publishing-admits-any-branch-of-a-private-repository`; and
+    environment-level variables, with
+    `writers-change-the-delivery-variables-of-a-private-repository`. Every
+    other environment loses its branch policy too, and what the policy did
+    holds by another mechanism, which Airlock reports as such: each
+    identity's federated credential names the default branch and the
+    environment's workflow file, as `delivery-environments` states, and
+    Entra checks it at every sign-in. Both scheduled audits check the declared
+    plan against GitHub: they read each audited private repository's
+    rulesets, and fail when the plan is `free` and GitHub serves them, or
+    when the plan is `team` or `enterprise` and GitHub answers the plan's
+    HTTP 403. A change of plan is a change of `github-plan` followed by an
+    attended Airlock run, which writes the rulesets and branch policies the
+    new plan gives and moves each repository's delivery variables into
+    their environments; no rendered file, Terraform resource or federated
+    credential changes. Until that run, the rulesets check of `resolve`
+    fails, because GitHub serves rulesets that are absent, so no release
+    runs without the controls the plan gives. The decision record
+    `hold-the-floor-within-the-github-plan` holds the trade-off.
+
+  assurance-placement: >-
+    `rehearsal`: the release template renders
+    `.github/workflows/release-rehearsal.yml`, continuous integration calls
+    it, and `resolve` requires its success for the source commit.
+    `sealed-plan`: `prepare` writes Intentional's plan to
+    `.intentional/release-plan.json` in the release commit, and `record` and
+    `revalidate` require its `digest` to equal every tag record's
+    `plan-digest`. `revalidation`: the `revalidate` job between `record` and
+    the deliver stage. `provenance`: the parent's `attest` job, which runs no
+    repository code, attests every release asset the build stage produced
+    with `actions/attest-build-provenance`, and `verify-provenance` verifies
+    the attestation of every asset downloaded back from its release record
+    against the expected source and signer identity that `release-process`
+    states; each federated registry part verifies the registry's own
+    provenance for what it published. `evidence`: the `evidence` job attaches
+    `release-evidence.json` to each release record. `consumer-before`: each
+    part's `consume-` jobs in the build stage. `consumer-after`: each part's
+    `verify-` jobs that install from the registry. `authority-smoke`: the
+    release template renders `.github/workflows/release-authority-smoke.yml`.
+    A control that is `off` renders none of its jobs or files.
+
+  ceremony-placement: >-
+    `release-start` and `deploy-start`: each workflow's `resolve` ends an
+    automatic run when the effective setting is `person`. `update-review`: the session that
+    applies a template update reads the release declaration and leaves the
+    update's pull request for a person when the effective setting is
+    `person`, and merges it otherwise. `rotation-approval`: Elegua's manifest
+    gives each secret that the repository's environments read
+    `tier: sensitive` when the effective setting is `person`.
+
+  audit: >-
+    Airlock's audit reads the applied record, the three declarations, the
+    release model, the repository's settings and visibility, its rulesets,
+    its environments with their branch policies, its repository and
+    environment variables, its OpenID Connect subject template, its secrets
+    list, the organization's declared plan, the tag records,
+    the release model at the commit each tag record's tag points at,
+    the release records with their assets and attestations, the
+    organization's App installations, `delivery-apps`, Elegua's manifest and
+    the attested record, and reports the tier, the observed rung, and every
+    deviation with its reason, and every plan-limited control of
+    `plan-limits` as a known limit with its risk. It fails when the tier ranks below the
+    organization's minimum for the repository; when the tier ranks below the
+    suggestion of the recorded answers, or below the tier recorded in the
+    base of a pull request or in the first parent of the commit that changed
+    it, and that change records no new `tier_reason`; when a deviation has no
+    reason; when the repository holds a repository-level secret; when a file
+    the record lists differs from what its application renders; when a
+    control's effective setting needs a job, a file, a ruleset or an
+    environment's branch policy that is absent and that `plan-limits` gives
+    the repository; when the declared plan disagrees with GitHub as
+    `plan-limits` states; when the subject template is not the one
+    `delivery-environments` names; when a variable that a declaration lists
+    is missing, or a variable named for a declared environment is one the
+    declaration does not list, at the level `delivery-environments` names
+    for the plan; when immutable releases are off
+    and `evidence` is off; when a release asset differs from its
+    `SHA256SUMS`, its evidence file or its attestation; when a declaration
+    names an App that `delivery-apps` does not allow for the repository; when
+    an App's installation differs from `delivery-apps` in the ways that file
+    states; when a ruleset, a bypass actor or an environment variable differs
+    from the attested record; when the npm registry does not hold a package
+    that a declaration names, or holds npm provenance for one of its
+    versions after the placeholder that names another repository or another
+    workflow than `.github/workflows/release.yml`; when a secret that a
+    declaration lists is not a
+    destination of Elegua's manifest in the environment's vault; and when
+    such a secret's manifest `tier` is not the one its readers' effective
+    `rotation-approval` requires. It reads Elegua's manifest from the
+    repository and path its organization configuration names; the manifest
+    holds names and policies, never values. Each check runs in at least one of
+    three kinds of run, `audit-runs`, and a run that cannot make a check
+    reports it as not run, with the run that covers it, never as passed.
+
+  audit-runs: >-
+    The per-repository run. The Airlock configuration template renders
+    `.github/workflows/airlock-audit.yml` in every repository that applies
+    it. It runs on `schedule` once a day, on `workflow_dispatch` and on
+    `push` to the default branch, with `permissions: {}` at the top and one
+    job, `audit`, with `contents: read`, `actions: read` and
+    `attestations: read`. The job enters no environment, reads no secret, and
+    runs the pinned Airlock action, a JavaScript action on `node24` that
+    carries Airlock's audit engine compiled to WebAssembly and has one mode,
+    repository mode. It takes the run's `GITHUB_TOKEN` through its `token`
+    input, audits that one repository, and uploads its report as an
+    artifact of the run.
+    GitHub offers no way to list an installation token's permissions, so
+    Airlock accepts that token only inside Actions, and only after it reads
+    the job's `permissions` from the workflow file at `GITHUB_WORKFLOW_SHA`
+    and finds each one `read`.
+    The central run. The Airlock Worker runs it once a day from a Cron
+    Trigger of its Wrangler configuration, with the same engine compiled to
+    WebAssembly. Its scheduled handler signs in to Azure as the Worker's
+    Entra application with the client credentials grant and
+    `airlock-entra-client-secret`, has Key Vault sign Airlock Safe's JSON
+    Web Token as `release-authority-token` describes the sequence, reads
+    `GET /app` and requires the id and slug its configuration names and
+    every permission `read`, requires its installation for the owner to have
+    `repository_selection` `all`, as `delivery-apps` requires of Airlock
+    Safe, and to pass the token action's `installation-repositories` rule
+    with `<owner>/*`, which bounds membership to the owner's repositories
+    without implying a selection, and mints an installation token whose
+    minting response lists only `read` permissions. It makes the
+    organization's checks, then puts one message for each repository the
+    installation reaches on the Worker's Queue, naming the run and the
+    repository and holding no credential. Each invocation of the Queue's
+    consumer signs in the same way, audits the repositories of its batch,
+    and stores each repository's results in the Worker's D1 database under
+    the run. The batch size keeps every invocation within the limits of
+    Workers Paid on subrequests and CPU time, at about 28 GitHub requests
+    for one repository, and Airlock's documentation states it. No token,
+    assertion or signature is stored, logged or queued. The run's report is
+    its stored results: a failed check is failed, and a repository with no
+    result once the run's messages are consumed is reported as not run. The
+    scheduled handler and the Queue's consumer hold only Airlock Safe's
+    read-only installation token and reach no session.
+    The attended run. The attended run is an elevated session of the Airlock
+    Worker, which a person starts and elevates as `sign-in-and-elevation`
+    states, and whose writes run only from a confirmed batch, as
+    `batch-confirmation` states. So no request without a live, elevated
+    person, and no scheduled or Queue invocation, can write a GitHub
+    setting. Airlock Admin's registration holds no private key, so no
+    installation token of Admin can be minted. The Worker holds Admin's
+    client secret, which only exchanges a code that a person has just
+    approved at a callback Admin registers, and is placed as
+    `delivery-environments` states. The attended run
+    writes what `plan-limits` gives each repository and skips each
+    plan-limited control, which it lists in its report as a known limit with
+    its risk. After it applies, it reads back the bypass actors of every
+    ruleset it writes, every delivery variable it writes and each subject
+    template, and compares each with what this design names: no bypass actor
+    on `delivery-tags-immutable`, `delivery-tags-unclassified`,
+    `delivery-default-branch` and `delivery-tags-repository`; only the
+    repository's release authority App on `delivery-default-branch-review`
+    and `delivery-tags-recorded`; only its package tags App on
+    `delivery-tags-published`; the values of `github_environments`; and the
+    subject template of `delivery-environments`.
+    A difference fails the run, which records nothing for what differs. It
+    ends by storing the attested record in the Worker's D1 database, one row
+    for each repository keyed by its numeric repository id, which only an
+    attended run writes and the central run reads. Each row is JSON with
+    `$schema` `https://wyrd.foo/airlock/attested/1`, which Airlock defines,
+    `attested_at`, `attested_by`, the person's login, `rulesets`, each with
+    its `id`, `updated_at` and `bypass_actors` as GitHub returns them, and
+    `variables`, keyed by environment and then by the variable name a
+    declaration lists, whatever level GitHub holds it at; and `npm`, keyed
+    by package, each with the repository, workflow and environment the
+    Worker showed, `set_by`, the login of the person who set them, and
+    `set_at`. A central
+    run between an apply and the end of the same session reports the
+    difference, and the next run clears it. The record is as trustworthy as
+    the Worker's code and its database: Airlock's repository is public, so
+    its default branch keeps its rulesets on GitHub Free, and the account's
+    administrators and the deploy credential that applies the Worker's
+    migrations can write the database. The decision record
+    `audit-and-write-settings-in-the-airlock-worker` holds the trade-off.
+
+  sign-in-and-elevation: >-
+    A person reaches the Airlock Worker's attended run through two GitHub
+    web application flows: sign-in, for Airlock Safe, and elevation, for
+    Airlock Admin, which only a signed-in session can start. Each flow is
+    one short-lived transaction. A same-origin request to `/auth/start`
+    names the flow. The Worker draws a random `state`, a random PKCE
+    verifier, whose S256 challenge it sends to GitHub, and a random
+    transaction id, and seals them with AES-GCM under `airlock-session-key`
+    into a transaction cookie, together with the flow, the App's client id,
+    the callback URL and an expiry ten minutes ahead, and for elevation the
+    session id and the GitHub user id of the signed-in person, which the
+    same-origin request's session cookie gives. The transaction cookie is
+    host-only, `HttpOnly`, `Secure` and `SameSite=Lax`, so it returns with
+    GitHub's top-level redirect to the callback, which a `SameSite=Strict`
+    cookie does not. The Worker also writes a D1 row keyed by the
+    transaction id, holding the SHA-256 of `state` and the expiry and no
+    secret.
+    The callback, `https://theairlock.app/auth/callback` or
+    `http://127.0.0.1:<port>/auth/callback` for a local run of the Worker,
+    which are the callbacks both Apps register, refuses unless the
+    transaction cookie is present, opens under the session key, has not
+    expired, names this callback, and holds the `state` that the query
+    carries, and unless deleting the transaction's D1 row, matched on its id,
+    its `state` hash and an expiry still ahead, returns that one row. That
+    delete is the single use: a replayed callback, one whose cookie came
+    from another browser or another flow, and an expired one find no row.
+    The callback then clears the transaction cookie, exchanges the code with
+    the client id and client secret of the App the transaction names, the
+    PKCE verifier and the same callback URL, and reads `GET /user`. On
+    sign-in it reads `GET /user/memberships/orgs/<owner>` with the new
+    token, which needs Safe's `members: read`, and admits the person only
+    when the answer's `state` is `active`; any other answer, a 403 or a 404
+    included, refuses the sign-in, and `role` `admin` marks an owner. On
+    elevation the Admin token's user id must equal the transaction's, and
+    for any other user the Worker revokes the token and refuses. The
+    callback answers with a same-origin page that sets the session cookie
+    and continues to the Worker's own page, so the first request that
+    carries a `SameSite=Strict` cookie is a same-site one.
+    The two session cookies, one for sign-in and one for elevation, are
+    host-only, `HttpOnly`, `Secure` and `SameSite=Strict`, sealed with
+    AES-GCM under `airlock-session-key`, and each holds the session id, the
+    GitHub user id and login, the user access token, its expiry and the
+    session's CSRF token. A user access token is held nowhere else: not in
+    D1, the Queue, a log or other storage. The Worker discards each
+    refresh token on receipt, requires the elevated cookie's session id and
+    user id to equal the sign-in cookie's on every request, and on sign-out
+    revokes both tokens through `DELETE /applications/<client_id>/token`.
+    GitHub limits Admin's user access token to what both the person and
+    Admin may do and expires it after eight hours, which ends the
+    elevation. The signed-in person sees the findings of the latest
+    reports, the central run's and each per-repository run's artifact, for
+    the repositories that `GET /user/installations/<id>/repositories` lists
+    for their own token, and the organization's findings when they are an
+    owner. The Worker's tests cover a callback with no transaction cookie,
+    a `state` that differs from the cookie's, an expired transaction, a
+    transaction of the other flow or of another browser, an elevation by
+    another user, a replay, and a membership that is pending, absent or
+    unreadable.
+
+  batch-confirmation: >-
+    A write runs only from a confirmed batch. When an elevated person
+    reviews a batch, the Worker reads the latest `github_environments.json`
+    from its R2 binding and refuses it when its shape differs from
+    `github_environments` or when it names a repository, environment or
+    variable that no declaration lists, reads each setting it would change
+    from GitHub, plans the change, shows each setting's exact value before and
+    after, and stores a confirmation in D1: a random id, the session id, the
+    GitHub user id, the repositories, the SHA-256 of the canonical change
+    set, every setting with its value before and after, and an expiry ten
+    minutes ahead. Confirming is a `POST` that carries the elevated cookie,
+    the session's CSRF token and the confirmation's id. The Worker consumes
+    the confirmation in one statement, which sets `consumed_at` where the id,
+    the session id and the user id match, `consumed_at` is empty and the
+    expiry is ahead, and returns the change set's hash; it writes nothing
+    unless that statement returns one row. So another session's
+    confirmation, an expired one, and a second or concurrent use of the same
+    one are refused. Before the first write, the Worker reads every setting
+    of the change set again and refuses the whole batch when any value
+    differs from its confirmed value before. Then it writes the change set
+    whose hash the statement returned, and nothing else. The Worker's tests
+    cover each refusal: a confirmation of another session, an expired one, a
+    replayed one, two concurrent confirmations of one batch, and a setting
+    that changed after the review.
+
+  audit-coverage: >-
+    The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
+    release model, the tag and release records, the release model at each
+    tag record's commit, the repository's visibility, the effective
+    rulesets without their bypass actors, the environments with their
+    protection rules, the attestations, and `delivery-apps` and the organization's
+    Airlock configuration in the public `.github` repository; the
+    per-repository run makes every check that needs only these and reports
+    the rest as not run. Airlock Safe reads all of these except attestations,
+    and each repository's secrets list, repository and environment
+    variables, subject template and immutable releases setting, the
+    organization's installations and Elegua's manifest, and the central run
+    also reads the attested record from the Worker's database; the central
+    run makes every check except four: attestations, bypass actors, npm
+    trust, and the repositories of an App's selected installation. It fails when a
+    repository that holds a release or deploy declaration has no Airlock
+    configuration application, so no repository on the standard lacks
+    `airlock-audit.yml`. Attestations: for each such repository the central
+    run reads its latest run of that workflow on the default branch and fails
+    when it failed or when no run completed in the last two days. Bypass actors: the
+    attended run reads them, and the central run fails when a ruleset that
+    Airlock applies has no entry in the attested record, or when its
+    `updated_at` or a delivery variable differs from its entry, so a
+    change after the attended run is found by the next scheduled run, and a
+    person elevates and applies again. npm trust: no run reads it, both
+    scheduled runs report it as not verified, with who set it and when as
+    the attested record gives, and the risk
+    `npm-trusted-publishers-are-not-verified` records the limit; the npm
+    registry's public metadata, each package and the provenance of its
+    versions, needs no credential, so both runs read it. The
+    repositories of an App's
+    selected installation: no audit run reads them; the token action checks
+    them before every token it returns, as `delivery-apps` states, both
+    scheduled runs report them as not run with that pointer, and the central
+    run checks each installation's selection and permissions; the decision
+    record
+    `check-app-membership-where-the-key-signs` holds the trade-off.

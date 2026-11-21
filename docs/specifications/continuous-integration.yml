@@ -1,0 +1,74 @@
+$schema: https://refinery.systems/ontology/specification
+relationships:
+  references:
+    - delivery-standard
+    - release-process
+    - deploy-process
+    - delivery-controls
+format: github-workflow-contract
+description: >-
+  Continuous integration is the repository's own workflow, written by the
+  repository, that the release workflow relies on to say a commit is fit to
+  release. The release template records it with two answers: `ci_workflow`,
+  the file name under `.github/workflows/`, and `ci_workflow_name`, the value
+  of that workflow's top-level `name`. The workflow meets this contract.
+
+
+  Triggers. It runs on `push` to the default branch and on `pull_request`. A
+  push run that concludes `success` is the statement that the commit passed
+  continuous integration. The release workflow starts automatically from the
+  `workflow_run` event of a completed push run on the default branch and
+  releases the default branch head, and every release, automatic or
+  dispatched, requires a push run of this workflow for exactly its source
+  commit with `conclusion: success`, found through
+  `GET /repos/<owner>/<repository>/actions/workflows/<ci_workflow>/runs` with
+  `head_sha`, `event=push` and `status=success`. A release whose source
+  commit's push run failed fails in `resolve`, whether a dispatch or an
+  automatic start reached it; an automatic run whose head's push run has not
+  completed ends without releasing, because that run's completion starts
+  another.
+
+
+  Rehearsal. When the effective `rehearsal` control is `on`, the workflow has
+  a job with id `release-rehearsal` and no `name` key that calls
+  `./.github/workflows/release-rehearsal.yml` with no inputs and no secrets,
+  and, when the deploy template is applied, a job with id `deploy-rehearsal`
+  and no `name` key that calls `./.github/workflows/deploy-rehearsal.yml` the
+  same way. The called workflows run on every commit and do real work only
+  when the commit has pending Intentional intents; GitHub reports their jobs as
+  `release-rehearsal / <job>` and `deploy-rehearsal / <job>`. The release
+  workflow's `resolve` job requires every job of the push run whose name
+  starts with `release-rehearsal / ` to have concluded `success` or `skipped`,
+  and the job `release-rehearsal / resolve` to have concluded `success`.
+
+
+  Authority. The workflow enters no environment, reads no secret other than
+  the run's `GITHUB_TOKEN`, requests no `id-token: write`, and grants no
+  permission beyond `contents: read`, `actions: read`, `checks: write`,
+  `pull-requests: write`, `statuses: write` and `packages: read`. It
+  publishes nothing, deploys nothing and creates no tag; the release and
+  deploy workflows do that.
+
+
+  Release commits. The release workflow pushes each release commit to the
+  default branch, so the workflow runs on it like any other push. A release
+  commit changes only the files Intentional's `apply` writes, the release
+  plan, and the files the repository's prepare recipe writes, and the
+  workflow passes on it whenever it passed on the release commit's parent.
+
+
+  Repository checks the deploy part relies on. A repository that applies the
+  deploy template with the `cloudflare-worker` part keeps its D1 schema as
+  numbered migrations in each database's migrations directory and runs
+  `wrangler d1 migrations apply <database> --local` against an empty database
+  in this workflow, so every migration applies in order from nothing.
+validation-criteria: >-
+  The release workflow's `resolve` job refuses a source commit without a
+  successful push run of `ci_workflow`, and, with `rehearsal` on, a push run
+  without a successful `release-rehearsal / resolve` job; the release
+  template's tests cover both refusals with fake run and job listings.
+  Airlock's audit reads `ci_workflow` and `ci_workflow_name` from the applied
+  record, checks that the named file exists with that `name`, that it
+  triggers on `push`, that with `rehearsal` on it calls the rehearsal
+  workflows from jobs named as above, and that it enters no environment and
+  requests no `id-token: write`.

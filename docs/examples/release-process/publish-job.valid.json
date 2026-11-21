@@ -1,0 +1,27 @@
+{
+  "units": "sample-tool",
+  "job": {
+    "name": "Publish npm package",
+    "runs-on": "ubuntu-latest",
+    "permissions": { "contents": "read", "id-token": "write" },
+    "timeout-minutes": 15,
+    "env": { "PACKAGE_DIR": "npm" },
+    "steps": [
+      {
+        "uses": "actions/checkout@0123456789abcdef0123456789abcdef01234567 # v7.0.0"
+      },
+      {
+        "uses": "actions/setup-node@89abcdef0123456789abcdef0123456789abcdef # v7.1.0",
+        "with": {
+          "node-version": 24,
+          "registry-url": "https://registry.npmjs.org"
+        }
+      },
+      {
+        "name": "Publish or verify the released version",
+        "shell": "bash",
+        "run": "version=\"$(jq -r '.[\"sample-tool\"].version' <<<\"$RELEASE_JSON\")\"\nnpm publish \"./$PACKAGE_DIR\" --provenance --tag latest\nnpm view \"@example-org/sample-tool@$version\" version"
+      }
+    ]
+  }
+}

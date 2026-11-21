@@ -1,0 +1,21 @@
+# relationships: validates: release-process
+extends: default
+ignore:
+  - templates/airlock-config/template/**/*.yml
+  - templates/release/partials/*.yml
+  - templates/release/targets/npm/*npm.yml
+  - templates/release/targets/npm/*clients.yml
+  - templates/release/targets/npm/*.env.yml
+  - templates/release/targets/ghcr/publish-ghcr.yml
+  - templates/release/targets/ghcr/*.env.yml
+  - templates/release/targets/crates-io/publish-crates-io.yml
+  - templates/release/targets/homebrew-tap/publish-*.yml
+  - templates/release/targets/repo-wyrd-foo/publish-repo-wyrd-foo.yml
+  - templates/release/template/**/*.yml
+rules:
+  brackets: disable
+  line-length:
+    max: 160
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1

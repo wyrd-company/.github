@@ -1,0 +1,16 @@
+# relationships: validates: release-process
+name: Example assembly recipe
+description: Record checksums from the downloaded build files
+inputs:
+  unit:
+    required: true
+    description: Release Unit
+  input-directory:
+    required: true
+    description: Downloaded build artifact directory
+  output-directory:
+    required: true
+    description: Directory for assembly files
+runs:
+  using: node24
+  main: index.cjs

@@ -1,0 +1,30 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - keep-release-assets-mutable-for-evidence
+    - release-process
+slug: release-assets-change-after-publication
+title: A release asset is replaced after its release was verified
+description: >-
+  Where the effective `evidence` control is `on`, GitHub's immutable releases
+  are off so that `release-evidence.json` can join the published release
+  record. Any actor with `contents: write` on the repository, including a
+  later run's `release-record` or `evidence` job, can then replace or delete
+  an asset after read-back and provenance checks have passed. Tag immutability
+  does not cover assets.
+categories:
+  - security
+  - integrity
+likelihood: 2
+impact: 3
+response: >-
+  Detect. Every release asset other than the evidence file has a build
+  provenance attestation, immutable in GitHub's attestation store; consumers
+  that run `gh attestation verify` refuse a replaced asset. Airlock's audit
+  compares each release record's assets with its `SHA256SUMS`, its evidence
+  file and the attestations and reports any difference. A replaced asset is
+  answered with a new release. Where `provenance` is set `off` with
+  `evidence` on, a recorded deviation, assets carry no attestation and a
+  replaced asset is detected only against `SHA256SUMS` and the evidence file,
+  which an actor able to replace an asset can replace as well.
+status: open

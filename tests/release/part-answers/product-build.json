@@ -1,0 +1,19 @@
+{
+  "product_build_units": "sample-tool sample-docs",
+  "product_build_matrix": {
+    "targets": [
+      {
+        "target": "first",
+        "runner": "ubuntu-latest"
+      },
+      {
+        "target": "second",
+        "runner": "windows-latest"
+      }
+    ]
+  },
+  "product_build_recipe": "./.github/actions/release-build",
+  "product_build_assembly": true,
+  "product_assembly_recipe": "./.github/actions/release-assemble",
+  "product_assembly_runner": "ubuntu-latest"
+}

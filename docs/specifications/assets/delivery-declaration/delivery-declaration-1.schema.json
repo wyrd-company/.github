@@ -1,0 +1,526 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wyrd.foo/delivery/declaration/1",
+  "title": "Delivery declaration",
+  "description": "What one applied delivery template declares for its repository: for the release template, the tier, the reason for a tier below the recorded or suggested one, and every control the interview answers with a setting rather than `default`; for the deploy template, the deployed Release Unit and the environment chain; for the Airlock configuration template, no environment; for each, every environment the rendered workflows enter and what each environment carries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "template",
+    "environments"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://wyrd.foo/delivery/declaration/1"
+    },
+    "template": {
+      "enum": [
+        "release",
+        "deploy",
+        "airlock-config"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "standard",
+        "trusted",
+        "custodial"
+      ]
+    },
+    "controls": {
+      "$ref": "#/$defs/controls"
+    },
+    "release_authority": {
+      "$ref": "#/$defs/app"
+    },
+    "package_tags": {
+      "$ref": "#/$defs/app"
+    },
+    "unit": {
+      "description": "The Release Unit whose releases the deploy workflow deploys.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "chain": {
+      "description": "The deploy environments in the order an automatic deploy enters them.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/environment-name"
+      }
+    },
+    "environments": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/environment-name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/environment"
+      }
+    },
+    "tier_reason": {
+      "description": "The recorded reason for a tier below the one the answers suggest or below the tier recorded before the change.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "prepare_outputs": {
+      "description": "Paths, as Git pathspec globs, that the release's prepare recipe may change, besides the files Intentional writes.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9_.*/@+-]+$",
+        "not": {
+          "enum": [
+            "*",
+            "**",
+            "**/*",
+            "*/**"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "template": {
+            "const": "release"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "tier",
+          "controls",
+          "release_authority"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "unit"
+              ]
+            },
+            {
+              "required": [
+                "chain"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "template": {
+            "const": "deploy"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "unit",
+          "chain"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "tier"
+              ]
+            },
+            {
+              "required": [
+                "tier_reason"
+              ]
+            },
+            {
+              "required": [
+                "controls"
+              ]
+            },
+            {
+              "required": [
+                "release_authority"
+              ]
+            },
+            {
+              "required": [
+                "package_tags"
+              ]
+            },
+            {
+              "required": [
+                "prepare_outputs"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "template": {
+            "const": "airlock-config"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "environments": {
+            "description": "An Airlock configuration declares no environment: its one workflow holds only the run's `GITHUB_TOKEN`.",
+            "maxProperties": 0
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "tier"
+              ]
+            },
+            {
+              "required": [
+                "tier_reason"
+              ]
+            },
+            {
+              "required": [
+                "controls"
+              ]
+            },
+            {
+              "required": [
+                "release_authority"
+              ]
+            },
+            {
+              "required": [
+                "package_tags"
+              ]
+            },
+            {
+              "required": [
+                "unit"
+              ]
+            },
+            {
+              "required": [
+                "chain"
+              ]
+            },
+            {
+              "required": [
+                "prepare_outputs"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "controls": {
+      "description": "Every control the release interview answers with a setting rather than `default`. An absent control takes its tier's default at the governing rung.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rehearsal": {
+          "$ref": "#/$defs/assurance"
+        },
+        "sealed-plan": {
+          "$ref": "#/$defs/assurance"
+        },
+        "revalidation": {
+          "$ref": "#/$defs/assurance"
+        },
+        "provenance": {
+          "$ref": "#/$defs/assurance"
+        },
+        "evidence": {
+          "$ref": "#/$defs/assurance"
+        },
+        "consumer-before": {
+          "$ref": "#/$defs/assurance"
+        },
+        "consumer-after": {
+          "$ref": "#/$defs/assurance"
+        },
+        "authority-smoke": {
+          "$ref": "#/$defs/assurance"
+        },
+        "release-start": {
+          "$ref": "#/$defs/start"
+        },
+        "deploy-start": {
+          "$ref": "#/$defs/start"
+        },
+        "update-review": {
+          "$ref": "#/$defs/attended"
+        },
+        "rotation-approval": {
+          "$ref": "#/$defs/attended"
+        }
+      }
+    },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setting"
+      ],
+      "properties": {
+        "setting": {
+          "enum": [
+            "on",
+            "off"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        }
+      }
+    },
+    "start": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setting"
+      ],
+      "properties": {
+        "setting": {
+          "enum": [
+            "automatic",
+            "person"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        }
+      }
+    },
+    "attended": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setting"
+      ],
+      "properties": {
+        "setting": {
+          "enum": [
+            "none",
+            "person"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "maxLength": 34,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        }
+      }
+    },
+    "environment-name": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "variable-name": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "not": {
+        "pattern": "^GITHUB_"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "variables",
+        "secrets",
+        "keys"
+      ],
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\r\\n]*$"
+        },
+        "variables": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/variable-name"
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/secret"
+          }
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        },
+        "trusted_publishing": {
+          "description": "Registries whose trusted publishing names this environment, so that only a job entering it can publish through federation.",
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "npm",
+              "crates-io",
+              "pub-dev",
+              "pypi"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "description": "An environment reads secrets from its own vault or signs with App keys in the vault that holds them, never both.",
+          "not": {
+            "properties": {
+              "secrets": {
+                "minItems": 1
+              },
+              "keys": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "secrets",
+              "keys"
+            ]
+          }
+        }
+      ]
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "purpose"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 119,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "not": {
+            "pattern": "-pending$"
+          }
+        },
+        "env": {
+          "$ref": "#/$defs/variable-name"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\r\\n]*$"
+        },
+        "fields": {
+          "description": "For a secret whose value is a JSON object: each member name mapped to the name the reading steps receive that member as.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/variable-name"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "env"
+          ]
+        },
+        {
+          "required": [
+            "fields"
+          ]
+        }
+      ]
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug",
+        "app_id_variable",
+        "key_name_variable",
+        "installed_on_variable"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "maxLength": 34,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "app_id_variable": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*_APP_ID$"
+        },
+        "key_name_variable": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*_KEY_NAME$"
+        },
+        "installed_on_variable": {
+          "description": "The variable that holds the repositories the App's installation may reach, which the token action requires the installation not to exceed.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*_INSTALLED_ON$"
+        },
+        "owner": {
+          "description": "The account the App is installed on, when it is not the repository's owner.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
+        },
+        "repositories": {
+          "description": "The repositories the App's token is for, when it is not the declaring repository.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          }
+        }
+      }
+    }
+  }
+}

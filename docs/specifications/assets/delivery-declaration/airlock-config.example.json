@@ -1,0 +1,5 @@
+{
+  "$schema": "https://wyrd.foo/delivery/declaration/1",
+  "environments": {},
+  "template": "airlock-config"
+}

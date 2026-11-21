@@ -1,0 +1,29 @@
+{# relationships: implements: release-process #}
+name: Build product assets
+runs-on: {% raw %}${{ matrix.runner }}{% endraw %}
+permissions:
+  contents: read
+strategy:
+  fail-fast: false
+  matrix:
+    include:
+{% for unit in product_build_units | split(' ') %}
+{% for entry in product_build_matrix.targets %}
+      - unit: {{ unit | toyaml }}
+        target: {{ entry.target | toyaml }}
+        runner: {{ entry.runner | tojson }}
+{% endfor %}
+{% endfor %}
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    with:
+      ref: {% raw %}${{ needs.resolve.outputs.source_sha }}{% endraw %}
+      persist-credentials: false
+  - name: Run repository recipe
+    if: contains(fromJSON(needs.resolve.outputs.units), matrix.unit)
+    uses: {{ product_build_recipe }}
+    with:
+      unit: {% raw %}${{ matrix.unit }}{% endraw %}
+      target: {% raw %}${{ matrix.target }}{% endraw %}
+      output-directory: {% raw %}${{ runner.temp }}/release-product/build/${{ matrix.unit }}/${{ matrix.target }}{% endraw %}
+{% include 'targets/product-build/upload.jinja' %}

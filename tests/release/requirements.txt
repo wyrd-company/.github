@@ -1,0 +1,4 @@
+# relationships: validates: release-process
+jsonschema>=4.26,<5
+ruamel.yaml>=0.18,<0.20
+check-jsonschema>=0.37,<0.39

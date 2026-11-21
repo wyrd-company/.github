@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wyrd-company/.github/blob/main/release/schemas/product-build-matrix.schema.json",
+  "title": "Product build targets and runners",
+  "description": "Target identifiers are product-owned. Runner strings or label arrays select GitHub-hosted or self-hosted runners.",
+  "$defs": {
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "\\$\\{\\{"
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "targets"
+  ],
+  "properties": {
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "runner"
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "runner": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/label"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/label"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$comment": "relationships: implements: release-process"
+}
