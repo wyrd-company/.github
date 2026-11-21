@@ -319,12 +319,17 @@ description: >-
   already holds signs nothing, whatever its lifetime and however long the
   role's removal takes to apply.
 
-  3. The Worker is made trustworthy again: a person reviews Airlock's default
-  branch and its deploy settings, has Elegua rotate `cloudflare-api-token` and
-  `airlock-session-key`, and then redeploys the Worker through the deploy
-  workflow from a reviewed release, which runs without an Entra credential
-  until step 5. When the Cloudflare account itself may be in other hands,
-  recovery waits until a person has secured it.
+  3. The Worker is made trustworthy again, isolated before anything new is
+  issued: a person first takes the compromised deployment out of service by
+  deleting the Worker, so no code that the compromise may have changed still
+  runs or can read the Secrets Store; has Elegua rotate
+  `cloudflare-api-token`; reviews Airlock's default branch and its deploy
+  settings; and only then has Elegua rotate `airlock-session-key` and
+  redeploys the Worker through the deploy workflow from a reviewed release,
+  which runs without an Entra credential until step 5. A new
+  `airlock-session-key` is issued only while no deployment of the old code
+  exists. When the Cloudflare account itself may be in other hands, recovery
+  waits until a person has secured it.
 
   4. A person generates a new private key in Safe's settings at GitHub,
   imports it into the same vault with the import that
@@ -345,7 +350,8 @@ description: >-
   which shows the calls and not the claims inside them; and resumes the
   installation only when the only private key that Safe's registration holds
   is the new one, the old application no longer exists, the Worker runs from
-  the reviewed release, and an hour has passed since the suspension, so that
+  the reviewed release, every version of the Worker deployed before step 3
+  is gone, and an hour has passed since the suspension, so that
   no installation token minted before it is still valid.
 
 
