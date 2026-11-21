@@ -111,7 +111,8 @@ expected-outcomes:
       ending those already made; only deleting Safe's private key at GitHub
       does. The recovery that `delivery-environments` gives suspends Safe's
       installation, cuts the old Entra application off, deletes the
-      compromised Worker before rotating its session key, redeploys the
+      compromised Worker before rotating its session key and both Apps'
+      client secrets and revoking their user tokens, redeploys the
       Worker, and replaces Safe's private key with a new key that only a new
       Entra application may sign with, and the risk `leaked-worker-credential-pre-signs-airlock-safe-tokens`
       records the exposure. Airlock's repository is public, so its default

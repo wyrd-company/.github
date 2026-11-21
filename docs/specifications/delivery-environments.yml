@@ -324,11 +324,16 @@ description: >-
   deleting the Worker, so no code that the compromise may have changed still
   runs or can read the Secrets Store; has Elegua rotate
   `cloudflare-api-token`; reviews Airlock's default branch and its deploy
-  settings; and only then has Elegua rotate `airlock-session-key` and
+  settings; revokes every user token of Airlock Safe and Airlock Admin from
+  each App's settings, since the old code could read the tokens sealed in
+  any session; and only then has Elegua rotate `airlock-session-key`,
+  `airlock-safe-client-secret` and `airlock-admin-client-secret`, and
   redeploys the Worker through the deploy workflow from a reviewed release,
-  which runs without an Entra credential until step 5. A new
-  `airlock-session-key` is issued only while no deployment of the old code
-  exists. When the Cloudflare account itself may be in other hands, recovery
+  which runs without an Entra credential until step 5. For each App's
+  client secret the person generates a new one in the App's settings and
+  deletes every older client secret there at once, without the usual
+  overlap, because the old code could read them. Each of these is issued
+  only while no deployment of the old code exists. When the Cloudflare account itself may be in other hands, recovery
   waits until a person has secured it.
 
   4. A person generates a new private key in Safe's settings at GitHub,
@@ -349,7 +354,8 @@ description: >-
   whole time it may have been exposed, to learn what was signed and when,
   which shows the calls and not the claims inside them; and resumes the
   installation only when the only private key that Safe's registration holds
-  is the new one, the old application no longer exists, the Worker runs from
+  is the new one, each App's settings hold only the client secret issued in
+  step 3, the old application no longer exists, the Worker runs from
   the reviewed release, every version of the Worker deployed before step 3
   is gone, and an hour has passed since the suspension, so that
   no installation token minted before it is still valid.
