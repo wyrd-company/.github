@@ -183,12 +183,23 @@ properties:
     environments with their branch policies and variables, the OpenID
     Connect subject template, and the trusted publishing settings of each
     registry. Airlock applies them from the declared configuration and the
-    organization's declared GitHub plan, and its audit reports any
-    difference between the declaration and what GitHub and the registries
-    hold, and each setting the plan does not give as a known limit. npm shows a
-    package's trusted publishing only to a person's session, so an attended
-    Airlock run reports any difference in npm trust, and the scheduled audit
-    reports npm trust as not verified.
+    organization's declared GitHub plan, in a session of the Airlock Worker
+    in which a person signed in and elevated to Airlock Admin, and its audit
+    reports any difference between the declaration and what GitHub holds,
+    and each setting the plan does not give as a known limit. npm shows and
+    changes a package's trusted publishing only to a maintainer's own
+    session, so Airlock's audits report npm trust as not verified, and who
+    sets it is open question Q04.
+  airlock-worker: >-
+    Airlock's hosted service, a Cloudflare Worker at `theairlock.app` in The
+    Wyrd Company Cloudflare account. It runs the organization's central audit
+    each day as Airlock Safe, whose key Azure Key Vault holds and uses to
+    sign, and it shows every report. A person signs in, sees which rules a
+    repository breaks, and elevates to Airlock Admin to fix them; every
+    write of a GitHub setting happens in that elevated session. Airlock's
+    audit engine is compiled to WebAssembly and runs in the Worker and in
+    the JavaScript action of each repository's own audit. The Worker deploys
+    through the deploy template like any other Worker of the organization.
 features:
   adopt-by-interview: >-
     A repository answers the template's questions, including its targets, and
@@ -223,6 +234,48 @@ open-questions:
     and Terraform writes the records.
   Q02: >-
     How are products and environments separated across cloud accounts?
+  Q03: >-
+    In short: how does Airlock's Worker get the values Terraform creates?
+    (Re-plan question 5.)
+
+
+    The attended run writes each environment's variables, such as client
+    ids and vault addresses, from the object that
+    `terraform output -json github_environments` prints.
+
+
+    (a) Recommended. The person uploads that output into the elevated
+    session. The Worker checks its shape and shows every value it will write
+    in the batch review. Nothing is stored, and it does not wait on who runs
+    Terraform, which wyrd-company/.github#20 leaves open.
+
+
+    (b) Terraform's apply commits the output to the app's `infra/`, and the
+    Worker reads it with the person's token. A good fit once
+    wyrd-company/.github#20 settles who runs Terraform.
+
+
+    (c) The Worker reads Terraform's state. Not recommended: state can hold
+    secrets, and reading it needs a stored Azure credential.
+  Q04: >-
+    In short: who sets npm trusted publishing, now that settings are written
+    from a browser, with no npm login? (Re-plan question 6.)
+
+
+    npm lets only a maintainer's own session, with two-factor
+    authentication, set or read a package's trusted publisher, and the
+    Airlock Worker holds no npm credential. Either way no audit reads npm
+    trust, as the risk `npm-trusted-publishers-are-not-verified` records.
+
+
+    (a) Recommended. The person runs `npm trust github`, or uses npmjs.com,
+    with the exact values the Worker shows. The Worker records each package
+    in the attested record as set by that person, and the audits keep
+    reporting npm trust as not verified.
+
+
+    (b) Airlock leaves npm trust out. The attested record holds no npm
+    entry, and setting it stays a step in the release template's README.
 exclusions:
   - Intentional generating or running workflows.
   - Terraform changing GitHub settings.

@@ -1,0 +1,31 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-controls
+    - delivery-environments
+    - audit-and-write-settings-in-the-airlock-worker
+slug: npm-trusted-publishers-are-not-verified
+title: An npm package's trusted publisher changes and no audit sees it
+description: >-
+  npm shows and changes a package's trusted publishers only to an account
+  with write access to the package and two-factor authentication, through
+  `npm trust` or npmjs.com. The Airlock Worker holds no npm credential, so
+  no run of Airlock reads a package's trusted publisher. A maintainer, or
+  someone holding a maintainer's session, can add a trusted publisher that
+  names another repository, workflow or environment, and that workflow can
+  then publish the package with no token. Airlock's audits report npm trust
+  as not verified and never as passed.
+categories:
+  - security
+  - integrity
+likelihood: 1
+impact: 4
+response: >-
+  Open: who sets npm trust is the operator's question `delivery-standard`
+  Q04. What holds meanwhile: a change of trusted publisher needs a
+  maintainer account with two-factor authentication; where `provenance` is
+  on, the release workflow verifies the registry's provenance for each
+  package it publishes; and the person who sets the trusted
+  publisher follows the values that `delivery-environments` gives,
+  `.github/workflows/release.yml` and the environment `publish-npm`.
+status: open

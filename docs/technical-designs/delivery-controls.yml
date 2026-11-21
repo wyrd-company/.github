@@ -12,6 +12,7 @@ relationships:
     - continuous-integration
     - release-authority-token
   assumes:
+    - airlock-worker-signs-in-to-entra-and-has-key-vault-sign
     - workflow-token-reads-effective-rulesets
     - workflow-token-reads-environment-protection
     - airlock-safe-reads-organization-installations
@@ -170,8 +171,7 @@ proposed-design:
     `answers.ci_workflow`, `answers.ci_workflow_name` and
     `answers.release_model`; from the deploy application `commit`, `parts`,
     `answers.deploy_unit` and `answers.environments`; from the Airlock
-    configuration application `commit` and `answers.central_audit`; and
-    from each, `paths`, to find the files it renders. An answer absent from
+    configuration application `commit`; and from each, `paths`, to find the files it renders. An answer absent from
     the record is a question that was skipped, and takes its default. Both
     scheduled audits read every one of these fields: the per-repository run
     for its own repository with the run's token, and the central run for
@@ -281,8 +281,7 @@ proposed-design:
     it as a known limit with the risk it names, never as passed and never as
     failed. The plan-limited controls of a private repository on `free`, and
     their risks, are: `delivery-default-branch` and
-    `delivery-default-branch-review`, and in the audit repository
-    `audit-default-branch`, with
+    `delivery-default-branch-review`, with
     `writers-change-the-default-branch-of-a-private-repository`;
     the five tag rulesets, with
     `writers-change-the-tags-of-a-private-repository`; the branch policy of
@@ -386,91 +385,97 @@ proposed-design:
     `push` to the default branch, with `permissions: {}` at the top and one
     job, `audit`, with `contents: read`, `actions: read` and
     `attestations: read`. The job enters no environment, reads no secret, and
-    runs the pinned Airlock action in repository mode, which takes the run's
-    `GITHUB_TOKEN` through its `token` input and audits that one repository.
+    runs the pinned Airlock action, a JavaScript action on `node24` that
+    carries Airlock's audit engine compiled to WebAssembly and has one mode,
+    repository mode. It takes the run's `GITHUB_TOKEN` through its `token`
+    input, audits that one repository, and uploads its report as an
+    artifact of the run.
     GitHub offers no way to list an installation token's permissions, so
-    Airlock accepts that token only in repository mode, inside Actions, and
-    only after it reads the job's `permissions` from the workflow file at
-    `GITHUB_WORKFLOW_SHA` and finds each one `read`.
-    The central run. The organization's audit repository, the private
-    repository `organization-audit` of the owner, holds no release and is the
-    only signer that `delivery-apps` lists for `airlock-safe`. Airlock
-    applies to it the repository ruleset `audit-default-branch`: target
-    `branch`, include `~DEFAULT_BRANCH`, rules `pull_request`,
-    `required_linear_history`, `non_fast_forward` and `deletion`, no bypass
-    actor; it restricts `airlock-safe`, like every environment, to the
-    default branch; and it sets the subject template that
-    `delivery-environments` names; the ruleset and the branch policy are
-    plan-limited on Free, as `plan-limits` states. The audit repository's
-    writers are the organization's owners. It applies
-    the Airlock configuration template with the `confirm` question
-    `central_audit`, default false, answered true, which also renders
-    `.github/workflows/airlock-central.yml` and
-    `.github/workflows/delivery-airlock-safe.yml`, and declares the
-    environment `airlock-safe`. `airlock-central.yml` runs on `schedule`
-    once a day and on `workflow_dispatch`, with `permissions: {}` at the top
-    and one job, `audit`, which calls `delivery-airlock-safe.yml` with
-    `id-token: write` and nothing else. That workflow runs only on
-    `workflow_call` and holds one job, `audit`, that enters `airlock-safe`
-    with `deployment: false` and only `id-token: write`, and runs the pinned
-    Airlock action in central mode with
-    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_APP_ID`,
-    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_KEY_NAME`,
-    `vars.AIRLOCK_SAFE__AIRLOCK_SAFE_INSTALLED_ON`,
-    `vars.AIRLOCK_SAFE__AZURE_KEY_VAULT_URL`,
-    `vars.AIRLOCK_SAFE__AZURE_TENANT_ID` and
-    `vars.AIRLOCK_SAFE__AZURE_CLIENT_ID`. It is not a skeleton
-    job: Airlock signs, not the token action. Airlock signs in to Azure with
-    the job's OpenID Connect token, has Key Vault sign Airlock Safe's JSON
+    Airlock accepts that token only inside Actions, and only after it reads
+    the job's `permissions` from the workflow file at `GITHUB_WORKFLOW_SHA`
+    and finds each one `read`.
+    The central run. The Airlock Worker runs it once a day from a Cron
+    Trigger of its Wrangler configuration, with the same engine compiled to
+    WebAssembly. Its scheduled handler signs in to Azure as the Worker's
+    Entra application with the client credentials grant and
+    `airlock-entra-client-secret`, has Key Vault sign Airlock Safe's JSON
     Web Token as `release-authority-token` describes the sequence, reads
-    `GET /app` and requires the id and slug it is built with and every
-    permission `read`, requires its installation for the owner to have
+    `GET /app` and requires the id and slug its configuration names and
+    every permission `read`, requires its installation for the owner to have
     `repository_selection` `all`, as `delivery-apps` requires of Airlock
     Safe, and to pass the token action's `installation-repositories` rule
-    with `AIRLOCK_SAFE_INSTALLED_ON`, which is `<owner>/*` and so bounds
-    membership to the owner's repositories without implying a selection, and mints an installation token whose
-    minting response lists only `read` permissions. It stores no token. It
-    audits the organization and every repository its installation reaches,
-    uploads one report as an artifact, and fails when any check fails.
-    The attended run. A person runs Airlock's console, signed in as Airlock
-    Admin through GitHub's device flow and, for npm, with their own npm
-    session. It writes what `plan-limits` gives each repository and skips
-    each plan-limited control, which it lists in its report as a known limit
-    with its risk. After it applies, it reads back the bypass actors of every
-    ruleset it writes, every delivery variable it writes, each subject
-    template, and each npm package's trusted publisher, and compares each
-    with what this design names: no bypass actor on
-    `delivery-tags-immutable`, `delivery-tags-unclassified`,
-    `delivery-default-branch`, `delivery-tags-repository` and
-    `audit-default-branch`; only the repository's release authority App on
-    `delivery-default-branch-review` and `delivery-tags-recorded`; only its
-    package tags App on `delivery-tags-published`; the values of
-    `github_environments`; the subject template of
-    `delivery-environments`; and the trusted publishers the declarations
-    name.
+    with `<owner>/*`, which bounds membership to the owner's repositories
+    without implying a selection, and mints an installation token whose
+    minting response lists only `read` permissions. It makes the
+    organization's checks, then puts one message for each repository the
+    installation reaches on the Worker's Queue, naming the run and the
+    repository and holding no credential. Each invocation of the Queue's
+    consumer signs in the same way, audits the repositories of its batch,
+    and stores each repository's results in the Worker's D1 database under
+    the run. The batch size keeps every invocation within the limits of
+    Workers Paid on subrequests and CPU time, at about 28 GitHub requests
+    for one repository, and Airlock's documentation states it. No token,
+    assertion or signature is stored, logged or queued. The run's report is
+    its stored results: a failed check is failed, and a repository with no
+    result once the run's messages are consumed is reported as not run. The
+    scheduled handler and the Queue's consumer hold only Airlock Safe's
+    read-only installation token and reach no session.
+    The attended run. The attended run is an elevated session of the Airlock
+    Worker. A person signs in at `https://theairlock.app` through GitHub's
+    web application flow for Airlock Safe, with `state` and a PKCE
+    challenge, and the Worker admits only an active member of the owner.
+    The session shows the findings of the latest reports, the central run's
+    and each per-repository run's artifact, for the repositories that
+    `GET /user/installations/<id>/repositories` lists for the person's own
+    token, and the organization's findings to its owners. To fix a finding
+    the person elevates: a second web flow, for Airlock Admin, whose user
+    access token GitHub limits to what both the person and Admin may do and
+    expires after eight hours; the Worker requires the same login as the
+    sign-in. Each user access token is held only in a cookie sealed with
+    AES-GCM under `airlock-session-key`, marked `HttpOnly`, `Secure` and
+    `SameSite=Strict`, and never in D1, the Queue, a log or other storage;
+    the Worker discards the refresh token on receipt, and sign-out revokes
+    both tokens through `DELETE /applications/<client_id>/token`. A write
+    runs only from a request that carries the elevated cookie, the
+    session's CSRF token and the digest of a batch the person confirmed,
+    which covers each setting's exact value before and after and is
+    consumed once through a row in D1. So no request without a live,
+    elevated person, and no scheduled or Queue invocation, can write a
+    GitHub setting. Airlock Admin's registration holds no private key, so no
+    installation token of Admin can be minted. The Worker holds Admin's
+    client secret, which only exchanges a code that a person has just
+    approved at one of the callbacks Admin registers,
+    `https://theairlock.app/auth/callback` and the loopback callback of a
+    local run of the Worker, `http://127.0.0.1:<port>/auth/callback`; a
+    person places it as `delivery-environments` states. The attended run
+    writes what `plan-limits` gives each repository and skips each
+    plan-limited control, which it lists in its report as a known limit with
+    its risk. After it applies, it reads back the bypass actors of every
+    ruleset it writes, every delivery variable it writes and each subject
+    template, and compares each with what this design names: no bypass actor
+    on `delivery-tags-immutable`, `delivery-tags-unclassified`,
+    `delivery-default-branch` and `delivery-tags-repository`; only the
+    repository's release authority App on `delivery-default-branch-review`
+    and `delivery-tags-recorded`; only its package tags App on
+    `delivery-tags-published`; the values of `github_environments`; and the
+    subject template of `delivery-environments`.
     A difference fails the run, which records nothing for what differs. It
-    ends by writing the attested record as repository variables of the audit
-    repository, which Airlock Admin writes and Airlock Safe reads:
-    `AIRLOCK_ATTESTED_<id>` for each repository, where `<id>` is its numeric
-    repository id. Each value is JSON with `$schema`
-    `https://wyrd.foo/airlock/attested/1`, which Airlock defines,
+    ends by storing the attested record in the Worker's D1 database, one row
+    for each repository keyed by its numeric repository id, which only an
+    attended run writes and the central run reads. Each row is JSON with
+    `$schema` `https://wyrd.foo/airlock/attested/1`, which Airlock defines,
     `attested_at`, `attested_by`, the person's login, `rulesets`, each with
-    its `id`, `updated_at` and `bypass_actors` as GitHub returns them,
+    its `id`, `updated_at` and `bypass_actors` as GitHub returns them, and
     `variables`, keyed by environment and then by the variable name a
-    declaration lists, whatever level GitHub holds it at, and `npm`,
-    keyed by package, each with its trusted publisher's repository, workflow
-    and environment. GitHub allows a repository 500 variables, and the audit
-    repository's own six `AIRLOCK_SAFE__` variables are repository variables
-    on Free, which bounds the organization at 494 audited repositories. A
-    central run between an
-    apply and the end of the same session reports the difference, and the
-    next run clears it. The record is as trustworthy as the audit
-    repository's settings and default branch, which are also the only route
-    to Airlock Safe's key, and on Free that default branch takes any
-    owner's push, as the risk
-    `writers-change-the-default-branch-of-a-private-repository` records.
-    The decision record
-    `run-the-privileged-audit-centrally-as-airlock-safe` holds the trade-off.
+    declaration lists, whatever level GitHub holds it at; what it holds for
+    npm follows the operator's answer to `delivery-standard` Q04. A central
+    run between an apply and the end of the same session reports the
+    difference, and the next run clears it. The record is as trustworthy as
+    the Worker's code and its database: Airlock's repository is public, so
+    its default branch keeps its rulesets on GitHub Free, and the account's
+    administrators and the deploy credential that applies the Worker's
+    migrations can write the database. The decision record
+    `audit-and-write-settings-in-the-airlock-worker` holds the trade-off.
 
   audit-coverage: >-
     The run's `GITHUB_TOKEN` reads the applied record, the declarations, the
@@ -483,10 +488,10 @@ proposed-design:
     the rest as not run. Airlock Safe reads all of these except attestations,
     and each repository's secrets list, repository and environment
     variables, subject template and immutable releases setting, the
-    organization's installations,
-    Elegua's manifest and the attested record; the central run makes every
-    check except four: attestations, bypass actors, npm trust, and the
-    repositories of an App's selected installation. It fails when a
+    organization's installations and Elegua's manifest, and the central run
+    also reads the attested record from the Worker's database; the central
+    run makes every check except four: attestations, bypass actors, npm
+    trust, and the repositories of an App's selected installation. It fails when a
     repository that holds a release or deploy declaration has no Airlock
     configuration application, so no repository on the standard lacks
     `airlock-audit.yml`. Attestations: for each such repository the central
@@ -495,10 +500,11 @@ proposed-design:
     attended run reads them, and the central run fails when a ruleset that
     Airlock applies has no entry in the attested record, or when its
     `updated_at` or a delivery variable differs from its entry, so a
-    change after the attended run is found by the next scheduled run, and
-    the person runs the console again. npm trust: the attended run reads it,
-    and both scheduled runs report it as not verified, with the time the
-    attested record last verified each package. The repositories of an App's
+    change after the attended run is found by the next scheduled run, and a
+    person elevates and applies again. npm trust: no run reads it, both
+    scheduled runs report it as not verified, and the risk
+    `npm-trusted-publishers-are-not-verified` records the limit. The
+    repositories of an App's
     selected installation: no audit run reads them; the token action checks
     them before every token it returns, as `delivery-apps` states, both
     scheduled runs report them as not run with that pointer, and the central
