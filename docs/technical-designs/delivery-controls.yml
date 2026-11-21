@@ -367,7 +367,11 @@ proposed-design:
     names an App that `delivery-apps` does not allow for the repository; when
     an App's installation differs from `delivery-apps` in the ways that file
     states; when a ruleset, a bypass actor or an environment variable differs
-    from the attested record; when a secret that a declaration lists is not a
+    from the attested record; when the npm registry does not hold a package
+    that a declaration names, or holds npm provenance for one of its
+    versions after the placeholder that names another repository or another
+    workflow than `.github/workflows/release.yml`; when a secret that a
+    declaration lists is not a
     destination of Elegua's manifest in the environment's vault; and when
     such a secret's manifest `tier` is not the one its readers' effective
     `rotation-approval` requires. It reads Elegua's manifest from the
@@ -447,8 +451,10 @@ proposed-design:
     `attested_at`, `attested_by`, the person's login, `rulesets`, each with
     its `id`, `updated_at` and `bypass_actors` as GitHub returns them, and
     `variables`, keyed by environment and then by the variable name a
-    declaration lists, whatever level GitHub holds it at; what it holds for
-    npm follows the operator's answer to `delivery-standard` Q04. A central
+    declaration lists, whatever level GitHub holds it at; and `npm`, keyed
+    by package, each with the repository, workflow and environment the
+    Worker showed, `set_by`, the login of the person who set them, and
+    `set_at`. A central
     run between an apply and the end of the same session reports the
     difference, and the next run clears it. The record is as trustworthy as
     the Worker's code and its database: Airlock's repository is public, so
@@ -518,8 +524,11 @@ proposed-design:
 
   batch-confirmation: >-
     A write runs only from a confirmed batch. When an elevated person
-    reviews a batch, the Worker reads each setting it would change from
-    GitHub, plans the change, shows each setting's exact value before and
+    reviews a batch, the Worker reads the latest `github_environments.json`
+    from its R2 binding and refuses it when its shape differs from
+    `github_environments` or when it names a repository, environment or
+    variable that no declaration lists, reads each setting it would change
+    from GitHub, plans the change, shows each setting's exact value before and
     after, and stores a confirmation in D1: a random id, the session id, the
     GitHub user id, the repositories, the SHA-256 of the canonical change
     set, every setting with its value before and after, and an expiry ten
@@ -563,8 +572,11 @@ proposed-design:
     `updated_at` or a delivery variable differs from its entry, so a
     change after the attended run is found by the next scheduled run, and a
     person elevates and applies again. npm trust: no run reads it, both
-    scheduled runs report it as not verified, and the risk
-    `npm-trusted-publishers-are-not-verified` records the limit. The
+    scheduled runs report it as not verified, with who set it and when as
+    the attested record gives, and the risk
+    `npm-trusted-publishers-are-not-verified` records the limit; the npm
+    registry's public metadata, each package and the provenance of its
+    versions, needs no credential, so both runs read it. The
     repositories of an App's
     selected installation: no audit run reads them; the token action checks
     them before every token it returns, as `delivery-apps` states, both

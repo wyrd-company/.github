@@ -1,0 +1,32 @@
+$schema: https://refinery.systems/ontology/risk
+relationships:
+  references:
+    - delivery-environments
+    - delivery-controls
+    - deliver-terraform-outputs-to-the-airlock-worker-through-r2
+slug: terraform-outputs-object-is-not-authenticated
+title: The Worker reads a Terraform outputs object that someone else wrote
+description: >-
+  The Airlock Worker reads `github_environments.json` from its R2 bucket
+  and plans the attended run's variable writes from it. Nothing in the
+  object proves that Terraform's apply wrote it: whoever holds
+  `terraform-outputs-r2-token`, Terraform's apply credential that reads it,
+  or write access to the bucket in the Cloudflare account can replace it.
+  A replaced object can name another tenant, client id or vault for a
+  credential environment, and a person who confirms that batch writes those
+  values to GitHub, where the next release or deploy signs in with them.
+categories:
+  - security
+  - integrity
+likelihood: 1
+impact: 3
+response: >-
+  Follows from the operator's ruling of 2026-11-21 on how Terraform's
+  outputs reach the Worker. What holds: no value reaches GitHub until an
+  elevated person reviews it and confirms the batch; the batch review shows
+  each variable's value before and after, so a change to an identifier that
+  Terraform did not change stands out; the Worker refuses an object whose
+  shape differs from `github_environments` or that names a repository,
+  environment or variable no declaration lists; and the token reaches only
+  its one bucket, which holds no secret.
+status: open
